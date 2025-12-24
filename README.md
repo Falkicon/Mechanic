@@ -5,6 +5,7 @@ In-game development hub for World of Warcraft addon developers. Centralizes debu
 ![WoW Version](https://img.shields.io/badge/WoW-12.0%2B-blue)
 ![Interface](https://img.shields.io/badge/Interface-120001-green)
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
+[![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
 ## Features
 
