@@ -1,0 +1,32 @@
+## Interface: 120001, 120000
+## Title: !Mechanic
+## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
+## Author: Fen (Falkicon)
+## Version: 1.0.0
+## X-License: GPL-3.0
+## X-Category: Development Tools
+## X-Website: https://github.com/Falkicon/Mechanic
+## SavedVariables: MechanicDB
+## OptionalDeps: !BugGrabber
+
+# Libraries
+embeds.xml
+
+# Localization
+Locales\enUS.lua
+
+# MechanicLib (embedded, also synced to other addons)
+Libs\MechanicLib\MechanicLib.lua
+
+# Core
+Core.lua
+
+# Settings (Phase 3)
+Settings.lua
+
+# UI Modules
+UI\MainFrame.lua
+UI\Console.lua
+UI\Errors.lua
+UI\Tests.lua
+UI\Performance.lua

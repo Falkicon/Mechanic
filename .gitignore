@@ -1,0 +1,22 @@
+# System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# WoW / Addon Dev
+*.bak
+*.old
+*.tmp
+*.log
+_test_/
+tmp/
+
+.cursor/
+AGENTS.md
+.cursorignore
+

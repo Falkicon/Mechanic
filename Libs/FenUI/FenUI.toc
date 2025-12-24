@@ -1,0 +1,30 @@
+## Interface: 120001, 120000
+## Title: FenUI
+## Author: Fen (Falkicon)
+## Version: 2.4.0
+## Notes: Blizzard-first UI widget library with theming, design tokens, and modern API patterns
+## IconTexture: Interface\Icons\INV_Misc_Gear_01
+## SavedVariables: FenUIDB
+
+# Core (load order matters)
+Core\FenUI.lua
+Core\Tokens.lua
+Core\BlizzardBridge.lua
+Core\ThemeManager.lua
+
+# Validation
+Validation\DependencyChecker.lua
+
+# Widgets (load order matters: Image -> Layout -> Panel/Containers)
+Widgets\Image.lua
+Widgets\Layout.lua
+Widgets\Panel.lua
+Widgets\Containers.lua
+Widgets\Tabs.lua
+Widgets\Buttons.lua
+Widgets\Grid.lua
+Widgets\Toolbar.lua
+Widgets\EmptyState.lua
+
+# Settings Integration
+Settings\ThemePicker.lua

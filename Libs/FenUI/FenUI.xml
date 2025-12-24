@@ -1,0 +1,28 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!-- FenUI Widget Library - Embeddable Loader -->
+    
+    <!-- Core (load order matters) -->
+    <Script file="Core\FenUI.lua"/>
+    <Script file="Core\Tokens.lua"/>
+    <Script file="Core\BlizzardBridge.lua"/>
+    <Script file="Core\ThemeManager.lua"/>
+    
+    <!-- Validation -->
+    <Script file="Validation\DependencyChecker.lua"/>
+    
+    <!-- Widgets (load order matters: Image -> Layout -> Panel/Containers) -->
+    <Script file="Widgets\Image.lua"/>
+    <Script file="Widgets\Layout.lua"/>
+    <Script file="Widgets\Panel.lua"/>
+    <Script file="Widgets\Containers.lua"/>
+    <Script file="Widgets\Tabs.lua"/>
+    <Script file="Widgets\Buttons.lua"/>
+    <Script file="Widgets\Grid.lua"/>
+    <Script file="Widgets\Toolbar.lua"/>
+    <Script file="Widgets\MultiLineEditBox.lua"/>
+    <Script file="Widgets\StatusRow.lua"/>
+    <Script file="Widgets\EmptyState.lua"/>
+    
+    <!-- Settings Integration -->
+    <Script file="Settings\ThemePicker.lua"/>
+</Ui>
