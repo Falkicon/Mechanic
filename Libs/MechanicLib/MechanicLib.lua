@@ -6,12 +6,13 @@
 --
 -- Implementation: Phase 1 (PLAN/01-foundation.plan.md)
 
-local MAJOR, MINOR = "MechanicLib-1.0", 1
+local MAJOR, MINOR = "MechanicLib-1.0", 2
 local MechanicLib = LibStub:NewLibrary(MAJOR, MINOR)
 if not MechanicLib then return end
 
 -- Storage
 MechanicLib.registered = MechanicLib.registered or {}
+MechanicLib.watchList = MechanicLib.watchList or {}
 
 --------------------------------------------------------------------------------
 -- Developer Mode Detection (replaces DevMarker.lua pattern)
@@ -77,6 +78,46 @@ function MechanicLib:Unregister(addonName)
     if _G.Mechanic and _G.Mechanic.OnAddonUnregistered then
         _G.Mechanic:OnAddonUnregistered(addonName)
     end
+end
+
+--------------------------------------------------------------------------------
+-- Inspect & Watch API (Phase 8)
+--------------------------------------------------------------------------------
+
+--- Add a frame or path to the Mechanic watch list.
+---@param frameOrPath Frame|string The frame reference or a path string (e.g. "PlayerFrame.health")
+---@param label string? A descriptive label for the watch item
+---@param options table? Optional configuration (e.g. { source = "MyAddon" })
+function MechanicLib:AddToWatchList(frameOrPath, label, options)
+    local key = tostring(frameOrPath)
+    self.watchList[key] = {
+        target = frameOrPath,
+        label = label or key,
+        source = options and options.source or "Manual",
+        timestamp = GetTime(),
+    }
+
+    if _G.Mechanic and _G.Mechanic.OnWatchListChanged then
+        _G.Mechanic:OnWatchListChanged()
+    end
+end
+
+--- Remove a frame or path from the watch list.
+---@param frameOrPath Frame|string The frame reference or path string to remove
+function MechanicLib:RemoveFromWatchList(frameOrPath)
+    local key = tostring(frameOrPath)
+    if self.watchList[key] then
+        self.watchList[key] = nil
+        if _G.Mechanic and _G.Mechanic.OnWatchListChanged then
+            _G.Mechanic:OnWatchListChanged()
+        end
+    end
+end
+
+--- Get the current watch list.
+---@return table watchList The internal watch list table
+function MechanicLib:GetWatchList()
+    return self.watchList
 end
 
 --------------------------------------------------------------------------------

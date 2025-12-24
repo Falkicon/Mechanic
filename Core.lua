@@ -29,6 +29,10 @@ local defaults = {
 			hide = false,
 		},
 		addonSettings = {},
+		-- NEW: API test data (Phase 7)
+		apiTests = {},
+		-- NEW: Inspect & Watch data (Phase 8)
+		inspectWatch = {},
 	},
 }
 
@@ -86,6 +90,19 @@ function Mechanic:OnAddonRegistered(name, capabilities)
 		self.Perf:RefreshNavItems()
 	end
 
+	-- Check for inspect capability (Phase 8)
+	if capabilities and capabilities.inspect and capabilities.inspect.getWatchFrames then
+		local MechanicLib = LibStub("MechanicLib-1.0", true)
+		if MechanicLib then
+			local frames = capabilities.inspect.getWatchFrames()
+			if frames then
+				for _, data in ipairs(frames) do
+					MechanicLib:AddToWatchList(data.frame, data.label, { source = name })
+				end
+			end
+		end
+	end
+
 	-- Update status bar count
 	self:UpdateStatusBar()
 
@@ -103,6 +120,12 @@ function Mechanic:OnLog(addonName, message, category)
 	-- Forward to Console module
 	if self.Console and self.Console.OnLog then
 		self.Console:OnLog(addonName, message, category)
+	end
+end
+
+function Mechanic:OnWatchListChanged()
+	if self.Inspect and self.Inspect.RefreshWatchList then
+		self.Inspect:RefreshWatchList()
 	end
 end
 
@@ -201,6 +224,10 @@ function Mechanic:SlashCommand(input)
 		self:ShowTab("tests")
 	elseif cmd == "tools" then
 		self:ShowTab("tools")
+	elseif cmd == "api" then
+		self:ShowTab("api")
+	elseif cmd == "inspect" then
+		self:ShowTab("inspect")
 	elseif cmd == "perf" then
 		self:ShowTab("perf")
 	elseif cmd == "reload" then
@@ -264,6 +291,13 @@ function Mechanic:ClearCurrentTab()
 		self.Errors:WipeSession()
 	elseif activeTab == "tests" and self.Tests then
 		self.Tests:ClearResults()
+	elseif activeTab == "api" and self.API then
+		wipe(self.db.profile.apiTests)
+		self.API.lastResults = {}
+		-- Refresh if visible
+		if self.API.frame and self.API.frame:IsVisible() then
+			self.API:OnShow()
+		end
 	elseif activeTab == "perf" and self.Perf then
 		self.Perf:ResetStats()
 	end

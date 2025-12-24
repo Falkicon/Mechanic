@@ -1,6 +1,8 @@
-# Phase 6: Extensibility Framework
+# Phase 6: Extensibility Framework ✅ COMPLETE
 
 Enables addons to extend !Mechanic with custom diagnostic tools and performance sub-metrics, and applies a consistent left-nav UI pattern across Console, Errors, Tools, and Performance tabs.
+
+> **Status**: This phase has been fully implemented. See `UI/Shared/SplitNavLayout.lua`, `UI/Tools.lua`, and updates to Console.lua, Errors.lua, and Performance.lua.
 
 ---
 
@@ -239,11 +241,11 @@ return SplitNavLayout
 ```
 
 **Acceptance Criteria**:
-- [ ] Left nav renders items correctly
-- [ ] Selection highlight works
-- [ ] Content frames swap on selection
-- [ ] Scroll works when many items
-- [ ] Reusable by Console, Errors, Tools, Performance, and future tabs
+- [x] Left nav renders items correctly
+- [x] Selection highlight works
+- [x] Content frames swap on selection
+- [x] Scroll works when many items
+- [x] Reusable by Console, Errors, Tools, Performance, and future tabs
 
 ### 2. Console Tab Left-Nav Refactor
 
@@ -325,12 +327,12 @@ end
 **Visual Enhancement**: The count in parentheses updates in real-time as logs arrive.
 
 **Acceptance Criteria**:
-- [ ] Left nav shows "All" plus each registered addon
-- [ ] Counts update as logs arrive
-- [ ] Selecting a source filters the console
-- [ ] "All" shows combined view (default)
-- [ ] Category dropdown and Search remain functional
-- [ ] Existing toolbar (Clear, Copy, Dedup, Pause) still works
+- [x] Left nav shows "All" plus each registered addon
+- [x] Counts update as logs arrive
+- [x] Selecting a source filters the console
+- [x] "All" shows combined view (default)
+- [x] Category dropdown and Search remain functional
+- [x] Existing toolbar (Clear, Copy, Dedup, Pause) still works
 
 ### 3. Errors Tab Left-Nav Refactor
 
@@ -419,12 +421,12 @@ end
 ```
 
 **Acceptance Criteria**:
-- [ ] Left nav shows "All" plus each addon with errors
-- [ ] Addon detection parses error paths correctly
-- [ ] Selecting a source filters the error list
-- [ ] "All" shows all errors (default)
-- [ ] Error navigation (Prev/Next) respects filter
-- [ ] Counts update when new errors arrive
+- [x] Left nav shows "All" plus each addon with errors
+- [x] Addon detection parses error paths correctly
+- [x] Selecting a source filters the error list
+- [x] "All" shows all errors (default)
+- [x] Error navigation (Prev/Next) respects filter
+- [x] Counts update when new errors arrive
 
 ### 4. MechanicLib Capability Extensions
 
@@ -481,9 +483,9 @@ Extend the capabilities interface to support tools and performance:
 **Update MASTER_PLAN.md Section 3** to document these new capabilities.
 
 **Acceptance Criteria**:
-- [ ] Schema documented in MASTER_PLAN.md
-- [ ] Example implementation provided
-- [ ] Backwards compatible (existing registrations still work)
+- [x] Schema documented in MASTER_PLAN.md
+- [x] Example implementation provided
+- [x] Backwards compatible (existing registrations still work)
 
 ### 5. Tools Tab Implementation
 
@@ -666,12 +668,12 @@ elseif key == "tools" then
 ```
 
 **Acceptance Criteria**:
-- [ ] Tools tab appears in tab bar
-- [ ] Left nav lists addons with tools capability
-- [ ] Selecting addon shows its custom panel
-- [ ] Empty state shown when no tools registered
-- [ ] Panel creation errors are caught and logged
-- [ ] Panel cleanup called on deselection
+- [x] Tools tab appears in tab bar
+- [x] Left nav lists addons with tools capability
+- [x] Selecting addon shows its custom panel
+- [x] Empty state shown when no tools registered
+- [x] Panel creation errors are caught and logged
+- [x] Panel cleanup called on deselection
 
 ### 6. Performance Tab Refactor
 
@@ -886,12 +888,12 @@ end
 ```
 
 **Acceptance Criteria**:
-- [ ] "General" shows existing global performance view
-- [ ] Addons with performance capability appear in nav
-- [ ] Selecting addon shows its sub-metrics
-- [ ] Sub-metrics show name, ms/s, percentage, description
-- [ ] Total row sums sub-metrics
-- [ ] Auto-refresh updates sub-metrics when enabled
+- [x] "General" shows existing global performance view
+- [x] Addons with performance capability appear in nav
+- [x] Selecting addon shows its sub-metrics
+- [x] Sub-metrics show name, ms/s, percentage, description
+- [x] Total row sums sub-metrics
+- [x] Auto-refresh updates sub-metrics when enabled
 
 ### 7. Slash Command Extensions
 
@@ -905,7 +907,7 @@ elseif cmd == "tools" then
 ```
 
 **Acceptance Criteria**:
-- [ ] `/mech tools` opens to Tools tab
+- [x] `/mech tools` opens to Tools tab
 
 ### 8. File Loading Order
 
@@ -934,8 +936,8 @@ Settings.lua
 ```
 
 **Acceptance Criteria**:
-- [ ] SplitNavLayout loads before tabs that use it
-- [ ] Tools.lua loads after shared modules
+- [x] SplitNavLayout loads before tabs that use it
+- [x] Tools.lua loads after shared modules
 
 ---
 

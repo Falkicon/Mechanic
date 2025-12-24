@@ -174,7 +174,9 @@ function Console:RefreshSourceList()
 		end
 	end
 
-	self.layout:SetItems(items)
+	if self.layout then
+		self.layout:SetItems(items)
+	end
 end
 
 function Console:OnSourceSelected(key)

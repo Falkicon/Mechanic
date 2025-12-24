@@ -179,4 +179,3 @@ function SplitNavLayout:Create(parent, config)
 end
 
 return SplitNavLayout
-

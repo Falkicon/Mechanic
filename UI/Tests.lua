@@ -192,7 +192,7 @@ function TestsModule:BuildTree()
 						local allTests = capabilities.tests.getAll()
 						for _, entry in ipairs(allTests) do
 							local test = entry.def
-							if test.category == category then
+							if test and test.category == category then
 								local result = capabilities.tests.getResult and capabilities.tests.getResult(test.id)
 								local icon = self:GetStatusIcon(result)
 
@@ -293,7 +293,10 @@ function TestsModule:UpdateDetailsPanel(testDef, result)
 			for _, detail in ipairs(result.details) do
 				local statusColor = DETAIL_STATUS_COLORS[detail.status] or DETAIL_STATUS_DEFAULT
 				local statusIcon = self:GetDetailStatusIcon(detail.status)
-				table.insert(details, string.format("  %s %s: %s%s|r", statusIcon, detail.label, statusColor, detail.value))
+				table.insert(
+					details,
+					string.format("  %s %s: %s%s|r", statusIcon, detail.label, statusColor, detail.value)
+				)
 			end
 			table.insert(details, "")
 		end
@@ -527,7 +530,10 @@ function TestsModule:GetCopyText(includeHeader)
 								if result and result.details and #result.details > 0 then
 									for _, d in ipairs(result.details) do
 										local statusTag = d.status and string.upper(d.status) or "INFO"
-										table.insert(lines, string.format("    [%s] %s: %s", statusTag, d.label, d.value))
+										table.insert(
+											lines,
+											string.format("    [%s] %s: %s", statusTag, d.label, d.value)
+										)
 									end
 								end
 							end

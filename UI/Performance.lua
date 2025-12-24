@@ -445,6 +445,11 @@ function PerformanceModule:GetExtendedMetrics()
 end
 
 function PerformanceModule:UpdateExtendedMetrics()
+	-- Guard: UI elements may not exist yet during early initialization
+	if not self.fpsLabel then
+		return
+	end
+
 	local metrics = self:GetExtendedMetrics()
 
 	self.fpsLabel:SetText(string.format("FPS: %.0f", metrics.fps))
@@ -531,6 +536,11 @@ end
 --------------------------------------------------------------------------------
 
 function PerformanceModule:RefreshList()
+	-- Guard: UI elements may not exist yet during early initialization
+	if not self.rowPool or not self.scrollFrame then
+		return
+	end
+
 	local addons, totalMemory, totalCPU, duration = self:GetAddonData()
 	local cpuEnabled = GetCVarBool("scriptProfile")
 

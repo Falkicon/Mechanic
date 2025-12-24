@@ -60,6 +60,8 @@ function Mechanic:CreateMainFrame()
 			{ key = "errors", text = "Errors" },
 			{ key = "tests", text = "Tests" },
 			{ key = "tools", text = "Tools" },
+			{ key = "api", text = "API" },
+			{ key = "inspect", text = "Inspect" },
 			{ key = "perf", text = "Performance" },
 		},
 		onChange = function(key)
@@ -105,6 +107,14 @@ function Mechanic:OnTabChanged(key)
 		self.Tools.frame:Hide()
 		self.Tools:OnHide()
 	end
+	if self.API and self.API.frame then
+		self.API.frame:Hide()
+		self.API:OnHide()
+	end
+	if self.Inspect and self.Inspect.frame then
+		self.Inspect.frame:Hide()
+		self.Inspect:OnHide()
+	end
 	if self.Perf and self.Perf.frame then
 		self.Perf.frame:Hide()
 		self.Perf:OnHide()
@@ -139,6 +149,22 @@ function Mechanic:OnTabChanged(key)
 		if self.Tools and self.Tools.frame then
 			self.Tools.frame:Show()
 			self.Tools:OnShow()
+		end
+	elseif key == "api" then
+		if not self.API or not self.API.frame then
+			self:InitializeAPI()
+		end
+		if self.API and self.API.frame then
+			self.API.frame:Show()
+			self.API:OnShow()
+		end
+	elseif key == "inspect" then
+		if not self.Inspect or not self.Inspect.frame then
+			self:InitializeInspect()
+		end
+		if self.Inspect and self.Inspect.frame then
+			self.Inspect.frame:Show()
+			self.Inspect:OnShow()
 		end
 	elseif key == "perf" then
 		if not self.Perf or not self.Perf.frame then

@@ -163,4 +163,3 @@ function ToolsModule:GetCopyText(includeHeader)
 
 	return table.concat(lines, "\n")
 end
-

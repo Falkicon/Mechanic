@@ -2,7 +2,7 @@
 ## Title: !Mechanic
 ## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
 ## Author: Fen (Falkicon)
-## Version: 1.1.0
+## Version: 1.1.5
 ## X-License: GPL-3.0
 ## X-Category: Development Tools
 ## X-Website: https://github.com/Falkicon/Mechanic
@@ -20,6 +20,7 @@ Libs\MechanicLib\MechanicLib.lua
 
 # Shared UI Modules
 UI\Shared\SplitNavLayout.lua
+UI\Shared\FrameResolver.lua
 
 # Core
 Core.lua
@@ -33,4 +34,10 @@ UI\Console.lua
 UI\Errors.lua
 UI\Tests.lua
 UI\Tools.lua
+UI\APIDefinitions.lua
+UI\API.lua
+UI\Inspect.lua
+UI\InspectTree.lua
+UI\InspectDetails.lua
+UI\InspectWatch.lua
 UI\Performance.lua

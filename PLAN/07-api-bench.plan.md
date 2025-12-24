@@ -1,6 +1,8 @@
-# Phase 7: API Test Bench
+# Phase 7: API Test Bench ✅ COMPLETE
 
 Centralized WoW API exploration, documentation, and validation tab that replaces per-addon API diagnostics.
+
+> **Status**: This phase has been fully implemented. See `UI/API.lua` and `UI/APIDefinitions.lua`.
 
 ---
 
@@ -589,9 +591,14 @@ function Mechanic:InitializeAPI()
         end,
     })
 
-    -- Select first API by default
+    -- Select first actual API by default (skip category headers)
     if navItems[1] then
-        APIModule.layout:Select(navItems[1].key)
+        for _, item in ipairs(navItems) do
+            if not item.isCategory then
+                APIModule.layout:Select(item.key)
+                break
+            end
+        end
     end
 end
 

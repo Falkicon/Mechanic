@@ -166,6 +166,28 @@ MechanicLib:Register("MyAddon", {
         },
         -- AceConfig-style options table
     },
+
+    -- Custom diagnostic tools (optional - for Tools tab)
+    tools = {
+        -- Called when addon selected in Tools tab left nav
+        createPanel = function(container)
+            -- Build custom diagnostic UI inside container (Frame)
+        end,
+        -- Optional cleanup
+        destroyPanel = function(container)
+            -- Clean up if needed
+        end,
+    },
+
+    -- Performance sub-metrics (optional - for Performance tab)
+    performance = {
+        -- Returns array of { name, msPerSec, description? }
+        getSubMetrics = function()
+            return {
+                { name = "UI Update", msPerSec = 0.45, description = "Frame updates" },
+            }
+        end,
+    },
 })
 ```
 
@@ -704,6 +726,9 @@ MechanicLib is embedded in consuming addons:
 | 2 | Error & Test Integration | BugGrabber integration, Errors module, Tests module | **COMPLETE** |
 | 3 | Performance & Polish | Performance module, Settings panel, Minimap button | **COMPLETE** |
 | 4 | Migration | Update ActionHud, WimpyAuras to use MechanicLib | **COMPLETE** |
+| 5 | Polish | Category colors, rich test results | **COMPLETE** |
+| 6 | Extensibility | Tools tab, Performance sub-metrics, Split nav | **COMPLETE** |
+| 7 | API Test Bench | API discovery, testing, Midnight readiness | **COMPLETE** |
 
 See individual phase specs for detailed requirements:
 - [01-foundation.plan.md](01-foundation.plan.md)
