@@ -27,6 +27,7 @@ function MultiLineEditBoxMixin:Init(config)
     self.editBox:SetMaxLetters(0)
     self.editBox:SetFontObject(FenUI:GetFont("fontMono") or "ChatFontNormal")
     self.editBox:SetWidth(self.scrollFrame:GetWidth())
+    self.editBox:SetHeight(self.scrollFrame:GetHeight())
     self.editBox:SetAutoFocus(false)
     
     self.scrollFrame:SetScrollChild(self.editBox)
@@ -48,10 +49,9 @@ function MultiLineEditBoxMixin:Init(config)
     -- Handle size changes
     self:SetScript("OnSizeChanged", function(_, width, height)
         self.editBox:SetWidth(width - 30)
-        -- Ensure editBox is at least as tall as the scroll frame so it's clickable
-        if height and height > 8 then
-            self.editBox:SetHeight(math.max(height - 8, self.editBox:GetTextHeight()))
-        end
+        -- NOTE: We no longer set EditBox height manually here.
+        -- In 12.0, manual height updates during interaction can break drag-selection.
+        -- The UIPanelScrollFrameTemplate handles the ScrollChild's scrollable area.
     end)
     
     -- Click to focus
@@ -75,9 +75,8 @@ function MultiLineEditBoxMixin:Init(config)
             return
         end
         
-        -- Update height to ensure it's always clickable even with little text
-        local scrollHeight = self.scrollFrame:GetHeight()
-        eb:SetHeight(math.max(scrollHeight, eb:GetTextHeight()))
+        -- NOTE: We no longer set EditBox height manually here.
+        -- This avoids the "GetTextHeight is nil" error and prevents selection breakage.
 
         if not self.paused then
             self.scrollFrame:SetVerticalScroll(self.scrollFrame:GetVerticalScrollRange())
@@ -111,6 +110,14 @@ end
 function MultiLineEditBoxMixin:SelectAll()
     self.editBox:SetFocus()
     self.editBox:HighlightText()
+end
+
+function MultiLineEditBoxMixin:ScrollToTop()
+    self.scrollFrame:SetVerticalScroll(0)
+end
+
+function MultiLineEditBoxMixin:ScrollToBottom()
+    self.scrollFrame:SetVerticalScroll(self.scrollFrame:GetVerticalScrollRange())
 end
 
 function MultiLineEditBoxMixin:SetReadOnly(readOnly)
