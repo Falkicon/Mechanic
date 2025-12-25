@@ -9,6 +9,9 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):NewAddon(ADDON_NAME, "AceConsole-3.0", "AceEvent-3.0")
 _G.Mechanic = Mechanic -- luacheck: ignore W122 -- Global for MechanicLib:IsEnabled() check
 
+-- Shared Utils (defined in Utils.lua)
+Mechanic.Utils = ns.Utils
+
 -- Database defaults per MASTER_PLAN Section 7
 local defaults = {
 	profile = {
@@ -221,9 +224,7 @@ function Mechanic:GetEnvironmentHeader()
 	}
 
 	-- WoW version + build
-	local version, build, _, interface = GetBuildInfo()
-	local client = self:GetClientType()
-	table.insert(lines, string.format("WoW: %s (%s) | Client: %s | Interface: %d", version, build, client, interface))
+	table.insert(lines, string.format("WoW: %s | Interface: %s", self.Utils:GetVersionString(), self.Utils:GetInterfaceString()))
 
 	-- Character info (optional)
 	if self.db.profile.includeCharacterInfo then
@@ -256,35 +257,8 @@ function Mechanic:GetEnvironmentHeader()
 	return table.concat(lines, "\n")
 end
 
---- Detects the client type (Retail/PTR/Beta).
----@return string client "Retail", "PTR", or "Beta"
---- Detects the client type (Retail/PTR/Beta).
----@return string client "Retail", "PTR", or "Beta"
 function Mechanic:GetClientType()
-	-- 1. Try native build type checks (standard WoW API globals)
-	if _G.IsBetaBuild and _G.IsBetaBuild() then
-		return "Beta"
-	end
-	if _G.IsTestBuild and _G.IsTestBuild() then
-		return "PTR"
-	end
-
-	-- 2. Fallback to portal CVar (very reliable for developers)
-	local project = GetCVar("portal") or ""
-	if project:find("test") then
-		return "PTR"
-	elseif project:find("beta") then
-		return "Beta"
-	end
-
-	-- 3. Final fallback based on interface version during transition
-	local _, _, _, interface = GetBuildInfo()
-	if interface >= 120000 then
-		-- If it's 12.x and not flagged as test/beta, it might be pre-patch or early launch
-		return "Retail"
-	end
-
-	return "Retail"
+	return self.Utils:GetClientType()
 end
 
 --------------------------------------------------------------------------------

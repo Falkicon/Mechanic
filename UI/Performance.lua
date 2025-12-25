@@ -284,6 +284,16 @@ function PerformanceModule:RefreshNavItems()
 end
 
 function PerformanceModule:OnNavSelected(key)
+	-- If in export mode, update the text box and return
+	if self.exportMode then
+		if self.exportBox then
+			local text = self:GetCopyText(Mechanic.db.profile.includeEnvHeader)
+			self.exportBox:SetText(text)
+			self.exportBox:ScrollToTop()
+		end
+		return
+	end
+	
 	if key == "general" then
 		self:Refresh()
 	else
@@ -514,7 +524,7 @@ function PerformanceModule:UpdateExtendedMetrics()
 
 	self.fpsLabel:SetText(string.format("FPS: %.0f", metrics.fps))
 	self.latencyLabel:SetText(string.format("Latency: %dms / %dms", metrics.latencyHome, metrics.latencyWorld))
-	self.memoryLabel:SetText(string.format("Lua Memory: %.1f MB", metrics.luaMemory / 1024))
+	self.memoryLabel:SetText(string.format("Lua Memory: %s", Mechanic.Utils:FormatMemory(metrics.luaMemory)))
 end
 
 --------------------------------------------------------------------------------
@@ -633,7 +643,7 @@ function PerformanceModule:RefreshList()
 
 	-- Update footer
 	self.footerLabel:SetText(
-		string.format("Tracking: %s | Total Memory: %s", self:FormatDuration(duration), self:FormatMemory(totalMemory))
+		string.format("Tracking: %s | Total Memory: %s", Mechanic.Utils:FormatDuration(duration), Mechanic.Utils:FormatMemory(totalMemory))
 	)
 end
 
@@ -672,7 +682,7 @@ end
 
 function PerformanceModule:UpdateRow(row, addon, cpuEnabled)
 	row.labels.name:SetText(addon.name)
-	row.labels.memory:SetText(self:FormatMemory(addon.memory))
+	row.labels.memory:SetText(Mechanic.Utils:FormatMemory(addon.memory))
 	row.labels.memoryPercent:SetText(string.format("%.1f%%", addon.memoryPercent))
 
 	if cpuEnabled then
@@ -682,24 +692,6 @@ function PerformanceModule:UpdateRow(row, addon, cpuEnabled)
 		row.labels.cpu:SetText("-")
 		row.labels.cpuPercent:SetText("-")
 	end
-end
-
---------------------------------------------------------------------------------
--- Formatting Helpers
---------------------------------------------------------------------------------
-
-function PerformanceModule:FormatMemory(kb)
-	if kb >= 1024 then
-		return string.format("%.1f MB", kb / 1024)
-	else
-		return string.format("%.0f KB", kb)
-	end
-end
-
-function PerformanceModule:FormatDuration(seconds)
-	local mins = math.floor(seconds / 60)
-	local secs = math.floor(seconds % 60)
-	return string.format("%dm %ds", mins, secs)
 end
 
 --------------------------------------------------------------------------------
@@ -864,30 +856,38 @@ function PerformanceModule:ToggleExportMode()
 	self.exportMode = not self.exportMode
 
 	if self.exportMode then
-		-- Hide table UI, show export box
-		if self.generalContent then
-			self.generalContent:Hide()
+		-- Hide ALL content frames (not just generalContent) to prevent overlap
+		if self.layout and self.layout.contentFrames then
+			for _, frame in pairs(self.layout.contentFrames) do
+				frame:Hide()
+			end
 		end
 		if self.exportBox then
 			local text = self:GetCopyText(Mechanic.db.profile.includeEnvHeader)
 			self.exportBox:SetText(text)
 			self.exportBox:Show()
 			self.exportBox:ScrollToTop()
+			-- Ensure export box is above content frames
+			self.exportBox:SetFrameLevel(self.layout.contentArea:GetFrameLevel() + 10)
 		end
 		if self.exportButton then
 			self.exportButton:SetText("Table View")
 		end
 	else
-		-- Hide export box, show table UI
+		-- Hide export box, show the currently selected content frame
 		if self.exportBox then
 			self.exportBox:Hide()
 		end
-		if self.generalContent then
-			self.generalContent:Show()
+		-- Show the currently selected nav item's content
+		local selectedKey = self.layout:GetSelectedKey()
+		if selectedKey and self.layout.contentFrames[selectedKey] then
+			self.layout.contentFrames[selectedKey]:Show()
 		end
 		if self.exportButton then
 			self.exportButton:SetText("Export")
 		end
+		-- Refresh content for current selection
+		self:OnNavSelected(selectedKey)
 	end
 end
 
@@ -897,6 +897,7 @@ end
 
 function PerformanceModule:GetCopyText(includeHeader)
 	local lines = {}
+	local selectedKey = self.layout and self.layout:GetSelectedKey() or "general"
 
 	if includeHeader then
 		local header = Mechanic:GetEnvironmentHeader()
@@ -911,7 +912,7 @@ function PerformanceModule:GetCopyText(includeHeader)
 				metrics.fps,
 				metrics.latencyHome,
 				metrics.latencyWorld,
-				self:FormatDuration(GetTime() - (self.trackingStart or GetTime()))
+				Mechanic.Utils:FormatDuration(GetTime() - (self.trackingStart or GetTime()))
 			)
 		)
 
@@ -921,33 +922,34 @@ function PerformanceModule:GetCopyText(includeHeader)
 			lines,
 			string.format(
 				"Total Memory: %s | CPU Profiling: %s",
-				self:FormatMemory(totalMemory),
+				Mechanic.Utils:FormatMemory(totalMemory),
 				cpuEnabled and "ON" or "OFF"
 			)
 		)
 		table.insert(lines, "---")
 	end
 
-	-- Addon table
-	local addons = self:GetAddonData()
-	local cpuEnabled = GetCVarBool("scriptProfile")
+	if selectedKey == "general" then
+		-- Addon table
+		local addons = self:GetAddonData()
+		local cpuEnabled = GetCVarBool("scriptProfile")
 
-	if cpuEnabled then
-		table.insert(lines, "Addon              | Memory   | %     | CPU ms/s | %")
-		table.insert(lines, "-------------------|----------|-------|----------|-------")
-	else
-		table.insert(lines, "Addon              | Memory   | %")
-		table.insert(lines, "-------------------|----------|------")
-	end
-
-	for _, addon in ipairs(addons) do
 		if cpuEnabled then
-			table.insert(
-				lines,
+			table.insert(lines, "Addon              | Memory   | %     | CPU ms/s | %")
+			table.insert(lines, "-------------------|----------|-------|----------|-------")
+		else
+			table.insert(lines, "Addon              | Memory   | %")
+			table.insert(lines, "-------------------|----------|------")
+		end
+
+		for _, addon in ipairs(addons) do
+			if cpuEnabled then
+				table.insert(
+					lines,
 				string.format(
 					"%-18s | %8s | %5.1f%% | %8.2f | %5.1f%%",
 					addon.name:sub(1, 18),
-					self:FormatMemory(addon.memory),
+					Mechanic.Utils:FormatMemory(addon.memory),
 					addon.memoryPercent,
 					addon.cpu,
 					addon.cpuPercent
@@ -959,10 +961,49 @@ function PerformanceModule:GetCopyText(includeHeader)
 				string.format(
 					"%-18s | %8s | %5.1f%%",
 					addon.name:sub(1, 18),
-					self:FormatMemory(addon.memory),
+					Mechanic.Utils:FormatMemory(addon.memory),
 					addon.memoryPercent
 				)
 			)
+		end
+		end
+	else
+		-- Addon-specific sub-metrics
+		table.insert(lines, string.format("Addon: %s - Performance Breakdown", selectedKey))
+		table.insert(lines, "")
+
+		local MechanicLib = LibStub("MechanicLib-1.0", true)
+		local capabilities = MechanicLib and MechanicLib:GetRegistered()[selectedKey]
+		local ok, metrics = false, nil
+		if capabilities and capabilities.performance then
+			ok, metrics = pcall(capabilities.performance.getSubMetrics)
+		end
+
+		if ok and metrics then
+			local totalMs = 0
+			for _, m in ipairs(metrics) do
+				totalMs = totalMs + (m.msPerSec or 0)
+			end
+
+			table.insert(lines, "Metric             | ms/s     | %     | Description")
+			table.insert(lines, "-------------------|----------|-------|-----------------------------")
+			for _, m in ipairs(metrics) do
+				local pct = totalMs > 0 and ((m.msPerSec or 0) / totalMs * 100) or 0
+				table.insert(
+					lines,
+					string.format(
+						"%-18s | %8.2f | %5.1f%% | %s",
+						m.name:sub(1, 18),
+						m.msPerSec or 0,
+						pct,
+						m.description or ""
+					)
+				)
+			end
+			table.insert(lines, "-------------------|----------|-------|-----------------------------")
+			table.insert(lines, string.format("Total:             | %8.2f |", totalMs))
+		else
+			table.insert(lines, "No sub-metrics available for this addon.")
 		end
 	end
 

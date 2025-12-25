@@ -200,9 +200,6 @@ function Mechanic:OnTabChanged(key)
 end
 
 function Mechanic:GetStatusItems()
-	local version, build, _, interface = GetBuildInfo()
-	local client = self:GetClientType()
-
 	local MechanicLib = LibStub("MechanicLib-1.0", true)
 	local registeredCount = 0
 	if MechanicLib then
@@ -212,8 +209,8 @@ function Mechanic:GetStatusItems()
 	end
 
 	return {
-		{ label = "WoW", value = version .. " (" .. build .. ")" },
-		{ label = "Interface", value = interface .. " (" .. client .. ")" },
+		{ label = "WoW", value = self.Utils:GetVersionString() },
+		{ label = "Interface", value = self.Utils:GetInterfaceString() },
 		{ label = "Registered Addons", value = registeredCount },
 	}
 end

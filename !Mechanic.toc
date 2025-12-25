@@ -23,6 +23,7 @@ UI\Shared\SplitNavLayout.lua
 UI\Shared\FrameResolver.lua
 
 # Core
+Utils.lua
 Core.lua
 
 # Settings (Phase 3)

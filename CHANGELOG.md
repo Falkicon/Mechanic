@@ -10,7 +10,16 @@ All notable changes to !Mechanic will be documented in this file.
 
 ## [1.1.6] - 2025-12-25
 
+### Added
+- Created `Utils.lua` to centralize pure functions for environment detection, memory/duration formatting, and error analysis. This improves code reusability and testability across all UI modules.
+
+### Fixed
+- Performance tab: Export view now correctly refreshes content when switching navigation items (e.g., General -> Addon) while export mode is active.
+- Performance tab: Export view now supports detailed addon sub-metrics instead of always showing the general addon list.
+- Performance tab: Export view no longer overlaps with addon-specific metrics when navigating while export mode is active. The export box now properly hides all content frames and raises its frame level above the content area.
+
 ### Changed
+- Refactored `GetEnvironmentHeader` and the main frame status bar to use shared utility functions, ensuring consistent formatting for WoW version and interface strings (e.g., `120001 (Beta)`).
 - Beta compatibility fixes for MultiLineEditBox (GetTextHeight error), Inspect tab performance optimizations (avoiding CreateFrame in OnUpdate), and API database documentation updates for Midnight.
 
 ## [1.1.6] - 2025-12-24

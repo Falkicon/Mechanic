@@ -145,7 +145,7 @@ function ErrorsModule:RefreshSourceList()
 	-- Group errors by detected addon
 	local sourceCounts = {}
 	for _, err in ipairs(self.errors) do
-		local source = self:DetectErrorSource(err) or "Unknown"
+		local source = Mechanic.Utils:DetectErrorSource(err.message) or "Unknown"
 		sourceCounts[source] = (sourceCounts[source] or 0) + 1
 	end
 
@@ -163,25 +163,6 @@ function ErrorsModule:RefreshSourceList()
 	end
 
 	self.layout:SetItems(items)
-end
-
-function ErrorsModule:DetectErrorSource(errorObj)
-	-- Parse error message/stack to identify source addon
-	local msg = errorObj.message or ""
-
-	-- Look for addon name in path (e.g., "ActionHud\Core.lua" or "ActionHud/Core.lua")
-	local addon = msg:match("([%w_!]+)[/\\]")
-	if addon then
-		return addon
-	end
-
-	-- Look for Interface/AddOns path (forward slash)
-	addon = msg:match("Interface/AddOns/([%w_!]+)/")
-	if addon then
-		return addon
-	end
-
-	return nil
 end
 
 function ErrorsModule:OnSourceSelected(key)
@@ -274,7 +255,7 @@ function ErrorsModule:RefreshErrors()
 
 		-- Source filter (Phase 6)
 		if match and filterSource then
-			local source = self:DetectErrorSource(err) or "Unknown"
+			local source = Mechanic.Utils:DetectErrorSource(err.message) or "Unknown"
 			if source ~= filterSource then
 				match = false
 			end
@@ -328,7 +309,7 @@ function ErrorsModule:FormatError(err)
 	if err.stack then
 		table.insert(lines, "|cff888888Stack:|r")
 		for line in err.stack:gmatch("[^\n]+") do
-			table.insert(lines, string.format("  %s", self:ColorizeStackLine(line)))
+			table.insert(lines, string.format("  %s", Mechanic.Utils:ColorizeStackLine(line)))
 		end
 		table.insert(lines, "")
 	end
@@ -336,35 +317,10 @@ function ErrorsModule:FormatError(err)
 	-- Locals
 	if err.locals then
 		table.insert(lines, "|cff888888Locals:|r")
-		table.insert(lines, self:ColorizeLocals(err.locals))
+		table.insert(lines, Mechanic.Utils:ColorizeLocals(err.locals))
 	end
 
 	return table.concat(lines, "\n")
-end
-
-function ErrorsModule:ColorizeStackLine(line)
-	-- Remove Interface/AddOns prefix for readability
-	line = line:gsub("[%.I][%.n][%.t][%.e][%.r]face/", "")
-	line = line:gsub("%.?%.?%.?/?AddOns/", "")
-
-	-- Highlight line numbers
-	line = line:gsub(":(%d+)", ":|cff00ff00%1|r")
-
-	-- Highlight lua files
-	line = line:gsub("([^/]+%.lua)", "|cffffffff%1|r")
-
-	return line
-end
-
-function ErrorsModule:ColorizeLocals(locals)
-	local result = locals
-	-- Highlight variable names
-	result = result:gsub("(%s-)([%a_][%a_%d]*) = ", "%1|cffffff80%2|r = ")
-	-- Highlight nil
-	result = result:gsub("= nil", "= |cffff7f7fnil|r")
-	-- Highlight numbers
-	result = result:gsub("= (%-?[%d%.]+)", "= |cffff7fff%1|r")
-	return result
 end
 
 function ErrorsModule:TogglePause()
