@@ -550,7 +550,7 @@ Gold border and ESC handling can be added in Run 13+ after core functionality is
 
 ---
 
-## Fix Log (Run 12 - IN PROGRESS)
+## Fix Log (Run 12 - SUCCESS ✓)
 **Strategy**: NO-OVERLAY architecture with GLOBAL_MOUSE_DOWN and delayed registration.
 
 **Exact Changes Made**:
@@ -579,3 +579,53 @@ Gold border and ESC handling can be added in Run 13+ after core functionality is
 
 **Revert Instructions** (if this breaks):
 The key change is `StartPicking()` and `StopPicking()` functions. Revert to pre-Run-12 state by restoring the overlay-based approach from Run 11.
+
+**RESULT: SUCCESS! ✓**
+
+**Actual Log Output**:
+```
+[Run 12] StartPicking - NO OVERLAY approach
+[Run 12] Delaying event registration by 0.15s...
+[Run 12] Registering GLOBAL_MOUSE_DOWN now
+[Run 12] GLOBAL_MOUSE_DOWN fired: LeftButton
+[Run 12] Foci count: 1
+[Run 12] Foci[1]: DamageMeterSessionWindow2
+[Run 12] SUCCESS! Selected: DamageMeterSessionWindow2
+[Run 12] GLOBAL_MOUSE_DOWN fired: LeftButton
+[Run 12] Foci count: 1
+[Run 12] Foci[1]: PlayerFrame
+[Run 12] SUCCESS! Selected: PlayerFrame
+[Run 12] StopPicking
+```
+
+**What Worked**:
+- [x] `Foci count: 1` - GetMouseFoci() now sees REAL frames (not just overlay!)
+- [x] Frame names detected correctly
+- [x] Path populates in input field
+- [x] Tree view updates with ancestors/children
+- [x] Details panel shows frame properties
+
+**Minor Bug Found** (cosmetic, non-blocking):
+```
+InspectTree.lua:72: bad argument #1 to 'SetText' (Usage: self:SetText([text]))
+```
+The `name` variable is a FontString object instead of a string in some cases.
+
+**Committed as new baseline**: `c92c8f5` - "feat(inspect): Run 12 SUCCESS"
+
+---
+
+## Summary: The Fix That Worked
+
+After **11 failed attempts** trying to fix the overlay-based approach, the solution was simple:
+
+**DON'T USE AN OVERLAY.**
+
+| Failed Approach (Runs 1-11) | Working Approach (Run 12) |
+|-----------------------------|---------------------------|
+| Mouse-enabled overlay | No overlay at all |
+| Overlay blocks GetMouseFoci() | GetMouseFoci() sees real frames |
+| Immediate event registration | C_Timer.After(0.15s) delay |
+| Complex OnUpdate scanner | Direct event handler |
+
+**Key Insight**: `GetMouseFoci()` in WoW 11.0+ returns a cached stack. Any frame with `EnableMouse(true)` blocks the ENTIRE stack. The old `GetMouseFocus()` API recalculated on-demand, but it's nil in 11.0+.
