@@ -215,6 +215,7 @@ L["Export persistent internal error log for agent auditing."] =
 	"Export persistent internal error log for agent auditing."
 L["Clear all entries from the persistent health log."] = "Clear all entries from the persistent health log."
 L["Reset the main frame to default size and position."] = "Reset the main frame to default size and position."
+L["Mechanic: Developer tools for World of Warcraft"] = "Mechanic: Developer tools for World of Warcraft"
 L["Health log cleared."] = "Health log cleared."
 L["UI position reset."] = "UI position reset."
 L["Tools : !Mechanic : View Health Log"] = "Tools : !Mechanic : View Health Log"

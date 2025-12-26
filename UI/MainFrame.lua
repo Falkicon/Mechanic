@@ -14,7 +14,7 @@ function Mechanic:CreateMainFrame()
 
 	local frame = FenUI:CreatePanel(UIParent, {
 		name = "MechanicMainFrame",
-		title = L["Mechanic: World of Warcraft Developer Tools"],
+		title = L["Mechanic: Developer tools for World of Warcraft"],
 		width = self.db.profile.size.width,
 		height = self.db.profile.size.height,
 		movable = true,
