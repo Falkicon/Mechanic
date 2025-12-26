@@ -153,13 +153,18 @@ end
 function InspectModule:StartPicking()
 	local self = InspectModule
 	
-	-- 1. Instruction Bar
+	-- #region agent log
+	Mechanic:Print("|cff00ffff[Run 12]|r StartPicking - NO OVERLAY approach")
+	-- #endregion
+	
+	-- 1. Instruction Bar (mouse-disabled, just visual feedback)
 	if not self.pickBar then
 		local bar = CreateFrame("Frame", "MechanicPickBar", UIParent)
 		bar:SetSize(500, 40)
 		bar:SetPoint("TOP", 0, -50)
 		bar:SetFrameStrata("TOOLTIP")
 		bar:SetFrameLevel(5000)
+		bar:EnableMouse(false)  -- CRITICAL: No mouse blocking
 		
 		local bg = bar:CreateTexture(nil, "BACKGROUND")
 		bg:SetAllPoints()
@@ -167,176 +172,113 @@ function InspectModule:StartPicking()
 		
 		local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		text:SetPoint("CENTER")
-		text:SetText("|cffFFD100PICK MODE ACTIVE|r\nClick frame to select. Press |cff00ff00ESC|r to cancel.")
+		text:SetText("|cffFFD100PICK MODE|r - Click any frame to select")
 		
 		self.pickBar = bar
 	end
-
-	-- 2. Gold Highlight Border
-	if not self.pickHighlight then
-		local highlight = CreateFrame("Frame", "MechanicPickHighlight", UIParent)
-		highlight:SetFrameStrata("TOOLTIP")
-		highlight:SetFrameLevel(4900)
-		highlight:EnableMouse(false)
-		
-		local edgeSize = 3
-		for _, edge in ipairs({"Top", "Bottom", "Left", "Right"}) do
-			local tex = highlight:CreateTexture(nil, "OVERLAY")
-			tex:SetColorTexture(1, 0.82, 0, 1)
-			highlight[edge.."Edge"] = tex
-		end
-		
-		highlight.TopEdge:SetHeight(edgeSize) highlight.TopEdge:SetPoint("TOPLEFT") highlight.TopEdge:SetPoint("TOPRIGHT")
-		highlight.BottomEdge:SetHeight(edgeSize) highlight.BottomEdge:SetPoint("BOTTOMLEFT") highlight.BottomEdge:SetPoint("BOTTOMRIGHT")
-		highlight.LeftEdge:SetWidth(edgeSize) highlight.LeftEdge:SetPoint("TOPLEFT", highlight.TopEdge, "BOTTOMLEFT") highlight.LeftEdge:SetPoint("BOTTOMLEFT", highlight.BottomEdge, "TOPLEFT")
-		highlight.RightEdge:SetWidth(edgeSize) highlight.RightEdge:SetPoint("TOPRIGHT", highlight.TopEdge, "BOTTOMRIGHT") highlight.RightEdge:SetPoint("BOTTOMRIGHT", highlight.BottomEdge, "TOPRIGHT")
-
-		local label = highlight:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		label:SetPoint("TOP", highlight, "BOTTOM", 0, -4)
-		highlight.label = label
-
-		self.pickHighlight = highlight
-	end
-
-	-- 3. Click Catcher Overlay
-	if not self.pickOverlay then
-		local overlay = CreateFrame("Frame", "MechanicPickOverlay", UIParent)
-		overlay:SetAllPoints(UIParent)
-		overlay:SetFrameStrata("TOOLTIP")
-		overlay:SetFrameLevel(4800)
-		overlay:EnableMouse(true)
-		overlay:SetPropagateKeyboardInput(true)
-		
-		local bg = overlay:CreateTexture(nil, "BACKGROUND")
-		bg:SetAllPoints()
-		bg:SetColorTexture(0, 0, 0, 0.1)
-		
-		self.pickOverlay = overlay
-	end
-
-	local highlight = self.pickHighlight
-	local overlay = self.pickOverlay
-	local bar = self.pickBar
-
-	highlight.targetFrame = nil
-	highlight:Hide()
-	bar:Show()
-	overlay:Show()
 	
-	-- ESC to cancel
-	overlay:EnableKeyboard(true)
-	overlay:SetScript("OnKeyDown", function(s, key)
-		if key == "ESCAPE" then
+	-- 2. Event frame for GLOBAL_MOUSE_DOWN (no mouse interaction, just events)
+	if not self.pickEventFrame then
+		self.pickEventFrame = CreateFrame("Frame", "MechanicPickEventFrame")
+	end
+	
+	-- Show instruction bar
+	self.pickBar:Show()
+	
+	-- #region agent log
+	Mechanic:Print("|cff00ffff[Run 12]|r Delaying event registration by 0.15s...")
+	-- #endregion
+	
+	-- DELAYED EVENT REGISTRATION - Skip the initial Pick button click
+	C_Timer.After(0.15, function()
+		-- Check if we're still in pick mode (user might have cancelled)
+		if not self.pickMode then
 			-- #region agent log
-			Mechanic:Print("|cff00ffff[Pick Debug]|r ESC pressed.")
+			Mechanic:Print("|cff00ffff[Run 12]|r Aborted - pickMode already false")
 			-- #endregion
-			self:TogglePickMode()
+			return
 		end
-	end)
-
-	-- Click to select
-	overlay:SetScript("OnMouseDown", function(s, button)
-		-- #region agent log
-		Mechanic:Print("|cff00ffff[Pick Debug]|r Clicked: " .. tostring(button))
-		-- #endregion
-		if button == "LeftButton" and highlight.targetFrame then
-			local target = highlight.targetFrame
-			local fName = (target.GetDebugName and target:GetDebugName()) or (target.GetName and target:GetName()) or tostring(target)
-			Mechanic:Print("|cff00ff00[Pick]|r Selected: " .. fName)
-			self:SetSelectedFrame(target)
-		end
-		self:TogglePickMode()
-	end)
-
-	-- Scanner loop
-	local lastUpdate = 0
-	local scanCount = 0
-	overlay:SetScript("OnUpdate", function(s, elapsed)
-		lastUpdate = lastUpdate + elapsed
-		if lastUpdate < 0.05 then return end
-		lastUpdate = 0
-		scanCount = scanCount + 1
-
-		-- DETECTOR: Look for frames
-		local focus = nil
 		
-		-- Try modern API first
-			local foci = _G.GetMouseFoci and _G.GetMouseFoci() or {}
-		for _, f in ipairs(foci) do
-			if f and f ~= s and f ~= highlight and f ~= bar and f ~= UIParent and f ~= WorldFrame then
-					local isMechanic = false
-					local p = f
-					while p do
-						if p == Mechanic.frame then isMechanic = true break end
-						p = p.GetParent and p:GetParent()
-					end
-					if not isMechanic then
-						focus = f
-						break
-					end
-				end
-			end
-
-		-- Try legacy API if nothing found
-		if not focus then
-			-- Briefly disable overlay mouse to "see through"
-			s:EnableMouse(false)
-			local legacyFocus = GetMouseFocus()
-			s:EnableMouse(true)
-			
-			if legacyFocus and legacyFocus ~= s and legacyFocus ~= highlight and legacyFocus ~= bar and legacyFocus ~= UIParent and legacyFocus ~= WorldFrame then
-					local isMechanic = false
-				local p = legacyFocus
-					while p do
-					if p == Mechanic.frame then isMechanic = true break end
-						p = p.GetParent and p:GetParent()
-					end
-					if not isMechanic then
-					focus = legacyFocus
-				end
-			end
-		end
-
 		-- #region agent log
-		if scanCount % 40 == 0 then
-			local focusName = focus and (focus:GetName() or tostring(focus)) or "nil"
-			Mechanic:Print(string.format("|cff00ffff[Scan %d]|r Foci count: %d, Final focus: %s", scanCount, #foci, focusName))
-		end
+		Mechanic:Print("|cff00ffff[Run 12]|r Registering GLOBAL_MOUSE_DOWN now")
 		-- #endregion
-
-		highlight.targetFrame = focus
-		if focus then
-			highlight:ClearAllPoints()
-			highlight:SetPoint("TOPLEFT", focus, "TOPLEFT", -3, 3)
-			highlight:SetPoint("BOTTOMRIGHT", focus, "BOTTOMRIGHT", 3, -3)
-			highlight:Show()
-			local name = (focus.GetDebugName and focus:GetDebugName()) or (focus.GetName and focus:GetName()) or (focus.GetObjectType and focus:GetObjectType()) or tostring(focus)
-			highlight.label:SetText("|cffFFD100" .. name .. "|r")
-		else
-			highlight:Hide()
-		end
+		
+		self.pickEventFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
+		self.pickEventFrame:SetScript("OnEvent", function(s, event, button)
+			-- #region agent log
+			Mechanic:Print("|cff00ffff[Run 12]|r GLOBAL_MOUSE_DOWN fired: " .. tostring(button))
+			-- #endregion
+			
+			if event == "GLOBAL_MOUSE_DOWN" and button == "LeftButton" then
+				-- Get frames under cursor - NO OVERLAY BLOCKING!
+				local foci = GetMouseFoci()
+				
+				-- #region agent log
+				Mechanic:Print("|cff00ffff[Run 12]|r Foci count: " .. tostring(#foci))
+				-- #endregion
+				
+				local target = nil
+				for i, f in ipairs(foci) do
+					-- #region agent log
+					local fname = f and (f.GetName and f:GetName() or tostring(f)) or "nil"
+					Mechanic:Print("|cff00ffff[Run 12]|r Foci[" .. i .. "]: " .. fname)
+					-- #endregion
+					
+					-- Filter out system frames and Mechanic frames
+					if f and f ~= UIParent and f ~= WorldFrame then
+						local isMechanic = false
+						local p = f
+						while p do
+							if p == Mechanic.frame or p == self.pickBar then
+								isMechanic = true
+								break
+							end
+							p = p.GetParent and p:GetParent()
+						end
+						if not isMechanic then
+							target = f
+							break
+						end
+					end
+				end
+				
+				if target then
+					local name = (target.GetDebugName and target:GetDebugName()) 
+						or (target.GetName and target:GetName()) 
+						or tostring(target)
+					-- #region agent log
+					Mechanic:Print("|cff00ff00[Run 12]|r SUCCESS! Selected: " .. name)
+					-- #endregion
+					self:SetSelectedFrame(target, name)
+				else
+					-- #region agent log
+					Mechanic:Print("|cffff0000[Run 12]|r No valid frame found in foci")
+					-- #endregion
+				end
+				
+				-- Always exit pick mode after a click
+				self.pickMode = false
+				self:StopPicking()
+				if self.pickBtn then self.pickBtn:SetText(L["Pick"]) end
+			end
+		end)
 	end)
 end
 
 function InspectModule:StopPicking()
 	local self = InspectModule
+	
 	-- #region agent log
-	Mechanic:Print("|cff00ffff[Pick Debug]|r StopPicking entry.")
+	Mechanic:Print("|cff00ffff[Run 12]|r StopPicking")
 	-- #endregion
 	
-	if self.pickOverlay then
-		self.pickOverlay:Hide()
-		self.pickOverlay:SetScript("OnUpdate", nil)
-		self.pickOverlay:SetScript("OnMouseDown", nil)
-		self.pickOverlay:SetScript("OnKeyDown", nil)
-		self.pickOverlay:EnableKeyboard(false)
+	-- Unregister event
+	if self.pickEventFrame then
+		self.pickEventFrame:UnregisterAllEvents()
+		self.pickEventFrame:SetScript("OnEvent", nil)
 	end
 	
-	if self.pickHighlight then
-		self.pickHighlight:Hide()
-		self.pickHighlight.targetFrame = nil
-	end
-	
+	-- Hide instruction bar
 	if self.pickBar then
 		self.pickBar:Hide()
 	end
