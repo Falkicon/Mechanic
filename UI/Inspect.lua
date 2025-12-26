@@ -189,8 +189,8 @@ function InspectModule:StartPicking()
 	-- 2. Event frame for GLOBAL_MOUSE_DOWN (no mouse interaction, just events)
 	if not self.pickEventFrame then
 		self.pickEventFrame = CreateFrame("Frame", "MechanicPickEventFrame")
-	end
-	
+					end
+					
 	-- Show instruction bar
 	self.pickBar:Show()
 	
@@ -227,7 +227,7 @@ function InspectModule:StartPicking()
 				-- #endregion
 				
 				local target = nil
-				for i, f in ipairs(foci) do
+			for i, f in ipairs(foci) do
 					-- #region agent log
 					local fname = f and (f.GetName and f:GetName() or tostring(f)) or "nil"
 					Mechanic:Print("|cff00ffff[Run 12]|r Foci[" .. i .. "]: " .. fname)
@@ -235,21 +235,21 @@ function InspectModule:StartPicking()
 					
 					-- Filter out system frames and Mechanic frames
 					if f and f ~= UIParent and f ~= WorldFrame then
-						local isMechanic = false
-						local p = f
-						while p do
+					local isMechanic = false
+					local p = f
+					while p do
 							if p == Mechanic.frame or p == self.pickBar or p == self.pickBtn then
-								isMechanic = true
-								break
-							end
-							p = p.GetParent and p:GetParent()
-						end
-						if not isMechanic then
-							target = f
+							isMechanic = true
 							break
 						end
+						p = p.GetParent and p:GetParent()
+					end
+					if not isMechanic then
+							target = f
+						break
 					end
 				end
+			end
 				
 				if target then
 					local name = (target.GetDebugName and target:GetDebugName()) 

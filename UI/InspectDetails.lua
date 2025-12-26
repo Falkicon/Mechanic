@@ -145,7 +145,7 @@ function InspectModule:AddDetailProperties(frame, yOffset)
 			if minSecret or maxSecret then
 				table.insert(props, "Min/Max: [secret]")
 			else
-				table.insert(props, string.format("Min/Max: %.1f - %.1f", min, max))
+		table.insert(props, string.format("Min/Max: %.1f - %.1f", min, max))
 			end
 		end
 	end
@@ -154,7 +154,7 @@ function InspectModule:AddDetailProperties(frame, yOffset)
 	if not frame.GetObjectType then
 		local ok, formatted = pcall(Mechanic.Utils.FormatValue, Mechanic.Utils, frame, { plain = true })
 		if ok and formatted then
-			table.insert(props, formatted)
+		table.insert(props, formatted)
 		end
 	end
 
