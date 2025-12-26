@@ -69,6 +69,10 @@ function InspectModule:UpdateTree(selectedFrame)
 
 		local name = nodeData.frame.GetName and nodeData.frame:GetName()
 			or (nodeData.frame.GetObjectType and ("<" .. nodeData.frame:GetObjectType() .. ">") or "<table>")
+		-- Ensure name is a string (some frames return FontString objects)
+		if type(name) ~= "string" then
+			name = tostring(name) or "<unknown>"
+		end
 		node.text:SetText(name)
 
 		if nodeData.type == "selected" then
