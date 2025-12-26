@@ -135,6 +135,15 @@ end
 
 function InspectModule:TogglePickMode()
 	local self = InspectModule
+	
+	-- Prevent re-entry from button click after GLOBAL_MOUSE_DOWN exit
+	if self.pickExitTime and (GetTime() - self.pickExitTime) < 0.2 then
+		-- #region agent log
+		Mechanic:Print("|cff00ffff[Pick Debug]|r Ignoring re-entry (cooldown)")
+		-- #endregion
+		return
+	end
+	
 	self.pickMode = not self.pickMode
 	
 	-- #region agent log
@@ -229,7 +238,7 @@ function InspectModule:StartPicking()
 						local isMechanic = false
 						local p = f
 						while p do
-							if p == Mechanic.frame or p == self.pickBar then
+							if p == Mechanic.frame or p == self.pickBar or p == self.pickBtn then
 								isMechanic = true
 								break
 							end
@@ -258,6 +267,7 @@ function InspectModule:StartPicking()
 				
 				-- Always exit pick mode after a click
 				self.pickMode = false
+				self.pickExitTime = GetTime()  -- Prevent re-entry from button onClick
 				self:StopPicking()
 				if self.pickBtn then self.pickBtn:SetText(L["Pick"]) end
 			end

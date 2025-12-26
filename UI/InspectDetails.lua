@@ -106,22 +106,56 @@ function InspectModule:AddDetailProperties(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Properties", yOffset)
 	section.title:SetText(L["Common Properties"])
 
+	-- Helper to safely get values (handles Midnight secret values)
+	local function safeGet(func, ...)
+		local ok, result = pcall(func, ...)
+		if not ok then return nil, true end  -- Error, likely secret
+		-- Check if result is a secret value (Midnight 12.0+)
+		if issecretvalue and issecretvalue(result) then
+			return nil, true
+		end
+		return result, false
+	end
+
 	local props = {}
 	if type(frame.GetText) == "function" then
-		table.insert(props, string.format("Text: %s", tostring(frame:GetText())))
+		local text, isSecret = safeGet(frame.GetText, frame)
+		if isSecret then
+			table.insert(props, "Text: [secret]")
+		elseif text then
+			table.insert(props, string.format("Text: %s", tostring(text)))
+		else
+			table.insert(props, "Text: nil")
+		end
 	end
 	if type(frame.GetValue) == "function" then
-		table.insert(props, string.format("Value: %s", tostring(frame:GetValue())))
+		local value, isSecret = safeGet(frame.GetValue, frame)
+		if isSecret then
+			table.insert(props, "Value: [secret]")
+		elseif value then
+			table.insert(props, string.format("Value: %s", tostring(value)))
+		end
 	end
 	if type(frame.GetMinMaxValues) == "function" then
-		local min, max = frame:GetMinMaxValues()
-		table.insert(props, string.format("Min/Max: %.1f - %.1f", min, max))
+		local ok, min, max = pcall(frame.GetMinMaxValues, frame)
+		if ok and min and max then
+			-- Check for secret values
+			local minSecret = issecretvalue and issecretvalue(min)
+			local maxSecret = issecretvalue and issecretvalue(max)
+			if minSecret or maxSecret then
+				table.insert(props, "Min/Max: [secret]")
+			else
+				table.insert(props, string.format("Min/Max: %.1f - %.1f", min, max))
+			end
+		end
 	end
 
 	-- For plain tables, show some members
 	if not frame.GetObjectType then
-		local formatted = Mechanic.Utils:FormatValue(frame, { plain = true })
-		table.insert(props, formatted)
+		local ok, formatted = pcall(Mechanic.Utils.FormatValue, Mechanic.Utils, frame, { plain = true })
+		if ok and formatted then
+			table.insert(props, formatted)
+		end
 	end
 
 	if #props == 0 then
