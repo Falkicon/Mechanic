@@ -106,6 +106,7 @@ function Properties:Initialize(parent)
 	-- Track changes
 	self.originalValues = {}
 	self.pendingChanges = {}
+	self.activeEditKey = nil
 
 	self:InitializeDefaultSections()
 end
@@ -122,6 +123,7 @@ function Properties:Update(frame, isRefresh)
 		self.currentFrame = frame
 		self.originalValues = {}
 		self.pendingChanges = {}
+		self.activeEditKey = nil
 		self:CaptureOriginalValues(frame)
 	end
 
@@ -291,12 +293,12 @@ function Properties.inputs:AddExtras(container, labelFS, key, onReset, tooltip)
 	end
 end
 
-function Properties.inputs:SetupKeyboardNav(editBox, currentVal, step, shiftStep, onChange)
-	editBox:SetScript("OnKeyDown", function(self, key)
+function Properties.inputs:SetupKeyboardNav(editBox, currentVal, step, shiftStep, onChange, key)
+	editBox:SetScript("OnKeyDown", function(self, keyName)
 		local delta = 0
-		if key == "UP" then
+		if keyName == "UP" then
 			delta = IsShiftKeyDown() and (shiftStep or 10) or (step or 1)
-		elseif key == "DOWN" then
+		elseif keyName == "DOWN" then
 			delta = -(IsShiftKeyDown() and (shiftStep or 10) or (step or 1))
 		end
 		
@@ -307,6 +309,7 @@ function Properties.inputs:SetupKeyboardNav(editBox, currentVal, step, shiftStep
 				newVal = math.floor(newVal * 100 + 0.5) / 100
 			end
 			self:SetText(tostring(newVal))
+			Properties.activeEditKey = key -- Mark as active edit to restore focus after refresh
 			onChange(newVal)
 			return true -- Consume the key
 		end
@@ -340,7 +343,22 @@ function Properties.inputs:Number(parent, label, value, key, onChange, onReset, 
 			if newVal then onChange(newVal) end
 		end)
 		
-		self:SetupKeyboardNav(input.editBox, value, stepVal, shiftStep, onChange)
+		input.editBox:HookScript("OnEditFocusGained", function()
+			Properties.activeEditKey = key
+		end)
+		input.editBox:HookScript("OnEditFocusLost", function()
+			if Properties.activeEditKey == key then
+				Properties.activeEditKey = nil
+			end
+		end)
+		
+		self:SetupKeyboardNav(input.editBox, value, stepVal, shiftStep, onChange, key)
+		
+		-- Restore focus if this was the active key
+		if Properties.activeEditKey == key then
+			input.editBox:SetFocus()
+			input.editBox:SetCursorPosition(string.len(input.editBox:GetText()))
+		end
 	end
 	
 	self:AddExtras(container, lbl, key, onReset, tooltip)
@@ -407,11 +425,26 @@ function Properties.inputs:Slider(parent, label, value, key, min, max, step, onC
 			end
 		end)
 		
+		input.editBox:HookScript("OnEditFocusGained", function()
+			Properties.activeEditKey = key
+		end)
+		input.editBox:HookScript("OnEditFocusLost", function()
+			if Properties.activeEditKey == key then
+				Properties.activeEditKey = nil
+			end
+		end)
+		
 		self:SetupKeyboardNav(input.editBox, value, step or 0.1, 1, function(val)
 			val = math.max(min, math.min(max, val))
 			slider:SetValue(val)
 			onChange(val)
-		end)
+		end, key)
+		
+		-- Restore focus if this was the active key
+		if Properties.activeEditKey == key then
+			input.editBox:SetFocus()
+			input.editBox:SetCursorPosition(string.len(input.editBox:GetText()))
+		end
 	end
 
 	slider:SetScript("OnValueChanged", function(s, val)
@@ -544,6 +577,21 @@ function Properties.inputs:Text(parent, label, value, key, onChange, onReset, to
 			eb:ClearFocus()
 			onChange(eb:GetText())
 		end)
+		
+		input.editBox:HookScript("OnEditFocusGained", function()
+			Properties.activeEditKey = key
+		end)
+		input.editBox:HookScript("OnEditFocusLost", function()
+			if Properties.activeEditKey == key then
+				Properties.activeEditKey = nil
+			end
+		end)
+		
+		-- Restore focus if this was the active key
+		if Properties.activeEditKey == key then
+			input.editBox:SetFocus()
+			input.editBox:SetCursorPosition(string.len(input.editBox:GetText()))
+		end
 	end
 	
 	self:AddExtras(container, lbl, key, onReset, tooltip)
@@ -957,8 +1005,8 @@ function Properties:ResetChanges()
 		elseif key == "scale" then frame:SetScale(val)
 		elseif key == "level" then frame:SetFrameLevel(val)
 		elseif key == "strata" then frame:SetFrameStrata(val)
-		elseif key == "vertexColor" then frame:SetVertexColor(val.r, val.g, val.b, val.a)
-		elseif key == "textColor" then frame:SetTextColor(val.r, val.g, val.b, val.a)
+		elseif key == "vertexColor" then frame:SetVertexColor(val.r, val.g, b, a)
+		elseif key == "textColor" then frame:SetTextColor(val.r, val.g, b, a)
 		elseif key == "text" then frame:SetText(val)
 		end
 	end
