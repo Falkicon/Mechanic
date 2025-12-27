@@ -51,7 +51,9 @@ function StackMixin:Init(config)
     end
     
     -- Hook for layout updates
-    self:SetScript("OnSizeChanged", function()
+    -- We use a wrapper to ensure we don't break Layout's own OnSizeChanged
+    -- which is responsible for updating background anchors.
+    self:HookScript("OnSizeChanged", function()
         self:Layout()
     end)
     
@@ -80,9 +82,9 @@ function StackMixin:AddChild(frame, config)
     
     table.insert(self.children, childData)
     
-    -- Ensure parent is set
-    local content = self.GetContentFrame and self:GetContentFrame() or self
-    frame:SetParent(content)
+    -- Ensure parent is set directly to self (the stack container)
+    -- This avoids coordinate system confusion with Layout's internal contentFrame.
+    frame:SetParent(self)
     
     -- Auto-show children when added to a stack
     frame:Show()
@@ -132,8 +134,10 @@ function StackMixin:Layout()
     local rowGap = self:ResolveGap(self.rowGap)
     local padding = self.GetPadding and self:GetPadding() or { top = 0, bottom = 0, left = 0, right = 0 }
     
-    local initialWidth = self:GetWidth()
-    local initialHeight = self:GetHeight()
+    -- Use config values as primary source of truth for size to avoid 0-size measurement 
+    -- issues before the UI engine has fully resolved the frame.
+    local initialWidth = tonumber(self.config.width) or self:GetWidth()
+    local initialHeight = tonumber(self.config.height) or self:GetHeight()
     
     local totalWidth = initialWidth - (padding.left + padding.right)
     local totalHeight = initialHeight - (padding.top + padding.bottom)
@@ -142,6 +146,7 @@ function StackMixin:Layout()
     local childrenToLayout = {}
     local maxCrossSize = 0
     local totalMainSize = 0
+    local needsDeferredLayout = false
 
     for _, childData in ipairs(self.children) do
         local frame = childData.frame
@@ -153,6 +158,7 @@ function StackMixin:Layout()
                 if frame.GetWidth and frame:GetWidth() > 0 then w = frame:GetWidth()
                 elseif frame.config and frame.config.width and tonumber(frame.config.width) then w = tonumber(frame.config.width)
                 elseif frame:IsObjectType("Button") then w = 100 -- Default button width
+                else needsDeferredLayout = true
                 end
             end
             
@@ -160,6 +166,7 @@ function StackMixin:Layout()
                 if frame.GetHeight and frame:GetHeight() > 0 then h = frame:GetHeight()
                 elseif frame.config and frame.config.height and tonumber(frame.config.height) then h = tonumber(frame.config.height)
                 elseif frame:IsObjectType("Button") then h = 24 -- Default button height
+                else needsDeferredLayout = true
                 end
             end
 
@@ -178,6 +185,17 @@ function StackMixin:Layout()
                 totalMainSize = totalMainSize + w
             end
         end
+    end
+    
+    -- If we have children with 0 size and no fallback, defer layout for one frame
+    if needsDeferredLayout and not self.hasDeferredOnce then
+        self.hasDeferredOnce = true
+        C_Timer.After(0, function()
+            self.isLayouting = nil
+            self:Layout()
+        end)
+        self.isLayouting = nil
+        return
     end
     
     local numChildren = #childrenToLayout
@@ -283,6 +301,9 @@ function StackMixin:LayoutStandard(childrenToLayout, totalWidth, totalHeight, pa
         
         frame:ClearAllPoints()
         
+        -- Use an explicit coordinate system relative to the container frame.
+        -- We anchor to the container (self) instead of an internal content frame
+        -- to ensure absolute control over positioning.
         if isVertical then
             if align == "start" then
                 frame:SetPoint("TOPLEFT", self, "TOPLEFT", padding.left, -(padding.top + currentOffset))
@@ -292,12 +313,11 @@ function StackMixin:LayoutStandard(childrenToLayout, totalWidth, totalHeight, pa
                 frame:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding.right, -(padding.top + currentOffset))
             elseif align == "stretch" then
                 frame:SetPoint("TOPLEFT", self, "TOPLEFT", padding.left, -(padding.top + currentOffset))
-                -- Use explicit width instead of TOPRIGHT anchor for better stability with various templates
                 childWidth = totalWidth
             end
             
-            frame:SetHeight(math.max(1, childHeight))
             frame:SetWidth(math.max(1, childWidth))
+            frame:SetHeight(math.max(1, childHeight))
             
             currentOffset = currentOffset + childHeight + justifiedGap
         else
@@ -309,7 +329,6 @@ function StackMixin:LayoutStandard(childrenToLayout, totalWidth, totalHeight, pa
                 frame:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", padding.left + currentOffset, padding.bottom)
             elseif align == "stretch" then
                 frame:SetPoint("TOPLEFT", self, "TOPLEFT", padding.left + currentOffset, -padding.top)
-                -- Use explicit height instead of BOTTOMLEFT anchor
                 childHeight = totalHeight
             end
             

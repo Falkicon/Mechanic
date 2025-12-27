@@ -2,7 +2,7 @@
 ## Title: !Mechanic
 ## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
 ## Author: Fen (Falkicon)
-## Version: 1.2.2
+## Version: 1.2.3
 ## X-License: GPL-3.0
 ## X-Category: Development Tools
 ## X-Website: https://github.com/Falkicon/Mechanic
