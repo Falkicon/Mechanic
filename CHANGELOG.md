@@ -2,6 +2,14 @@
 
 All notable changes to !Mechanic will be documented in this file.
 
+## [1.2.4] - 2025-12-27
+
+### Fixed
+- **Property Editor UI Blanking**: Fixed a critical bug where FenUI input fields were not receiving their initial values. Added explicit `:SetText()` calls in the widget factory.
+- **Data Persistence**: Fixed an issue where the property editor would wipe its history (original values and pending changes) during every UI refresh. History is now correctly preserved until a new frame is selected.
+- **Scale Performance**: Removed the Scale slider to avoid UI lag caused by high-frequency layout re-calculations. Scale is now managed via a precise number input.
+- **Focus Stability**: Improved logic to prevent focus loss during value entry.
+
 ## [1.2.3] - 2025-12-27
 
 ### Added
