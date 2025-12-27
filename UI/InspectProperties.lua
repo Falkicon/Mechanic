@@ -702,9 +702,10 @@ function Properties:InitializeDefaultSections()
 		createUI = function(parent, frame)
 			local y = 0
 			
-			local scaleInput = self.inputs:Slider(parent, _L("Scale"), frame:GetScale(), "scale", 0.1, 5, 0.1, function(val)
+			local scaleInput = self.inputs:Number(parent, _L("Scale"), frame:GetScale(), "scale", function(val)
 				frame:SetScale(val)
 				self:TrackChange("scale", val)
+				self:Update(frame)
 			end, function()
 				local val = self.originalValues.scale
 				frame:SetScale(val)
@@ -712,7 +713,7 @@ function Properties:InitializeDefaultSections()
 				self:Update(frame)
 			end)
 			scaleInput:SetPoint("TOPLEFT", 0, y)
-			y = y - (INPUT_HEIGHT + 10)
+			y = y - INPUT_HEIGHT
 			
 			return math.abs(y)
 		end,
