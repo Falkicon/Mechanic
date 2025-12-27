@@ -108,6 +108,7 @@ function Properties:Initialize(parent)
 	self.pendingChanges = {}
 	self.activeEditKey = nil
 	self.editBoxRegistry = {}
+	self.resetBtnRegistry = {}
 
 	self:InitializeDefaultSections()
 end
@@ -131,7 +132,8 @@ function Properties:Update(frame, isRefresh)
 	-- Clear current content (visuals)
 	self:HideAllSections()
 	self.sectionFrames = {}
-	self.editBoxRegistry = {} -- Clear registry before rebuild
+	self.editBoxRegistry = {} 
+	self.resetBtnRegistry = {}
 
 	-- Update FenUI Badge
 	if self:IsFenUIComponent(frame) then
@@ -162,7 +164,6 @@ function Properties:Update(frame, isRefresh)
 	-- Restore focus if needed
 	if self.activeEditKey and self.editBoxRegistry[self.activeEditKey] then
 		local eb = self.editBoxRegistry[self.activeEditKey]
-		-- Use a small delay to ensure frame is interactive
 		C_Timer.After(0.01, function()
 			if eb and eb:IsVisible() then
 				eb:SetFocus()
@@ -219,7 +220,7 @@ function Properties:CaptureOriginalValues(frame)
 end
 
 function Properties:TrackChange(key, value)
-	if not self.originalValues[key] then return end 
+	if self.originalValues[key] == nil then return end 
 
 	local isOriginal = false
 	if type(value) == "table" and type(self.originalValues[key]) == "table" then
@@ -238,6 +239,15 @@ function Properties:TrackChange(key, value)
 			before = self.originalValues[key],
 			after = value
 		}
+	end
+	
+	-- Update individual reset button visibility without full rebuild
+	if self.resetBtnRegistry[key] then
+		if not isOriginal then
+			self.resetBtnRegistry[key]:Show()
+		else
+			self.resetBtnRegistry[key]:Hide()
+		end
 	end
 end
 
@@ -291,15 +301,19 @@ function Properties.inputs:AddExtras(container, labelFS, key, onReset, tooltip)
 			texture = ICON_PATH .. "icon-refresh",
 			size = RESET_BTN_SIZE,
 			tooltip = L["Reset"],
-			onClick = onReset,
+			onClick = function()
+				Properties.activeEditKey = nil -- Clear active edit on manual reset
+				onReset()
+			end,
 		})
 		resetBtn:SetPoint("RIGHT", 0, 0)
 		resetBtn:SetAlpha(0.4)
 		resetBtn:SetScript("OnEnter", function(s) s:SetAlpha(1) end)
 		resetBtn:SetScript("OnLeave", function(s) s:SetAlpha(0.4) end)
 		container.resetBtn = resetBtn
+		Properties.resetBtnRegistry[key] = resetBtn
 		
-		if InspectModule.Properties.pendingChanges[key] then
+		if Properties.pendingChanges[key] then
 			resetBtn:Show()
 		else
 			resetBtn:Hide()
@@ -318,8 +332,11 @@ function Properties.inputs:CreateLabel(container, label, onReset)
 	lbl:SetText(label)
 	
 	if onReset then
-		btn:SetScript("OnClick", onReset)
-		btn:SetScript("OnEnter", function() lbl:SetTextColor(0, 0.8, 1) end) -- Highlight color
+		btn:SetScript("OnClick", function()
+			Properties.activeEditKey = nil
+			onReset()
+		end)
+		btn:SetScript("OnEnter", function() lbl:SetTextColor(0, 0.8, 1) end)
 		btn:SetScript("OnLeave", function() lbl:SetTextColor(1, 1, 1) end)
 	end
 	
@@ -336,12 +353,17 @@ function Properties.inputs:SetupKeyboardNav(editBox, currentVal, step, shiftStep
 		end
 		
 		if delta ~= 0 then
-			local newVal = (tonumber(self:GetText()) or currentVal or 0) + delta
+			local curStr = self:GetText()
+			local curNum = tonumber(curStr) or currentVal or 0
+			local newVal = curNum + delta
+			
 			-- Round to avoid float precision issues
 			if step < 1 then
 				newVal = math.floor(newVal * 100 + 0.5) / 100
 			end
-			self:SetText(tostring(newVal))
+			
+			local fmt = step < 1 and "%.2f" or "%d"
+			self:SetText(string.format(fmt, newVal))
 			Properties.activeEditKey = key
 			onChange(newVal)
 			return true
@@ -396,7 +418,6 @@ function Properties.inputs:Checkbox(parent, label, value, key, onChange, onReset
 	cb:SetPoint("LEFT", 0, 0)
 	cb.label:SetFontObject("GameFontHighlightSmall")
 	
-	-- Enable clicking label to reset
 	if onReset then
 		cb.labelBtn = CreateFrame("Button", nil, container)
 		cb.labelBtn:SetPoint("TOPLEFT", cb.label, "TOPLEFT")
@@ -597,7 +618,7 @@ function Properties:InitializeDefaultSections()
 			local wInput = self.inputs:Number(parent, _L("Width"), frame:GetWidth(), "width", function(val)
 				frame:SetWidth(val)
 				self:TrackChange("width", val)
-				self:Update(frame, true) -- true = isRefresh
+				-- No Update() here to prevent focus jitter
 			end, function()
 				local val = self.originalValues.width
 				frame:SetWidth(val)
@@ -610,7 +631,6 @@ function Properties:InitializeDefaultSections()
 			local hInput = self.inputs:Number(parent, _L("Height"), frame:GetHeight(), "height", function(val)
 				frame:SetHeight(val)
 				self:TrackChange("height", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.height
 				frame:SetHeight(val)
@@ -652,7 +672,6 @@ function Properties:InitializeDefaultSections()
 			local shownInput = self.inputs:Checkbox(parent, _L("Shown"), frame:IsShown(), "shown", function(val)
 				if val then frame:Show() else frame:Hide() end
 				self:TrackChange("shown", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.shown
 				if val then frame:Show() else frame:Hide() end
@@ -670,7 +689,7 @@ function Properties:InitializeDefaultSections()
 				frame:SetAlpha(val)
 				self.pendingChanges.alpha = nil
 				self:Update(frame, true)
-			end, nil, 0.1) -- normal step 0.01, shift step 0.1
+			end, nil, 0.1)
 			alphaInput:SetPoint("TOPLEFT", 0, y)
 			y = y - (INPUT_HEIGHT + 10)
 			
@@ -709,7 +728,6 @@ function Properties:InitializeDefaultSections()
 			local levelInput = self.inputs:Number(parent, _L("Level"), frame:GetFrameLevel(), "level", function(val)
 				frame:SetFrameLevel(val)
 				self:TrackChange("level", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.level
 				frame:SetFrameLevel(val)
@@ -725,7 +743,6 @@ function Properties:InitializeDefaultSections()
 			local strataInput = self.inputs:Dropdown(parent, _L("Strata"), strataOptions, frame:GetFrameStrata(), "strata", function(val)
 				frame:SetFrameStrata(val)
 				self:TrackChange("strata", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.strata
 				frame:SetFrameStrata(val)
@@ -770,7 +787,6 @@ function Properties:InitializeDefaultSections()
 			local scaleInput = self.inputs:Number(parent, _L("Scale"), frame:GetScale(), "scale", function(val)
 				frame:SetScale(val)
 				self:TrackChange("scale", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.scale
 				frame:SetScale(val)
@@ -806,7 +822,6 @@ function Properties:InitializeDefaultSections()
 			local colorInput = self.inputs:Color(parent, _L("Vertex Color"), r, g, b, a, "vertexColor", function(nr, ng, nb, na)
 				frame:SetVertexColor(nr, ng, nb, na)
 				self:TrackChange("vertexColor", {r=nr, g=ng, b=nb, a=na})
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.vertexColor
 				frame:SetVertexColor(val.r, val.g, val.b, val.a)
@@ -848,7 +863,6 @@ function Properties:InitializeDefaultSections()
 			local textInput = self.inputs:Text(parent, _L("Text"), frame:GetText(), "text", function(val)
 				frame:SetText(val)
 				self:TrackChange("text", val)
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.text
 				frame:SetText(val)
@@ -862,7 +876,6 @@ function Properties:InitializeDefaultSections()
 			local colorInput = self.inputs:Color(parent, _L("Text Color"), r, g, b, a, "textColor", function(nr, ng, nb, na)
 				frame:SetTextColor(nr, ng, nb, na)
 				self:TrackChange("textColor", {r=nr, g=ng, b=nb, a=na})
-				self:Update(frame, true)
 			end, function()
 				local val = self.originalValues.textColor
 				frame:SetTextColor(val.r, val.g, val.b, val.a)
