@@ -336,7 +336,7 @@ function Properties.inputs:CreateLabel(container, label, onReset)
 			Properties.activeEditKey = nil
 			onReset()
 		end)
-		btn:SetScript("OnEnter", function() lbl:SetTextColor(0, 0.8, 1) end)
+		btn:SetScript("OnEnter", function() lbl:SetTextColor(0, 0.8, 1) end) -- Highlight color
 		btn:SetScript("OnLeave", function() lbl:SetTextColor(1, 1, 1) end)
 	end
 	
@@ -428,56 +428,6 @@ function Properties.inputs:Checkbox(parent, label, value, key, onChange, onReset
 	end
 
 	self:AddExtras(container, cb.label, key, onReset, tooltip)
-	return container
-end
-
-function Properties.inputs:Slider(parent, label, value, key, min, max, step, onChange, onReset, tooltip, shiftStep)
-	local container = CreateFrame("Frame", nil, parent)
-	container:SetSize(parent:GetWidth(), INPUT_HEIGHT + 10)
-	
-	local lblBtn, lbl = self:CreateLabel(container, label, onReset)
-
-	local input = FenUI:CreateInput(container, {})
-	input:SetSize(40, INPUT_HEIGHT - 2)
-	input:SetPoint("TOPRIGHT", onReset and -RESET_BTN_SIZE - 4 or 0, 0)
-	input:SetText(string.format("%.2f", value or 0))
-	
-	local slider = CreateFrame("Slider", nil, container, "OptionsSliderTemplate")
-	slider:SetPoint("TOPLEFT", lblBtn, "TOPRIGHT", 4, 0)
-	slider:SetPoint("RIGHT", input, "LEFT", -8, 0)
-	slider:SetHeight(12)
-	slider:SetMinMaxValues(min or 0, max or 1)
-	slider:SetValueStep(step or 0.01)
-	slider:SetValue(value or 0)
-	slider:SetObeyStepOnDrag(true)
-
-	if input.editBox then
-		Properties.editBoxRegistry[key] = input.editBox
-		input.editBox:SetScript("OnEnterPressed", function(eb)
-			eb:ClearFocus()
-			local newVal = tonumber(eb:GetText())
-			if newVal then
-				newVal = math.max(min, math.min(max, newVal))
-				slider:SetValue(newVal)
-				onChange(newVal)
-			end
-		end)
-		input.editBox:HookScript("OnEditFocusGained", function()
-			Properties.activeEditKey = key
-		end)
-		self:SetupKeyboardNav(input.editBox, value, step or 0.1, shiftStep or 1, function(val)
-			val = math.max(min, math.min(max, val))
-			slider:SetValue(val)
-			onChange(val)
-		end, key)
-	end
-
-	slider:SetScript("OnValueChanged", function(s, val)
-		input:SetText(string.format("%.2f", val))
-		onChange(val)
-	end)
-	
-	self:AddExtras(container, lbl, key, onReset, tooltip)
 	return container
 end
 
@@ -618,7 +568,6 @@ function Properties:InitializeDefaultSections()
 			local wInput = self.inputs:Number(parent, _L("Width"), frame:GetWidth(), "width", function(val)
 				frame:SetWidth(val)
 				self:TrackChange("width", val)
-				-- No Update() here to prevent focus jitter
 			end, function()
 				local val = self.originalValues.width
 				frame:SetWidth(val)
@@ -681,7 +630,8 @@ function Properties:InitializeDefaultSections()
 			shownInput:SetPoint("TOPLEFT", 0, y)
 			y = y - INPUT_HEIGHT
 			
-			local alphaInput = self.inputs:Slider(parent, _L("Alpha"), frame:GetAlpha(), "alpha", 0, 1, 0.01, function(val)
+			local alphaInput = self.inputs:Number(parent, _L("Alpha"), frame:GetAlpha(), "alpha", function(val)
+				val = math.max(0, math.min(1, val)) -- Clamp alpha
 				frame:SetAlpha(val)
 				self:TrackChange("alpha", val)
 			end, function()
@@ -689,9 +639,9 @@ function Properties:InitializeDefaultSections()
 				frame:SetAlpha(val)
 				self.pendingChanges.alpha = nil
 				self:Update(frame, true)
-			end, nil, 0.1)
+			end, nil, 0.01, 0.1)
 			alphaInput:SetPoint("TOPLEFT", 0, y)
-			y = y - (INPUT_HEIGHT + 10)
+			y = y - INPUT_HEIGHT
 			
 			return math.abs(y)
 		end,
