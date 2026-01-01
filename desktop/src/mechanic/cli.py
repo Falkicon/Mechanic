@@ -437,7 +437,7 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
             paths = result.data.paths if hasattr(result.data, 'paths') else result.data
             watch_paths = [Path(p) for p in paths]
             if not quiet:
-                click.secho(f"✅ Found {len(watch_paths)} SavedVariables folder(s)", fg="green")
+                click.secho(f"[OK] Found {len(watch_paths)} SavedVariables folder(s)", fg="green")
         else:
             message = result.error.message if result.error else "Unknown error"
             click.secho(f"[X] Error: {message}", fg="red")
@@ -495,7 +495,7 @@ def stop(ctx, port):
             if json_output:
                 click.echo(json.dumps(result, indent=2))
             elif result.get("success"):
-                click.secho("✅ Server stopping...", fg="green")
+                click.secho("[OK] Server stopping...", fg="green")
             else:
                 click.secho(f"[X] {result.get('error', {}).get('message', 'Failed')}", fg="red")
     except Exception as e:
@@ -596,12 +596,12 @@ def release(ctx, addon, version, message, skip_tag):
     all_success = all(r["result"]["success"] for r in results)
     for r in results:
         if r["result"]["success"]:
-            click.secho(f"  ✅ {r['command']}", fg="green")
+            click.secho(f"  [OK] {r['command']}", fg="green")
         else:
             click.secho(f"  [X] {r['command']}: {r['result']['error']['message']}", fg="red")
     
     if all_success:
-        click.secho(f"\n🎉 Released {addon} v{version}!", fg="green", bold=True)
+        click.secho(f"\n[SUCCESS] Released {addon} v{version}!", fg="green", bold=True)
     else:
         click.secho(f"\n[!] Release incomplete", fg="yellow")
         sys.exit(1)
@@ -632,13 +632,13 @@ def setup(ctx, verify, force):
     
     for tool in summary["tools"]:
         if tool.get("installed"):
-            click.secho(f"  ✅ {tool['name']} v{tool.get('version', '?')}", fg="green")
+            click.secho(f"  [OK] {tool['name']} v{tool.get('version', '?')}", fg="green")
         else:
             click.secho(f"  [X] {tool['name']}: {tool.get('message', 'missing')}", fg="red")
     
     click.echo("")
     if summary["success"]:
-        click.secho("✅ All tools ready!", fg="green", bold=True)
+        click.secho("[OK] All tools ready!", fg="green", bold=True)
     else:
         click.secho(f"[!] {summary['required_missing']} tool(s) missing", fg="yellow")
 
