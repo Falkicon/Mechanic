@@ -1,0 +1,16 @@
+## Interface: 120001, 120000
+## Title: TemplateAddon
+## Notes: Minimalist Ace3-based addon template.
+## Author: YourName
+## Version: 0.0.1
+## X-License: GPL-3.0
+## SavedVariables: TemplateAddonDB
+
+embeds.xml
+Locales\enUS.lua
+
+# Core
+#@debug@
+DevMarker.lua
+#@end-debug@
+Core.lua

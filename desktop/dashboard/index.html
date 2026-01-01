@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mechanic Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1a2332;
+            --card: #1e293b;
+            --border: #334155;
+            --border-light: #475569;
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.15);
+            --success: #4ade80;
+            --success-glow: rgba(74, 222, 128, 0.15);
+            --error: #f87171;
+            --error-glow: rgba(248, 113, 113, 0.15);
+            --warning: #fbbf24;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --mono: 'JetBrains Mono', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header { 
+            padding: 0.625rem 1rem; 
+            border-bottom: 1px solid var(--border); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: var(--bg-secondary);
+        }
+        .header-left { display: flex; align-items: center; gap: 1rem; }
+        .logo { font-size: 1rem; font-weight: 700; color: var(--primary); letter-spacing: -0.025em; }
+        .logo span { color: var(--text-dim); font-weight: 400; font-size: 0.7rem; margin-left: 0.375rem; }
+        .header-actions { display: flex; gap: 0.75rem; align-items: center; }
+        
+        /* Layout */
+        .app-container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { 
+            width: 200px; 
+            background: var(--bg-secondary); 
+            border-right: 1px solid var(--border); 
+            display: flex; 
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .content-area { flex: 1; overflow-y: auto; padding: 1rem; }
+        .console-area { 
+            height: 180px;
+            min-height: 180px;
+            border-top: 1px solid var(--border); 
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Buttons */
+        .btn { 
+            padding: 0.375rem 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.75rem; 
+            cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 0.5rem; border: none;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--primary); color: var(--bg); }
+        .btn-primary:hover { background: #7dd3fc; }
+        .btn-run { background: var(--success); color: var(--bg); font-size: 0.8rem; padding: 0.5rem 1rem; }
+        .btn-run:hover { background: #86efac; }
+        .btn-danger { background: transparent; color: var(--error); border: 1px solid var(--error); }
+        .btn-danger:hover { background: var(--error-glow); }
+        .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+        .btn-ghost:hover { border-color: var(--border-light); background: var(--bg-tertiary); }
+        .btn-nav { background: var(--card); color: var(--text); border: 1px solid var(--border-light); padding: 0.375rem 0.625rem; font-size: 0.75rem; font-weight: 500; }
+        .btn-nav:hover { background: var(--bg-tertiary); border-color: var(--primary); color: var(--primary); }
+        .btn-nav:disabled { opacity: 0.3; cursor: not-allowed; background: var(--bg-tertiary); }
+        .kbd { font-size: 0.6rem; background: var(--bg); padding: 0.1rem 0.2rem; border-radius: 3px; color: var(--text-dim); margin-left: 0.25rem; }
+
+        /* Addon Selector */
+        .addon-context { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); }
+        .addon-context-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 0.25rem; }
+        .addon-select-wrapper { display: flex; align-items: center; gap: 0.5rem; background: var(--card); padding: 0.2rem 0.4rem; border-radius: 5px; border: 1px solid var(--border); }
+        .addon-select-wrapper select { flex: 1; background: var(--card); border: none; color: var(--text); font-family: inherit; font-size: 0.8rem; cursor: pointer; outline: none; -webkit-appearance: none; padding: 0.2rem; }
+        .addon-select-wrapper select option { background: var(--card); color: var(--text); }
+        .btn-icon { background: transparent; border: none; cursor: pointer; font-size: 0.8rem; padding: 0.2rem; border-radius: 4px; color: var(--text-dim); }
+        .btn-icon:hover { background: var(--bg-tertiary); color: var(--primary); }
+        .addon-status { font-size: 0.65rem; margin-top: 0.25rem; color: var(--success); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; direction: rtl; text-align: left; }
+        .addon-status::before { content: ''; unicode-bidi: bidi-override; direction: ltr; }
+
+        /* Get Started Overlay */
+        .get-started-overlay { 
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+            background: rgba(10, 15, 26, 0.95); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 100; text-align: center; padding: 2rem;
+        }
+        .get-started-overlay.hidden { display: none; }
+        .get-started-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.8; }
+        .get-started-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text); }
+        .get-started-text { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; max-width: 400px; line-height: 1.6; }
+        .get-started-btn { background: var(--primary); color: var(--bg); padding: 0.75rem 1.5rem; border-radius: 8px; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+        .get-started-btn:hover { background: #7dd3fc; }
+
+        /* Mechanic Tab */
+        .mechanic-tab { padding: 0.625rem 0.75rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); cursor: pointer; transition: all 0.15s; }
+        .mechanic-tab:hover { background: var(--card); }
+        .mechanic-tab.active { background: var(--primary-glow); border-left: 3px solid var(--primary); }
+        .mechanic-tab-title { font-size: 0.7rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+
+        /* Sidebar Sections */
+        .sidebar-section { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+        .sidebar-title { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-bottom: 0.375rem; }
+        .cmd-btn { 
+            width: 100%; padding: 0.375rem 0.5rem; margin-bottom: 0.125rem;
+            background: transparent; border: 1px solid transparent; border-radius: 4px;
+            color: var(--text-muted); font-size: 0.7rem; text-align: left;
+            cursor: pointer; transition: all 0.1s; display: flex; align-items: center; gap: 0.375rem;
+        }
+        .cmd-btn:hover { background: var(--card); color: var(--text); border-color: var(--border); }
+        .cmd-btn.active { background: var(--primary-glow); color: var(--primary); border-color: var(--primary); }
+        .cmd-icon { font-size: 0.75rem; width: 1rem; text-align: center; }
+
+        /* Main Content Views */
+        .view { display: none; }
+        .view.active { display: block; }
+
+        /* Command View Header */
+        .command-header { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.75rem 1rem; background: var(--card); border-radius: 8px; margin-bottom: 1rem;
+        }
+        .command-info { flex: 1; }
+        .command-name { font-family: var(--mono); font-size: 1rem; color: var(--primary); margin-bottom: 0.25rem; }
+        .command-desc { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .command-meta { font-size: 0.7rem; color: var(--text-dim); display: flex; align-items: center; gap: 1rem; }
+        .command-actions { display: flex; align-items: center; gap: 0.75rem; }
+        .history-nav { display: flex; align-items: center; gap: 0.5rem; }
+        .history-info { font-size: 0.65rem; color: var(--text-dim); }
+
+        /* Command Result */
+        .result-section { margin-bottom: 1rem; }
+        .result-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 0.375rem; display: flex; align-items: center; gap: 0.375rem; }
+        .result-value { font-size: 0.8rem; color: var(--text); }
+        .result-status { display: inline-block; font-size: 0.65rem; padding: 0.125rem 0.375rem; border-radius: 4px; }
+        .result-status.success { background: var(--success-glow); color: var(--success); }
+        .result-status.error { background: var(--error-glow); color: var(--error); }
+        .result-data { background: var(--bg-tertiary); border-radius: 6px; padding: 0.75rem; font-family: var(--mono); font-size: 0.75rem; color: var(--text-muted); max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+        .confidence-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 0.25rem; }
+        .confidence-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--success)); transition: width 0.3s; }
+        .source-list { list-style: none; }
+        .source-item { font-size: 0.75rem; color: var(--text-muted); padding: 0.2rem 0; display: flex; align-items: center; gap: 0.375rem; }
+
+        /* Mechanic Output View */
+        .mechanic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        .mechanic-card { background: var(--card); border-radius: 8px; padding: 1rem; border: 1px solid var(--border); }
+        .mechanic-card-title { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.75rem; }
+        .health-row { display: flex; justify-content: space-between; padding: 0.375rem 0; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        .health-row:last-child { border-bottom: none; }
+        .health-row .value { color: var(--text); font-weight: 500; }
+        .health-row .value.success { color: var(--success); }
+        .health-row .value.warning { color: var(--warning); }
+        .test-hero { text-align: center; padding: 1.5rem; background: var(--success-glow); border-radius: 8px; border: 1px solid rgba(74, 222, 128, 0.3); }
+        .test-hero.failing { background: var(--error-glow); border-color: rgba(248, 113, 113, 0.3); }
+        .test-hero-status { font-size: 2.5rem; margin-bottom: 0.25rem; }
+        .test-hero-count { font-size: 1rem; color: var(--text-muted); }
+        .test-list { list-style: none; margin-top: 1rem; }
+        .test-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+
+        /* Console */
+        .console-header { padding: 0.375rem 0.75rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; color: var(--text-muted); }
+        .console-body { flex: 1; display: flex; flex-direction: column; padding: 0.5rem 0.75rem; }
+        .console-input-row { display: flex; gap: 0.375rem; margin-bottom: 0.375rem; }
+        .console-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.375rem 0.5rem; color: var(--text); font-family: var(--mono); font-size: 0.75rem; }
+        .console-input:focus { outline: none; border-color: var(--primary); }
+        .console-input.cmd { width: 140px; flex: none; }
+        .console-output { flex: 1; background: var(--bg); border-radius: 4px; padding: 0.375rem 0.5rem; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); overflow-y: auto; white-space: pre-wrap; }
+
+        /* Toast Notifications */
+        .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { 
+            background: var(--card); border: 1px solid var(--border); border-radius: 8px; 
+            padding: 0.75rem 1rem; min-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease-out;
+        }
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error { border-left: 3px solid var(--error); }
+        .toast-title { font-size: 0.75rem; font-weight: 600; color: var(--text); margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.375rem; }
+        .toast-message { font-size: 0.7rem; color: var(--text-muted); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+        /* Tool Banner */
+        .tool-banner { background: var(--error-glow); border-bottom: 1px solid var(--error); padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--error); }
+        .tool-banner code { background: var(--card); padding: 0.125rem 0.375rem; border-radius: 4px; font-family: var(--mono); color: var(--text); }
+        .tool-banner-hint { color: var(--text-muted); }
+
+        /* Status Bar */
+        .status-bar { padding: 0.375rem 1rem; background: var(--bg-tertiary); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.65rem; color: var(--text-dim); }
+        .status-left { display: flex; align-items: center; gap: 1rem; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 0.375rem; display: inline-block; }
+        .status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+        .status-dot.disconnected { background: var(--error); }
+        .shortcuts { display: flex; gap: 1rem; }
+        .shortcut { display: flex; align-items: center; gap: 0.25rem; }
+
+        /* No result state */
+        .no-result { text-align: center; padding: 3rem; color: var(--text-dim); }
+        .no-result-icon { font-size: 3rem; margin-bottom: 0.5rem; opacity: 0.5; }
+        .no-result-text { font-size: 0.9rem; }
+
+        /* Library Manager View */
+        .lib-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .lib-header-title { font-size: 1.1rem; font-weight: 600; }
+        .lib-header-actions { display: flex; gap: 0.5rem; }
+        .lib-stats { display: flex; gap: 1.5rem; margin-bottom: 1rem; }
+        .lib-stat { background: var(--card); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border); text-align: center; min-width: 100px; }
+        .lib-stat-value { font-size: 1.5rem; font-weight: 700; }
+        .lib-stat-value.ok { color: var(--success); }
+        .lib-stat-value.missing { color: var(--error); }
+        .lib-stat-value.extra { color: var(--warning); }
+        .lib-stat-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; }
+        
+        .lib-table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; }
+        .lib-table th { text-align: left; padding: 0.75rem 1rem; background: var(--bg-tertiary); font-size: 0.7rem; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+        .lib-table td { padding: 0.625rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .lib-table tr:last-child td { border-bottom: none; }
+        .lib-table tr:hover { background: var(--bg-tertiary); }
+        .lib-name { font-family: var(--mono); color: var(--text); }
+        .lib-version { color: var(--text-muted); font-family: var(--mono); font-size: 0.75rem; }
+        .lib-badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; }
+        .lib-badge.ok { background: var(--success-glow); color: var(--success); }
+        .lib-badge.missing { background: var(--error-glow); color: var(--error); }
+        .lib-badge.extra { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
+        .lib-badge.local { background: var(--primary-glow); color: var(--primary); }
+        .lib-config-status { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 1rem; font-size: 0.8rem; }
+        .lib-config-status.found { border-left: 3px solid var(--success); }
+        .lib-config-status.missing { border-left: 3px solid var(--warning); }
+
+        /* Settings View */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .settings-card { background: var(--card); border-radius: 8px; padding: 1rem; border: 1px solid var(--border); }
+        .settings-card-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .settings-row:last-child { border-bottom: none; }
+        .settings-row .label { color: var(--text-muted); }
+        .settings-row .value { color: var(--text); font-family: var(--mono); font-size: 0.75rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .settings-row .value.success { color: var(--success); }
+        .settings-row .value.error { color: var(--error); }
+        .flavor-list { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+        .flavor-badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; background: var(--bg-tertiary); border: 1px solid var(--border); }
+        .flavor-badge.active { background: var(--success-glow); border-color: var(--success); color: var(--success); }
+        .flavor-badge.inactive { color: var(--text-dim); }
+        .path-display { font-family: var(--mono); font-size: 0.7rem; color: var(--text-muted); padding: 0.5rem; background: var(--bg); border-radius: 4px; margin-top: 0.5rem; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">MECHANIC <span>v0.3.0</span></div>
+        </div>
+        <div class="header-actions">
+            <button id="btn-create-nav" class="btn btn-ghost">➕ Create</button>
+            <button id="btn-reload" class="btn btn-primary">⚡ Reload <span class="kbd">R</span></button>
+            <button id="btn-settings" class="btn btn-icon" title="Settings">⚙️</button>
+            <button id="btn-stop" class="btn btn-danger">🛑</button>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Mechanic Output Tab -->
+            <div id="mechanic-tab" class="mechanic-tab active" data-view="mechanic">
+                <div class="mechanic-tab-title"><span>📊</span> Mechanic Output</div>
+            </div>
+
+            <!-- Addon Selector -->
+            <div class="addon-context">
+                <div class="addon-context-label">🎯 Target Addon</div>
+                <div class="addon-select-wrapper">
+                    <select id="addon-select">
+                        <option value="">Select an addon...</option>
+                    </select>
+                    <button id="btn-add-addon" class="btn-icon" title="Add Addon from .toc">➕</button>
+                </div>
+                <div id="addon-status" class="addon-status">Add an addon to get started</div>
+            </div>
+
+            <!-- Development -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">⚡ Development</div>
+                <button class="cmd-btn" data-cmd="addon.validate"><span class="cmd-icon">✓</span> Validate</button>
+                <button class="cmd-btn" data-cmd="addon.lint"><span class="cmd-icon">🔍</span> Lint</button>
+                <button class="cmd-btn" data-cmd="addon.format"><span class="cmd-icon">✨</span> Format</button>
+                <button class="cmd-btn" data-cmd="addon.test"><span class="cmd-icon">🧪</span> Test</button>
+                <button class="cmd-btn" data-cmd="addon.deprecations"><span class="cmd-icon">⚠️</span> Deprecations</button>
+            </div>
+
+            <!-- Release -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">📦 Release</div>
+                <button class="cmd-btn" data-cmd="release.all"><span class="cmd-icon">🚀</span> Release All</button>
+                <button class="cmd-btn" data-cmd="version.bump"><span class="cmd-icon">🏷️</span> Bump Version</button>
+                <button class="cmd-btn" data-cmd="changelog.add"><span class="cmd-icon">📝</span> Changelog</button>
+                <button class="cmd-btn" data-cmd="git.commit"><span class="cmd-icon">💾</span> Commit</button>
+                <button class="cmd-btn" data-cmd="git.tag"><span class="cmd-icon">🔖</span> Tag</button>
+            </div>
+
+            <!-- Quality -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">🌐 Quality</div>
+                <button class="cmd-btn" data-cmd="locale.validate"><span class="cmd-icon">🗣️</span> Validate Locale</button>
+                <button class="cmd-btn" data-cmd="locale.extract"><span class="cmd-icon">📤</span> Extract Locals</button>
+                <button class="cmd-btn" data-cmd="atlas.search"><span class="cmd-icon">🎨</span> Atlas</button>
+            </div>
+
+            <!-- Libraries -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">📚 Libraries</div>
+                <button class="cmd-btn" data-view="libraries"><span class="cmd-icon">📊</span> Library Manager</button>
+                <button class="cmd-btn" data-cmd="libs.check"><span class="cmd-icon">✓</span> Check Status</button>
+                <button class="cmd-btn" data-cmd="libs.sync"><span class="cmd-icon">🔄</span> Sync Libraries</button>
+                <button class="cmd-btn" data-cmd="libs.init"><span class="cmd-icon">📝</span> Init Config</button>
+            </div>
+
+            <!-- Environment -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">🔗 Sync</div>
+                <button class="cmd-btn" data-cmd="addon.sync"><span class="cmd-icon">📂</span> Sync to Client</button>
+            </div>
+
+            <!-- Project -->
+            <!-- Moved to Header -->
+        </aside>
+
+        <!-- Main Area -->
+        <main class="main-area" style="position: relative;">
+            <!-- Get Started Overlay -->
+            <div id="get-started-overlay" class="get-started-overlay">
+                <div class="get-started-icon">🔧</div>
+                <div class="get-started-title">Welcome to Mechanic</div>
+                <div class="get-started-text">
+                    Select an addon to get started. You can add addons by clicking the ➕ button in the sidebar, or create a new one.
+                </div>
+                <button id="btn-get-started" class="get-started-btn">
+                    <span>➕</span> Add Your First Addon
+                </button>
+            </div>
+
+            <!-- Tool Setup Banner -->
+            <div id="tool-banner" class="tool-banner" style="display: none;">
+                <span>⚠️ Development tools missing (Luacheck, StyLua)</span>
+                <span class="tool-banner-hint">Run: <code>mechanic setup</code></span>
+            </div>
+            
+            <div class="content-area">
+                <!-- Mechanic Output View -->
+                <div id="view-mechanic" class="view active">
+                    <div class="mechanic-grid">
+                        <div class="mechanic-card">
+                            <div class="mechanic-card-title">Addon Health</div>
+                            <div class="health-row"><span>Interface Version</span><span id="health-interface" class="value">120001</span></div>
+                            <div class="health-row"><span>TOC Status</span><span id="health-toc" class="value success">Valid</span></div>
+                            <div class="health-row"><span>Luacheck</span><span id="health-lint" class="value warning">—</span></div>
+                            <div class="health-row"><span>Locales</span><span id="health-locale" class="value success">—</span></div>
+                        </div>
+                        <div class="mechanic-card">
+                            <div class="mechanic-card-title">Last Reload</div>
+                            <div class="health-row"><span>Time</span><span id="reload-time" class="value">—</span></div>
+                            <div class="health-row"><span>Addon</span><span id="reload-addon" class="value">—</span></div>
+                        </div>
+                    </div>
+                    <div id="test-hero" class="test-hero">
+                        <div class="test-hero-status">⏳</div>
+                        <div class="test-hero-count">Waiting for /reload...</div>
+                    </div>
+                    <ul id="test-list" class="test-list"></ul>
+                </div>
+
+                <!-- Command View (dynamic for each command) -->
+                <div id="view-command" class="view">
+                    <div class="command-header">
+                        <div class="command-info">
+                            <div id="cmd-name" class="command-name">addon.validate</div>
+                            <div id="cmd-desc" class="command-desc">Description</div>
+                            <div class="command-meta">
+                                <span id="cmd-status" class="result-status success">—</span>
+                                <span id="cmd-time">—</span>
+                            </div>
+                        </div>
+                        <div class="command-actions">
+                            <div class="history-nav">
+                                <button id="btn-prev" class="btn btn-nav" disabled>◀</button>
+                                <span id="history-info" class="history-info">—</span>
+                                <button id="btn-next" class="btn btn-nav" disabled>▶</button>
+                            </div>
+                            <button id="btn-clear-history" class="btn btn-ghost" title="Clear history for this command">🗑️</button>
+                            <button id="btn-run-cmd" class="btn btn-run">▶ Run</button>
+                        </div>
+                    </div>
+                    
+                    <div id="cmd-no-result" class="no-result">
+                        <div class="no-result-icon">📋</div>
+                        <div class="no-result-text">No runs yet. Click "Run" to execute this command.</div>
+                    </div>
+                    
+                    <div id="cmd-result" style="display: none;">
+                        <div class="result-section">
+                            <div class="result-label">💡 Reasoning</div>
+                            <div id="result-reasoning" class="result-value">—</div>
+                        </div>
+                        <div class="result-section">
+                            <div class="result-label">📊 Confidence</div>
+                            <div class="confidence-bar"><div id="confidence-fill" class="confidence-fill" style="width: 0%;"></div></div>
+                            <div id="confidence-text" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.25rem;">—</div>
+                        </div>
+                        <div class="result-section">
+                            <div class="result-label">📋 Sources</div>
+                            <ul id="source-list" class="source-list"></ul>
+                        </div>
+                        <div class="result-section">
+                            <div class="result-label">📦 Data</div>
+                            <div id="result-data" class="result-data">// Output</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Library Manager View -->
+                <div id="view-libraries" class="view">
+                    <div class="lib-header">
+                        <div class="lib-header-title">📚 Library Manager</div>
+                        <div class="lib-header-actions">
+                            <button id="btn-lib-refresh" class="btn btn-ghost">🔄 Refresh</button>
+                            <button id="btn-lib-sync" class="btn btn-primary">⬇️ Sync All</button>
+                        </div>
+                    </div>
+
+                    <div id="lib-config-banner" class="lib-config-status missing">
+                        <span>⚠️</span>
+                        <span>No <code>libs.json</code> found. <a href="#" id="btn-lib-init" style="color: var(--primary)">Initialize config</a> to manage libraries.</span>
+                    </div>
+
+                    <div class="lib-stats">
+                        <div class="lib-stat">
+                            <div id="lib-stat-ok" class="lib-stat-value ok">—</div>
+                            <div class="lib-stat-label">Installed</div>
+                        </div>
+                        <div class="lib-stat">
+                            <div id="lib-stat-missing" class="lib-stat-value missing">—</div>
+                            <div class="lib-stat-label">Missing</div>
+                        </div>
+                        <div class="lib-stat">
+                            <div id="lib-stat-extra" class="lib-stat-value extra">—</div>
+                            <div class="lib-stat-label">Extra</div>
+                        </div>
+                    </div>
+
+                    <table class="lib-table">
+                        <thead>
+                            <tr>
+                                <th>Library</th>
+                                <th>Configured</th>
+                                <th>Installed</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lib-table-body">
+                            <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Select an addon and click Refresh to check libraries</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Settings View -->
+                <div id="view-settings" class="view">
+                    <div class="lib-header">
+                        <div class="lib-header-title">⚙️ Environment Settings</div>
+                        <div class="lib-header-actions">
+                            <button id="btn-settings-refresh" class="btn btn-ghost">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <div class="settings-card-title">🎮 WoW Installation</div>
+                            <div class="settings-row">
+                                <span class="label">Root Path</span>
+                                <span id="settings-wow-root" class="value">—</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">Dev Path</span>
+                                <span id="settings-dev-path" class="value">—</span>
+                            </div>
+                            <div id="settings-wow-path-full" class="path-display">—</div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">📂 Game Clients</div>
+                            <div id="settings-flavors" class="flavor-list">
+                                <span class="flavor-badge">Loading...</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">🔧 Development Tools</div>
+                            <div class="settings-row">
+                                <span class="label">Luacheck</span>
+                                <span id="settings-luacheck" class="value">—</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">StyLua</span>
+                                <span id="settings-stylua" class="value">—</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">Lua</span>
+                                <span id="settings-lua" class="value">—</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">Busted</span>
+                                <span id="settings-busted" class="value">—</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="settings-card-title">🌐 Server</div>
+                            <div class="settings-row">
+                                <span class="label">Port</span>
+                                <span class="value">3100</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">Status</span>
+                                <span id="settings-server-status" class="value success">Running</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="label">Data Directory</span>
+                                <span id="settings-data-dir" class="value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Console -->
+            <div class="console-area">
+                <div class="console-header">
+                    <span>🖥️ Console</span>
+                    <span class="kbd">:</span>
+                </div>
+                <div class="console-body">
+                    <div class="console-input-row">
+                        <input id="console-cmd" class="console-input cmd" placeholder="Command">
+                        <input id="console-input" class="console-input" placeholder='{"addon": "Weekly"}'>
+                        <button id="btn-execute" class="btn btn-ghost">▶</button>
+                    </div>
+                    <div id="console-output" class="console-output">// Ready</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-left">
+            <span><span id="status-dot" class="status-dot disconnected"></span><span id="status-text">Connecting...</span></span>
+            <span>Port 3100</span>
+            <span id="uptime">0s</span>
+            <span id="accounts-info">Accounts: Loading...</span>
+        </div>
+        <div class="shortcuts">
+            <span class="shortcut"><span class="kbd">R</span> Reload</span>
+            <span class="shortcut"><span class="kbd">V</span> Validate</span>
+            <span class="shortcut"><span class="kbd">:</span> Console</span>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STATE
+        // ═══════════════════════════════════════════════════════════════════════════
+        let selectedAddon = localStorage.getItem('mechanic.selectedAddon') || '';
+        let currentCommand = null;
+        let startTime = Date.now();
+        
+        // Command history: { "addon.validate": [result1, result2, ...], ... }
+        const commandHistory = {};
+        // Current index per command: { "addon.validate": 0, ... }
+        const historyIndex = {};
+        
+        // Addons are discovered dynamically - no hardcoded list
+        const mechanicAddons = [];
+        
+        // Default parameters for commands
+        const commandDefaults = {
+            'release.all': { version: '1.2.3', message: 'Release features', category: 'Changed' },
+            'version.bump': { version: '1.2.3' },
+            'changelog.add': { version: '1.2.3', message: 'Added new feature' },
+            'git.commit': { message: 'chore: update' },
+            'git.tag': { version: '1.2.3' },
+            'addon.create': { name: 'MyAddon', title: 'My Addon', author: 'Name', addon: null },
+            'addon.sync': { flavors: null }, // Uses selected addon
+            'atlas.search': { query: 'inv_sword' }
+        };
+
+        // { "MyAddon": "C:/Path/To/MyAddon" }
+        let knownAddons = JSON.parse(localStorage.getItem('mechanic.addons') || '{}');
+
+        // Update addon dropdown from known addons (discovered + user-added)
+        function updateAddonList() {
+            const allAddons = Object.keys(knownAddons).sort();
+            const overlay = document.getElementById('get-started-overlay');
+            
+            if (allAddons.length === 0) {
+                addonSelect.innerHTML = '<option value="">Add an addon...</option>';
+                addonStatus.textContent = 'Click + to add an addon';
+                addonStatus.title = '';
+                selectedAddon = '';
+                overlay.classList.remove('hidden');
+                return;
+            }
+            
+            overlay.classList.add('hidden');
+            addonSelect.innerHTML = allAddons.map(a => `<option value="${a}">${a}</option>`).join('');
+            
+            if (selectedAddon && allAddons.includes(selectedAddon)) {
+                addonSelect.value = selectedAddon;
+            } else {
+                selectedAddon = allAddons[0];
+                addonSelect.value = selectedAddon;
+            }
+            updateAddonStatus();
+        }
+
+        function updateAddonStatus() {
+            const overlay = document.getElementById('get-started-overlay');
+            
+            if (!selectedAddon) {
+                addonStatus.textContent = 'Click + to add an addon';
+                addonStatus.title = '';
+                overlay.classList.remove('hidden');
+                return;
+            }
+            
+            overlay.classList.add('hidden');
+            
+            const addonPath = knownAddons[selectedAddon];
+            if (addonPath) {
+                // Show truncated path (end of path), full path on hover
+                const shortPath = '✓ ...' + addonPath.slice(-35);
+                addonStatus.textContent = shortPath;
+                addonStatus.title = addonPath; // Full path on hover
+            } else {
+                addonStatus.textContent = '✓ Registered';
+                addonStatus.title = '';
+            }
+            
+            // Update input with path if known
+            const defaults = commandDefaults[currentCommand] || {};
+            const payload = { addon: selectedAddon, ...defaults };
+            if (addonPath) {
+                payload.path = addonPath;
+            }
+            consoleInput.value = JSON.stringify(payload);
+        }
+
+        // Command descriptions
+        const commandDescriptions = {
+            'addon.validate': 'Checks for basic addon structure and critical files.',
+            'addon.lint': 'Runs Luacheck to find syntax errors and global variable issues.',
+            'addon.format': 'Runs StyLua to format code according to style guide.',
+            'addon.test': 'Runs Busted unit tests.',
+            'addon.deprecations': 'Scans for deprecated WoW API usage.',
+            'version.bump': 'Updates the version number in the .toc file.',
+            'changelog.add': 'Adds a new entry to CHANGELOG.md.',
+            'git.commit': 'Stages all changes and creates a git commit.',
+            'git.tag': 'Creates a git tag for the current version.',
+            'release.all': 'Runs the full release flow: Bump -> Changelog -> Commit -> Tag.',
+            'locale.validate': 'Checks if other locales match the enUS baseline keys.',
+            'locale.extract': 'Scans Lua files for potential localizable strings.',
+            'atlas.search': 'Searches the Blizzard Atlas for icons/textures.',
+            'addon.create': 'Generates a new empty addon from a template.',
+            'addon.sync': 'Syncs addon folder to game client directories.',
+            'libs.check': 'Checks status of embedded libraries against libs.json config.',
+            'libs.sync': 'Syncs libraries from source based on libs.json configuration.',
+            'libs.init': 'Creates a libs.json config file from currently installed libraries.'
+        };
+
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // ELEMENTS
+        // ═══════════════════════════════════════════════════════════════════════════
+        const addonSelect = document.getElementById('addon-select');
+        const addonStatus = document.getElementById('addon-status');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const uptimeEl = document.getElementById('uptime');
+        const consoleOutput = document.getElementById('console-output');
+        const consoleCmd = document.getElementById('console-cmd');
+        const consoleInput = document.getElementById('console-input');
+        const accountsInfo = document.getElementById('accounts-info');
+        const mechanicTab = document.getElementById('mechanic-tab');
+        const testHero = document.getElementById('test-hero');
+        const testList = document.getElementById('test-list');
+
+        // Command view elements
+        const cmdName = document.getElementById('cmd-name');
+        const cmdDesc = document.getElementById('cmd-desc');
+        const cmdStatus = document.getElementById('cmd-status');
+        const cmdTime = document.getElementById('cmd-time');
+        const cmdNoResult = document.getElementById('cmd-no-result');
+        const cmdResult = document.getElementById('cmd-result');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const historyInfo = document.getElementById('history-info');
+        const btnRunCmd = document.getElementById('btn-run-cmd');
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // TOAST NOTIFICATIONS
+        // ═══════════════════════════════════════════════════════════════════════════
+        function showToast(title, message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div class="toast-title">${type === 'success' ? '✅' : '❌'} ${title}</div>
+                <div class="toast-message">${message}</div>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 10000);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // WEBSOCKET
+        // ═══════════════════════════════════════════════════════════════════════════
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        ws.onopen = () => { statusDot.className = 'status-dot connected'; statusText.textContent = 'Connected'; };
+        ws.onclose = () => { statusDot.className = 'status-dot disconnected'; statusText.textContent = 'Disconnected'; };
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'reload') updateTestResults(msg);
+            if (msg.type === 'command_result') {
+                // Command ran from external source (agent, CLI)
+                addToHistory(msg.command, msg.result);
+                showToast(msg.command, msg.result.reasoning || 'Completed', msg.result.success ? 'success' : 'error');
+                // Update view if we're looking at this command
+                if (currentCommand === msg.command) {
+                    historyIndex[currentCommand] = commandHistory[currentCommand].length - 1;
+                    displayCurrentResult();
+                }
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // VIEW SWITCHING
+        // ═══════════════════════════════════════════════════════════════════════════
+        function showView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${viewName}`).classList.add('active');
+            
+            mechanicTab.classList.toggle('active', viewName === 'mechanic');
+            document.querySelectorAll('.cmd-btn').forEach(b => b.classList.remove('active'));
+            
+            if (viewName === 'command' && currentCommand) {
+                const btn = document.querySelector(`[data-cmd="${currentCommand}"]`);
+                if (btn) btn.classList.add('active');
+            }
+            
+            // Highlight view buttons
+            const viewBtn = document.querySelector(`[data-view="${viewName}"]`);
+            if (viewBtn) viewBtn.classList.add('active');
+
+            localStorage.setItem('mechanic.activeView', viewName);
+            
+            // Auto-refresh data for specific views
+            if (viewName === 'libraries') refreshLibraries();
+            if (viewName === 'settings') refreshSettings();
+        }
+
+        function navigateToCommand(cmd) {
+            currentCommand = cmd;
+            cmdName.textContent = cmd;
+            cmdDesc.textContent = commandDescriptions[cmd] || 'No description available.';
+            consoleCmd.value = cmd;
+            
+            const defaults = commandDefaults[cmd] || {};
+            consoleInput.value = JSON.stringify({addon: selectedAddon, ...defaults});
+            
+            showView('command');
+            displayCurrentResult();
+            localStorage.setItem('mechanic.activeCommand', cmd);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // LIBRARY MANAGER
+        // ═══════════════════════════════════════════════════════════════════════════
+        async function refreshLibraries() {
+            if (!selectedAddon) {
+                document.getElementById('lib-table-body').innerHTML = 
+                    '<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Select an addon first</td></tr>';
+                return;
+            }
+            
+            document.getElementById('lib-table-body').innerHTML = 
+                '<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Loading...</td></tr>';
+            
+            const result = await executeCommand('libs.check', { addon: selectedAddon });
+            
+            if (!result.success) {
+                document.getElementById('lib-table-body').innerHTML = 
+                    `<tr><td colspan="4" style="text-align: center; color: var(--error); padding: 2rem;">${result.error?.message || 'Failed to check libraries'}</td></tr>`;
+                return;
+            }
+            
+            const data = result.data;
+            
+            // Update config banner
+            const banner = document.getElementById('lib-config-banner');
+            if (data.has_config) {
+                banner.className = 'lib-config-status found';
+                banner.innerHTML = `<span>✅</span><span><code>libs.json</code> found with ${data.configured_count || 0} libraries configured (mode: ${data.mode || 'include'})</span>`;
+            } else {
+                banner.className = 'lib-config-status missing';
+                banner.innerHTML = `<span>⚠️</span><span>No <code>libs.json</code> found. <a href="#" id="btn-lib-init" style="color: var(--primary)">Initialize config</a> to manage libraries.</span>`;
+                document.getElementById('btn-lib-init')?.addEventListener('click', initLibsConfig);
+            }
+            
+            // Update stats
+            const libs = data.libraries || [];
+            const okCount = libs.filter(l => l.status === 'ok').length;
+            const missingCount = libs.filter(l => l.status === 'missing').length;
+            const extraCount = libs.filter(l => l.status === 'extra').length;
+            
+            document.getElementById('lib-stat-ok').textContent = okCount;
+            document.getElementById('lib-stat-missing').textContent = missingCount;
+            document.getElementById('lib-stat-extra').textContent = extraCount;
+            
+            // Update table
+            if (libs.length === 0) {
+                document.getElementById('lib-table-body').innerHTML = 
+                    '<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">No libraries found</td></tr>';
+                return;
+            }
+            
+            // Sort: missing first, then extra, then ok
+            libs.sort((a, b) => {
+                const order = { missing: 0, extra: 1, ok: 2 };
+                return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+            });
+            
+            document.getElementById('lib-table-body').innerHTML = libs.map(lib => {
+                const statusClass = lib.status === 'ok' ? 'ok' : (lib.status === 'missing' ? 'missing' : 'extra');
+                const isLocal = lib.configured_version === 'local';
+                const badgeClass = isLocal ? 'local' : statusClass;
+                const statusText = isLocal ? 'local' : lib.status;
+                
+                return `<tr>
+                    <td><span class="lib-name">${lib.name || lib.library}</span></td>
+                    <td><span class="lib-version">${lib.configured_version || '—'}</span></td>
+                    <td><span class="lib-version">${lib.installed_version || '—'}</span></td>
+                    <td><span class="lib-badge ${badgeClass}">${statusText}</span></td>
+                </tr>`;
+            }).join('');
+        }
+        
+        async function initLibsConfig(e) {
+            if (e) e.preventDefault();
+            if (!selectedAddon) return;
+            
+            const result = await executeCommand('libs.init', { addon: selectedAddon });
+            if (result.success) {
+                showToast('Config Created', `libs.json created with ${result.data?.library_count || 0} libraries`, 'success');
+                refreshLibraries();
+            } else {
+                showToast('Error', result.error?.message || 'Failed to create config', 'error');
+            }
+        }
+        
+        async function syncLibraries() {
+            if (!selectedAddon) return;
+            
+            const result = await executeCommand('libs.sync', { addon: selectedAddon });
+            if (result.success) {
+                const actions = result.data?.actions || [];
+                const copied = actions.filter(a => a.action === 'copied').length;
+                const removed = actions.filter(a => a.action === 'removed').length;
+                showToast('Sync Complete', `Copied: ${copied}, Removed: ${removed}`, 'success');
+                refreshLibraries();
+            } else {
+                showToast('Sync Failed', result.error?.message || 'Failed to sync libraries', 'error');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SETTINGS VIEW
+        // ═══════════════════════════════════════════════════════════════════════════
+        async function refreshSettings() {
+            // Get environment status
+            const result = await executeCommand('env.status', {});
+            
+            if (result.success && result.data) {
+                const data = result.data;
+                
+                // WoW paths
+                document.getElementById('settings-wow-root').textContent = data.wow_root ? '✓ Found' : '✗ Not found';
+                document.getElementById('settings-wow-root').className = 'value ' + (data.wow_root ? 'success' : 'error');
+                document.getElementById('settings-dev-path').textContent = data.dev_path ? '✓ Found' : '✗ Not found';
+                document.getElementById('settings-dev-path').className = 'value ' + (data.dev_path ? 'success' : 'error');
+                document.getElementById('settings-wow-path-full').textContent = data.wow_root || 'Not configured';
+                
+                // Flavors
+                const flavors = data.flavors || [];
+                document.getElementById('settings-flavors').innerHTML = flavors.length > 0 
+                    ? flavors.map(f => `<span class="flavor-badge ${f.exists ? 'active' : 'inactive'}">${f.exists ? '✓' : '✗'} ${f.name}</span>`).join('')
+                    : '<span class="flavor-badge inactive">No clients detected</span>';
+                
+                // Data directory
+                document.getElementById('settings-data-dir').textContent = data.data_dir || '~/.mechanic';
+            }
+            
+            // Get tool status
+            const toolResult = await executeCommand('tools.status', {});
+            
+            if (toolResult.success && toolResult.data) {
+                // Tools are returned as an array, convert to lookup by name
+                const toolsArray = toolResult.data.tools || [];
+                const toolsByName = {};
+                toolsArray.forEach(t => { toolsByName[t.name] = t; });
+                
+                const updateTool = (id, tool) => {
+                    const el = document.getElementById(id);
+                    if (tool?.installed) {
+                        el.textContent = tool.version || '✓ Found';
+                        el.className = 'value success';
+                    } else {
+                        el.textContent = '✗ Not found';
+                        el.className = 'value error';
+                    }
+                };
+                
+                updateTool('settings-luacheck', toolsByName.luacheck);
+                updateTool('settings-stylua', toolsByName.stylua);
+                updateTool('settings-lua', toolsByName.lua);
+                updateTool('settings-busted', toolsByName.busted);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // COMMAND HISTORY
+        // ═══════════════════════════════════════════════════════════════════════════
+        function addToHistory(cmd, result) {
+            if (!commandHistory[cmd]) commandHistory[cmd] = [];
+            commandHistory[cmd].push({
+                result,
+                timestamp: new Date().toISOString()
+            });
+            historyIndex[cmd] = commandHistory[cmd].length - 1;
+        }
+
+        function displayCurrentResult() {
+            if (!currentCommand) return;
+            
+            const history = commandHistory[currentCommand] || [];
+            const idx = historyIndex[currentCommand] ?? -1;
+            
+            if (history.length === 0 || idx < 0) {
+                cmdNoResult.style.display = 'block';
+                cmdResult.style.display = 'none';
+                cmdStatus.textContent = '—';
+                cmdTime.textContent = '—';
+                historyInfo.textContent = 'No runs';
+                btnPrev.disabled = true;
+                btnNext.disabled = true;
+                return;
+            }
+            
+            cmdNoResult.style.display = 'none';
+            cmdResult.style.display = 'block';
+            
+            const entry = history[idx];
+            const result = entry.result;
+            
+            // Status
+            cmdStatus.textContent = result.success ? '✓ Success' : '✗ Error';
+            cmdStatus.className = 'result-status ' + (result.success ? 'success' : 'error');
+            cmdTime.textContent = new Date(entry.timestamp).toLocaleTimeString();
+            
+            // History nav
+            historyInfo.textContent = `${idx + 1} / ${history.length}`;
+            btnPrev.disabled = idx <= 0;
+            btnNext.disabled = idx >= history.length - 1;
+            
+            // Reasoning
+            document.getElementById('result-reasoning').textContent = result.reasoning || result.error?.message || '—';
+            
+            // Confidence
+            const pct = result.confidence != null ? Math.round(result.confidence * 100) : 0;
+            document.getElementById('confidence-fill').style.width = `${pct}%`;
+            document.getElementById('confidence-text').textContent = result.confidence != null ? `${pct}%` : '—';
+            
+            // Sources
+            const sourceList = document.getElementById('source-list');
+            if (result.sources && result.sources.length > 0) {
+                sourceList.innerHTML = result.sources.map(s => 
+                    `<li class="source-item"><span>📄</span> ${s.title || s.location || s.id}</li>`
+                ).join('');
+            } else {
+                sourceList.innerHTML = '<li class="source-item" style="color: var(--text-dim);">No sources</li>';
+            }
+            
+            // Data
+            document.getElementById('result-data').textContent = result.data 
+                ? JSON.stringify(result.data, null, 2) 
+                : (result.error ? JSON.stringify(result.error, null, 2) : '// No data');
+        }
+
+        // History navigation
+        btnPrev.onclick = () => {
+            if (!currentCommand || !commandHistory[currentCommand]) return;
+            historyIndex[currentCommand] = Math.max(0, (historyIndex[currentCommand] ?? 0) - 1);
+            displayCurrentResult();
+        };
+        
+        btnNext.onclick = () => {
+            if (!currentCommand || !commandHistory[currentCommand]) return;
+            const max = commandHistory[currentCommand].length - 1;
+            historyIndex[currentCommand] = Math.min(max, (historyIndex[currentCommand] ?? 0) + 1);
+            displayCurrentResult();
+        };
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // COMMAND EXECUTION
+        // ═══════════════════════════════════════════════════════════════════════════
+        async function executeCommand(command, input = {}) {
+            const finalInput = { addon: selectedAddon, ...input };
+            
+            try {
+                const res = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command, input: finalInput })
+                });
+                const result = await res.json();
+                
+                addToHistory(command, result);
+                consoleOutput.textContent = JSON.stringify(result, null, 2);
+                
+                // Update view if we're looking at this command
+                if (currentCommand === command) {
+                    displayCurrentResult();
+                }
+                
+                return result;
+            } catch (err) {
+                consoleOutput.textContent = `Error: ${err.message}`;
+                return { success: false, error: { message: err.message } };
+            }
+        }
+
+        // Run button
+        btnRunCmd.onclick = () => {
+            if (currentCommand) {
+                try {
+                    // Read current input from the console box to capture defaults/edits
+                    const input = JSON.parse(consoleInput.value.trim() || '{}');
+                    executeCommand(currentCommand, input);
+                } catch (e) {
+                    showToast('Input Error', 'Invalid JSON in console input', 'error');
+                }
+            }
+        };
+
+        // Clear history button
+        document.getElementById('btn-clear-history').onclick = () => {
+            if (currentCommand && confirm(`Clear all history for ${currentCommand}?`)) {
+                clearHistory(currentCommand);
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // EVENT HANDLERS
+        // ═══════════════════════════════════════════════════════════════════════════
+        
+        // Mechanic tab
+        mechanicTab.onclick = () => showView('mechanic');
+        
+        // Command buttons (navigation only) and view buttons
+        document.querySelectorAll('.cmd-btn').forEach(btn => {
+            if (btn.dataset.view) {
+                // View navigation button
+                btn.onclick = () => showView(btn.dataset.view);
+            } else if (btn.dataset.cmd) {
+                // Command navigation button
+                btn.onclick = () => navigateToCommand(btn.dataset.cmd);
+            }
+        });
+        
+        // Library Manager buttons
+        document.getElementById('btn-lib-refresh').onclick = () => refreshLibraries();
+        document.getElementById('btn-lib-sync').onclick = () => syncLibraries();
+        
+        // Settings buttons
+        document.getElementById('btn-settings-refresh').onclick = () => refreshSettings();
+
+        // Addon selector
+        addonSelect.onchange = () => {
+            selectedAddon = addonSelect.value;
+            localStorage.setItem('mechanic.selectedAddon', selectedAddon);
+            updateAddonStatus();
+        };
+
+        // Header buttons
+        document.getElementById('btn-create-nav').onclick = () => navigateToCommand('addon.create');
+        document.getElementById('btn-reload').onclick = () => executeCommand('reload.trigger', { key: '9' });
+        document.getElementById('btn-stop').onclick = () => {
+            if (confirm('Stop the Mechanic server?')) executeCommand('server.shutdown');
+        };
+        document.getElementById('btn-settings').onclick = () => showView('settings');
+        
+        // Get Started overlay buttons
+        document.getElementById('btn-get-started').onclick = () => document.getElementById('btn-add-addon').click();
+        
+        // Add Addon Button
+        document.getElementById('btn-add-addon').onclick = async () => {
+             try {
+                const res = await executeCommand('system.pick_file', {
+                    title: 'Select Addon TOC File',
+                    filter: 'WoW Addon TOC (*.toc)|*.toc'
+                });
+                
+                if (res.success && res.data) {
+                    const fullPath = res.data.directory;
+                    const tocName = res.data.filename; // e.g., "MyAddon.toc"
+                    const addonName = tocName.replace('.toc', '');
+                    
+                    // Save to known addons
+                    knownAddons[addonName] = fullPath;
+                    localStorage.setItem('mechanic.addons', JSON.stringify(knownAddons));
+                    
+                    // Select it
+                    selectedAddon = addonName;
+                    localStorage.setItem('mechanic.selectedAddon', addonName);
+                    
+                    updateAddonList();
+                    showToast('Addon Added', `Registered ${addonName}`, 'success');
+                }
+             } catch (e) {
+                 showToast('Error', 'Failed to pick file', 'error');
+             }
+        };
+
+        // Console
+        document.getElementById('btn-execute').onclick = async () => {
+            const cmd = consoleCmd.value.trim();
+            try {
+                const input = JSON.parse(consoleInput.value.trim() || '{}');
+                await executeCommand(cmd, input);
+            } catch (err) {
+                consoleOutput.textContent = `Parse error: ${err.message}`;
+            }
+        };
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            switch(e.key.toLowerCase()) {
+                case 'r': executeCommand('reload.trigger', { key: '9' }); break;
+                case 'v': navigateToCommand('addon.validate'); break;
+                case ':': e.preventDefault(); consoleCmd.focus(); break;
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // TEST RESULTS
+        // ═══════════════════════════════════════════════════════════════════════════
+        function updateTestResults(msg) {
+            const tests = msg.data?.tests || [];
+            const passed = tests.filter(t => t.passed).length;
+            const failed = tests.length - passed;
+            
+            document.getElementById('reload-time').textContent = new Date().toLocaleTimeString();
+            document.getElementById('reload-addon').textContent = msg.addon;
+            
+            if (failed > 0) {
+                testHero.className = 'test-hero failing';
+                testHero.innerHTML = `<div class="test-hero-status">❌</div><div class="test-hero-count">${failed} test(s) failing</div>`;
+            } else if (tests.length > 0) {
+                testHero.className = 'test-hero';
+                testHero.innerHTML = `<div class="test-hero-status">✅</div><div class="test-hero-count">All ${passed} tests passing</div>`;
+            }
+            
+            if (tests.length > 0) {
+                testList.innerHTML = tests.map(t => `
+                    <li class="test-item">
+                        <span>${t.name}</span>
+                        <span style="color: ${t.passed ? 'var(--success)' : 'var(--error)'}">${t.passed ? '✓' : '✗'}</span>
+                    </li>
+                `).join('');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════════════════
+        async function init() {
+            // Uptime
+            setInterval(() => {
+                const seconds = Math.floor((Date.now() - startTime) / 1000);
+                const mins = Math.floor(seconds / 60);
+                uptimeEl.textContent = mins > 0 ? `${mins}m ${seconds % 60}s` : `${seconds}s`;
+            }, 1000);
+            
+            // Load accounts
+            const result = await executeCommand('sv.discover', {});
+            if (result.success && result.data?.paths) {
+                const accounts = result.data.paths.map(path => {
+                    const parts = path.split(/[/\\]/);
+                    const flavor = parts.find(p => p.startsWith('_') && p.endsWith('_')) || '';
+                    const account = parts[parts.length - 2] || 'Unknown';
+                    return `${account} (${flavor.replace(/_/g, '')})`;
+                });
+                accountsInfo.textContent = `Accounts: ${accounts.join(', ')}`;
+            }
+            
+            // Check tool status
+            try {
+                const toolResult = await executeCommand('tools.status', {});
+                if (toolResult.success && toolResult.data?.required_missing > 0) {
+                    document.getElementById('tool-banner').style.display = 'flex';
+                }
+            } catch (e) {}
+            
+            // Load persisted command history
+            await loadHistory();
+            
+            // Restore persistent UI state
+            const lastView = localStorage.getItem('mechanic.activeView') || 'mechanic';
+            const lastCommand = localStorage.getItem('mechanic.activeCommand');
+            const lastAddon = localStorage.getItem('mechanic.selectedAddon');
+
+            if (lastAddon) {
+                selectedAddon = lastAddon;
+            }
+            updateAddonList();
+
+            if (lastView === 'command' && lastCommand) {
+                navigateToCommand(lastCommand);
+            } else if (['mechanic', 'libraries', 'settings'].includes(lastView)) {
+                showView(lastView);
+            } else {
+                showView('mechanic');
+            }
+        }
+        
+        // Load history from database
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history?limit=100');
+                const data = await res.json();
+                if (data.history) {
+                    // Group by command
+                    for (const entry of data.history) {
+                        const cmd = entry.command;
+                        if (!commandHistory[cmd]) commandHistory[cmd] = [];
+                        
+                        // Check for duplicates before adding
+                        const entryTime = new Date(entry.timestamp).getTime();
+                        const isDuplicate = commandHistory[cmd].some(existing => 
+                            new Date(existing.timestamp).getTime() === entryTime
+                        );
+                        
+                        if (!isDuplicate) {
+                            commandHistory[cmd].push({
+                                result: entry.result,
+                                timestamp: entry.timestamp
+                            });
+                        }
+                    }
+                    // Set index to latest for each command
+                    for (const cmd in commandHistory) {
+                        historyIndex[cmd] = commandHistory[cmd].length - 1;
+                    }
+                }
+            } catch (e) {
+                console.log('Failed to load history:', e);
+            }
+        }
+        
+        // Clear history
+        async function clearHistory(command = null) {
+            try {
+                await fetch('/api/history/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command })
+                });
+                if (command) {
+                    commandHistory[command] = [];
+                    historyIndex[command] = -1;
+                } else {
+                    for (const cmd in commandHistory) {
+                        commandHistory[cmd] = [];
+                        historyIndex[cmd] = -1;
+                    }
+                }
+                displayCurrentResult();
+                showToast('History cleared', command || 'All commands', 'success');
+            } catch (e) {
+                console.log('Failed to clear history:', e);
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

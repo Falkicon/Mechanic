@@ -1,0 +1,24 @@
+{
+  "$schema": "https://mechanic.dev/schemas/libs.json",
+  "description": "Library configuration for !Mechanic addon",
+  "mode": "include",
+  "libraries": {
+    "LibStub": "latest",
+    "CallbackHandler-1.0": "latest",
+    "AceAddon-3.0": "latest",
+    "AceDB-3.0": "latest",
+    "AceEvent-3.0": "latest",
+    "AceConsole-3.0": "latest",
+    "AceConfig-3.0": "latest",
+    "AceGUI-3.0": "latest",
+    "AceLocale-3.0": "latest",
+    "LibDataBroker-1.1": "latest",
+    "LibDBIcon-1.0": "latest",
+    "FenUI": "latest",
+    "MechanicLib": "local"
+  },
+  "notes": {
+    "MechanicLib": "Internal library - do not sync from external source",
+    "FenUI": "Custom UI framework - sync from FenUI repo"
+  }
+}

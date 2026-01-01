@@ -1,0 +1,228 @@
+# Mechanic Desktop
+
+Local companion tool for World of Warcraft addon development, built on the Agent-First Development (AFD) architecture.
+
+## Features
+
+- **Real-time Dashboard** - WebSocket-powered UI showing addon health, test results, and development metrics
+- **SavedVariables Watcher** - Monitors your WTF folder and broadcasts changes instantly
+- **AFD Command Registry** - 21+ commands for linting, testing, formatting, releasing, and more
+- **Hot Reload** - Trigger in-game `/reload` from the command line or dashboard
+- **Cross-Platform** - Windows (full support) and macOS (partial support)
+
+## Installation
+
+### Prerequisites
+
+- Python 3.10 or higher
+- World of Warcraft installed
+- Git (for version control commands)
+
+### Quick Start
+
+```bash
+# Clone or download this repository
+cd !Mechanic/desktop
+
+# Install in development mode
+pip install -e .
+
+# Verify installation
+mech --help
+
+# Download development tools (luacheck, stylua)
+mech setup
+
+# Start the dashboard
+mech dashboard
+```
+
+### Install with AFD Support
+
+If you're using the [AFD framework](https://github.com/Falkicon/afd) for advanced command features:
+
+```bash
+pip install -e ".[afd]"
+```
+
+## Configuration
+
+Mechanic Desktop auto-discovers your WoW installation. If auto-discovery fails, configure paths manually:
+
+### Option 1: Environment Variables
+
+```bash
+# Windows PowerShell
+$env:MECHANIC_WOW_ROOT = "C:\Program Files (x86)\World of Warcraft"
+$env:MECHANIC_DEV_PATH = "C:\Program Files (x86)\World of Warcraft\_dev_"
+
+# macOS/Linux
+export MECHANIC_WOW_ROOT="/Applications/World of Warcraft"
+export MECHANIC_DEV_PATH="$MECHANIC_WOW_ROOT/_dev_"
+```
+
+### Option 2: Config File
+
+Create `~/.mechanic/config.json`:
+
+```json
+{
+  "wow_root": "C:/Program Files (x86)/World of Warcraft",
+  "dev_path": "C:/Program Files (x86)/World of Warcraft/_dev_",
+  "flavors": ["_retail_", "_beta_", "_ptr_"],
+  "addon_search_paths": []
+}
+```
+
+## Usage
+
+### Dashboard
+
+```bash
+# Start dashboard (opens browser automatically)
+mech dashboard
+
+# Specify SavedVariables path manually
+mech dashboard -w "C:\Path\To\WTF\Account\NAME\SavedVariables"
+
+# Enable hot reload (sends key to WoW on file changes)
+mech dashboard --auto-reload --src "C:\Path\To\Addon"
+```
+
+### Commands
+
+```bash
+# Validate addon TOC file
+mech call addon.validate -i '{"addon": "MyAddon"}'
+
+# Lint with Luacheck
+mech call addon.lint -i '{"addon": "MyAddon"}'
+
+# Format with StyLua
+mech call addon.format -i '{"addon": "MyAddon"}'
+
+# Run tests
+mech call addon.test -i '{"addon": "MyAddon"}'
+
+# Scan for deprecated APIs
+mech call addon.deprecations -i '{"addon": "MyAddon"}'
+
+# Full release workflow
+mech release MyAddon 1.2.0 "Added new feature"
+```
+
+### Tool Setup
+
+```bash
+# Download and install required tools
+mech setup
+
+# Verify tool installation
+mech setup --status
+
+# Re-download tools
+mech setup --force
+```
+
+### Hot Reload
+
+```bash
+# Trigger /reload in WoW
+mech reload
+
+# Custom key sequence
+mech reload --key "9"
+```
+
+## Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `addon.validate` | Validate TOC file structure |
+| `addon.lint` | Run Luacheck linter |
+| `addon.format` | Run StyLua formatter |
+| `addon.test` | Run Busted unit tests |
+| `addon.deprecations` | Scan for deprecated APIs |
+| `addon.create` | Create addon from template |
+| `addon.sync` | Create junction links to WoW clients |
+| `version.bump` | Update version in TOC |
+| `changelog.add` | Add changelog entry |
+| `git.commit` | Stage and commit changes |
+| `git.tag` | Create version tag |
+| `release.all` | Full release workflow |
+| `locale.validate` | Check locale coverage |
+| `locale.extract` | Extract localizable strings |
+| `atlas.search` | Search Blizzard UI Atlas |
+| `libs.check` | Check library sync status |
+| `sv.parse` | Parse SavedVariables file |
+| `sv.discover` | Find SavedVariables folders |
+| `reload.trigger` | Trigger in-game reload |
+| `tools.status` | Check tool installation |
+| `server.shutdown` | Stop the server |
+
+## Project Structure
+
+```
+desktop/
+├── bin/                    # Development tools (luacheck, stylua)
+│   └── checksums.json      # Tool download manifest
+├── dashboard/
+│   └── index.html          # Web dashboard UI
+├── src/mechanic/
+│   ├── cli.py              # CLI entry point
+│   ├── config.py           # Centralized configuration
+│   ├── server.py           # FastAPI server
+│   ├── storage.py          # SQLite history
+│   ├── watcher.py          # File watcher
+│   ├── utils.py            # Utilities
+│   ├── setup.py            # Tool installer
+│   └── commands/           # AFD command modules
+│       ├── core.py         # Core commands
+│       ├── development.py  # Dev tools
+│       ├── environment.py  # Addon management
+│       ├── locale.py       # Localization
+│       ├── release.py      # Release pipeline
+│       └── tools.py        # Tool management
+├── tests/                  # Test suite
+├── pyproject.toml          # Package configuration
+└── README.md
+```
+
+## Development
+
+### Running Tests
+
+```bash
+pip install -e ".[dev]"
+pytest tests/
+```
+
+### Adding Commands
+
+1. Create or edit a module in `src/mechanic/commands/`
+2. Define Pydantic schemas for input/output
+3. Register with `@server.command()` decorator
+4. Import and register in `commands/core.py`
+
+## Troubleshooting
+
+### "WoW installation not found"
+
+Set the `MECHANIC_WOW_ROOT` environment variable or create a config file.
+
+### "Luacheck/StyLua not found"
+
+Run `mech setup` to download the required tools.
+
+### Dashboard won't connect
+
+Ensure port 3100 is available and no firewall is blocking it.
+
+### Hot reload not working
+
+- Ensure WoW is running and not minimized
+- On macOS, grant accessibility permissions to Terminal/iTerm
+
+## License
+
+GPL-3.0

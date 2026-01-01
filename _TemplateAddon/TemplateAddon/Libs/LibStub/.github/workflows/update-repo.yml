@@ -1,0 +1,67 @@
+name: Update SVN Repository
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  update-repo:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Git repository
+      uses: actions/checkout@v4
+
+    - name: Install Subversion and GitHub CLI
+      run: |
+        sudo apt-get install -y subversion
+    
+    - name: Check tools version
+      run: |
+        svn --version
+        jq --version
+        gh --version
+
+    - name: Checkout SVN repository
+      run: svn checkout https://repos.curseforge.com/wow/libstub/trunk .
+
+    - name: Rename changelog
+      run: |
+        if compgen -G "Changelog*" > /dev/null; then
+          mv -vf Changelog* CHANGELOG.txt
+        else
+          echo "No changelog file to rename"
+        fi
+
+    - name: Check for changes
+      id: changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changes=true" >> $GITHUB_ENV
+        else
+          echo "changes=false" >> $GITHUB_ENV
+        fi
+
+    - name: Create and push changes to new branch
+      if: env.changes == 'true'
+      run: |
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@users.noreply.github.com'
+        BRANCH_NAME="svn-update-$(date +%Y%m%d%H%M%S)"
+        git checkout -b "$BRANCH_NAME"
+        git add .
+        git commit -m "Automated SVN update"
+        git push -u origin "$BRANCH_NAME"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create pull request
+      if: env.changes == 'true'
+      run: |
+        gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+        gh pr create \
+          --title "Automated SVN update" \
+          --body "This is an automated pull request to update the repository from SVN." \
+          --head "$BRANCH_NAME" \
+          --base main
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

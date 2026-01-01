@@ -1,106 +1,196 @@
-# !Mechanic
+# Mechanic - WoW Addon Development Hub
 
-In-game development hub for World of Warcraft addon developers. Centralizes debugging, testing, error capture, and performance monitoring with universal copy support.
+[![Status](https://img.shields.io/badge/Phase%2010-Complete-brightgreen)]()
+[![AFD](https://img.shields.io/badge/Architecture-AFD-blue)]()
+[![Commands](https://img.shields.io/badge/Commands-21-purple)]()
+[![Tests](https://img.shields.io/badge/Tests-9%20Passing-green)]()
 
-![WoW Version](https://img.shields.io/badge/WoW-12.0%2B-blue)
-![Interface](https://img.shields.io/badge/Interface-120001-green)
-[![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
-[![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
+**Mechanic** is a comprehensive development hub for World of Warcraft addons, combining an in-game inspection tool with a modern desktop companion that provides real-time feedback, development automation, and quality tooling.
+
+---
+
+## Quick Start
+
+```bash
+# Navigate to desktop folder
+cd "C:\Program Files (x86)\World of Warcraft\_dev_\!Mechanic\desktop"
+
+# Install (first time only)
+pip install -e .
+
+# Start the dashboard
+mech
+```
+
+This opens the Mechanic Dashboard at [http://localhost:3100](http://localhost:3100) with:
+- Live reload notifications from WoW
+- Test results and performance metrics
+- Command console for direct AFD command execution
+
+---
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Console** | Aggregated debug output from all registered addons with filters, search, and dedup. Includes **semantic color highlighting** (e.g., Purple for Midnight secret values). |
-| **Errors** | BugGrabber integration with pause/resume - finally copy errors without them scrolling away. |
-| **Tests** | Unified view of test results across all addons with **structured diagnostic details** for granular check reporting. |
-| **Performance** | Memory/CPU metrics with extended diagnostics (FPS, latency, GC). |
-| **Universal Copy** | Every piece of data is copyable with optional environment context. Console exports automatically strip color codes for clean text. |
+### In-Game (!Mechanic Addon)
+- **Properties Inspector**: Examine frame hierarchies and widget properties
+- **Console**: Capture and filter debug logs and errors
+- **Errors**: Advanced error capture with stack traces and suppression
+- **Test Runner**: Execute and report Lua test results
+- **Performance**: Monitor addon memory and CPU usage
+- **Tools**: Utility collection (Reload, GC, etc.)
+- **API Reference**: Browsable library of WoW API events and functions
 
-## Why Mechanic?
+### Desktop (Mechanic CLI + Dashboard)
+- **Live Reload Detection**: Watch SavedVariables for changes, display instantly
+- **21 AFD Commands**: Validate, lint, format, test, release, and more
+- **WebSocket Streaming**: Real-time data to dashboard
+- **Release Workflow**: One-command version bump, changelog, commit, tag
+- **Persistence**: Command history and UI state saved across restarts
+- **Graceful Shutdown**: Reliable process management via `mech stop`
 
-- **Pause Error Capture**: BugSack's biggest UX problem - errors scroll by too fast to copy. Mechanic lets you pause.
-- **Environment Context**: Copies include WoW version, client type (Retail/PTR/Beta), character info - perfect for AI agents.
-- **Unified Debug Hub**: Stop switching between addons to check logs. Everything in one place.
-- **Developer Mode Detection**: Replaces DevMarker.lua pattern across all addons.
-
-## Installation
-
-1. Download from [CurseForge](https://curseforge.com/wow/addons/mechanic) or [GitHub](https://github.com/Falkicon/Mechanic)
-2. Extract to `Interface/AddOns/`
-3. Optionally install `!BugGrabber` for error capture
-
-## Usage
-
-| Command | Action |
-|---------|--------|
-| `/mech` | Toggle main panel |
-| `/mech console` | Open Console tab |
-| `/mech errors` | Open Errors tab |
-| `/mech tests` | Open Tests tab |
-| `/mech perf` | Open Performance tab |
-| `/mech reload` | Reload UI |
-| `/mech gc` | Force garbage collection |
-
-## For Addon Developers
-
-### Integration via MechanicLib
-
-MechanicLib is a lightweight library (~150 lines) that lets your addon integrate with Mechanic. It supports rich test results and semantic logging:
-
-```lua
-local MechanicLib = LibStub("MechanicLib-1.0", true)
-
--- Registration with rich test results (Phase 5)
-MechanicLib:Register("MyAddon", {
-    tests = {
-        getResult = function(id)
-            return {
-                passed = true,
-                message = "API Check Complete",
-                details = {
-                    { label = "C_Spell.GetInfo", value = "Success", status = "pass" },
-                    { label = "Secret Value", value = "Detected", status = "warn" },
-                }
-            }
-        end
-    }
-})
-
--- Logging with semantic categories
-MechanicLib:Log("MyAddon", "Midnight secret detected", MechanicLib.Categories.SECRET)
-```
-
-### Copy Output Format
-
-When users copy from Mechanic, they get clean, markdown-friendly text:
-
-```
-=== Mechanic Console Export ===
-WoW: 12.0.0 (58234) | Client: Beta | Interface: 120001
-Character: Fenris-Stormrage (Druid, Balance)
 ---
-[MyAddon] [Trigger] Aura "Player Health" activated
-[MyAddon] [Region] Icon frame shown
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `mech` | Start dashboard (default) |
+| `mech dashboard` | Start with custom port |
+| `mech reload` | Trigger in-game /reload |
+| `mech stop` | Stop running server |
+| `mech call <cmd> -i <json>` | Execute any AFD command |
+| `mech release <addon> <ver> <msg>` | Full release workflow |
+
+### Examples
+
+```bash
+# Validate an addon
+mech call addon.validate -i '{"addon": "Weekly"}'
+
+# Scan for deprecated APIs
+mech call addon.deprecations -i '{"addon": "Weekly"}'
+
+# Check locale coverage
+mech call locale.validate -i '{"addon": "Weekly"}'
+
+# Release a new version
+mech release Weekly 1.2.0 "Added new feature"
 ```
 
-Perfect for pasting into bug reports or AI assistants.
+---
 
-## Optional Dependencies
+## AFD Commands (21 Total)
 
-| Addon | Purpose |
-|-------|---------|
-| `!BugGrabber` | Error capture for the Errors tab |
+### Development
+- `addon.validate` - Validate .toc file structure
+- `addon.lint` - Run Luacheck linter
+- `addon.format` - Run StyLua formatter
+- `addon.test` - Run Busted unit tests
+- `addon.deprecations` - Scan for deprecated APIs
 
-## Documentation
+### Release
+- `version.bump` - Update version in .toc
+- `changelog.add` - Add CHANGELOG.md entry
+- `git.commit` - Stage and commit changes
+- `git.tag` - Create annotated git tag
 
-- **[AGENTS.md](AGENTS.md)** - Technical reference for contributors
-- **[PLAN/MASTER_PLAN.md](PLAN/MASTER_PLAN.md)** - Complete specification
+### Localization
+- `locale.validate` - Check locale coverage vs baseline
+- `locale.extract` - Extract localizable strings
+- `atlas.search` - Search Blizzard UI icons
+
+### Environment
+- `addon.create` - Create addon from template
+- `addon.sync` - Create junction links to WoW clients
+- `libs.check` - Check library sync status
+
+### Core
+- `sv.parse` - Parse SavedVariables file
+- `sv.discover` - Discover WoW accounts
+- `reload.trigger` - Trigger in-game reload
+- `dashboard.metrics` - Get latest metrics
+- `server.shutdown` - Gracefully stop server (New in 0.2.1)
+
+---
+
+## Project Structure
+
+```
+!Mechanic/
+├── !Mechanic/              ← WoW addon (junction target)
+│   ├── !Mechanic.toc
+│   ├── Core.lua
+│   └── UI/
+├── desktop/                ← Mechanic Desktop
+│   ├── pyproject.toml
+│   ├── dashboard/          ← Web UI
+│   ├── tests/              ← 9 pytest tests
+│   └── src/mechanic/
+│       ├── cli.py
+│       ├── server.py
+│       └── commands/       ← 5 AFD modules
+├── PLAN/                   ← Phase specifications
+├── AGENTS.md               ← Agent development guide
+└── README.md               ← This file
+```
+
+---
+
+## Development
+
+### Prerequisites
+### Prerequisites
+- Python 3.10+
+- WoW client with SavedVariables access
+- **Development Tools**:
+  - `luarocks` (for Busted)
+  - `luacheck` (Auto-installed by `mech setup`)
+  - `stylua` (Auto-installed by `mech setup`)
+
+### Installing Test Dependencies (Busted)
+The `addon.test` command requires Busted (Lua Unit Testing framework). We provide a script to automate this setup, as it requires compiling C modules.
+
+**Prerequisites:**
+1.  **LuaRocks**: Installed and in PATH ([Download](https://luarocks.org/)).
+2.  **Visual Studio Build Tools**: "Desktop development with C++" workload installed.
+
+**One-Click Setup:**
+Run the setup script to automatically find your compiler, link local libraries, and install Busted:
+```powershell
+.\desktop\scripts\setup_dev_env.bat
+```
+
+Alternatively, `mech call addon.test` will provide guidance if dependencies are missing.
+
+### Running Tests
+
+```bash
+cd desktop
+pytest -v
+```
+
+### Adding Commands
+
+1. Add command to appropriate module in `desktop/src/mechanic/commands/`
+2. Add tests in `desktop/tests/`
+3. Update AGENTS.md command reference
+
+---
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Architecture | [AFD](https://github.com/Falkicon/Agent-First-Development) |
+| CLI | Click |
+| Server | FastAPI + Uvicorn |
+| Real-time | WebSockets |
+| Storage | SQLite |
+| Dashboard | Vanilla HTML/CSS/JS |
+| Testing | Pytest + afd[testing] |
+
+---
 
 ## License
 
-GPL-3.0 License - see [LICENSE](LICENSE) for details.
-
-## Author
-
-Fen (Falkicon)
+MIT License - See LICENSE file for details.

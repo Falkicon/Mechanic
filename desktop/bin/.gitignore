@@ -1,0 +1,6 @@
+# Ignore downloaded binaries
+*.exe
+*.dll
+stylua
+luacheck
+lua

@@ -19,15 +19,3 @@ tmp/
 # Cursor IDE
 .cursor/
 .cursorignore
-
-# Python (desktop/)
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-*.egg
-.eggs/
-dist/
-build/
-desktop/data/
-

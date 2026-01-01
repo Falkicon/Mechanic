@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "updated": "2024-12-31",
+    "platforms": ["windows", "darwin"],
+    "note": "Run 'mech setup' to download required tools"
+  },
+  "tools": {
+    "lua": {
+      "version": "5.1.5",
+      "required": false,
+      "windows": {
+        "url": "https://sourceforge.net/projects/luabinaries/files/5.1.5/Tools%20Executables/lua-5.1.5_Win64_bin.zip/download",
+        "sha256": "a45f0f8376d3059a8bc79a4d6d07536cc1d9dec429852cfbc1f899ee96d6cd88",
+        "filename": "lua.exe",
+        "archive_path": "lua.exe",
+        "extra_files": ["lua5.1.dll"]
+      },
+      "darwin": {
+        "install_cmd": "brew install lua@5.1",
+        "verify_cmd": "lua -v"
+      }
+    },
+    "luacheck": {
+      "version": "0.23.0",
+      "required": true,
+      "windows": {
+        "url": "https://github.com/mpeterv/luacheck/releases/download/0.23.0/luacheck.exe",
+        "sha256": "f1395a3fac181094a3df500cf81698d1256638fab60f6e02994e9b0b1905fcdc",
+        "filename": "luacheck.exe",
+        "archive_path": null
+      },
+      "darwin": {
+        "install_cmd": "luarocks install luacheck",
+        "verify_cmd": "luacheck --version"
+      }
+    },
+    "stylua": {
+      "version": "2.3.1",
+      "required": true,
+      "windows": {
+        "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.3.1/stylua-windows-x86_64.zip",
+        "sha256": "48f8975687078730b2178116f3ea56f4eb096add6a185f9eeb4d1f06089c888b",
+        "filename": "stylua.exe",
+        "archive_path": "stylua.exe"
+      },
+      "darwin": {
+        "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.3.1/stylua-macos-x86_64.zip",
+        "sha256": "placeholder",
+        "filename": "stylua",
+        "archive_path": "stylua"
+      }
+    },
+    "busted": {
+      "version": "latest",
+      "required": false,
+      "windows": {
+        "url": null,
+        "filename": "busted.bat",
+        "message": "Manual install required: luarocks install busted"
+      },
+      "darwin": {
+        "install_cmd": "luarocks install busted",
+        "verify_cmd": "busted --version"
+      }
+    }
+  }
+}
