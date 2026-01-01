@@ -8,7 +8,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
-![AFD](https://img.shields.io/badge/Architecture-AFD-blueviolet)
+[![AFD](https://img.shields.io/badge/Architecture-AFD-blueviolet)](https://github.com/Falkicon/afd)
 ![Commands](https://img.shields.io/badge/Commands-21-purple)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 
