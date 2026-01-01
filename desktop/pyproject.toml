@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["wow", "warcraft", "addon", "development", "afd"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -43,6 +43,7 @@ afd = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "ruff>=0.4",
 ]
 
 [project.urls]

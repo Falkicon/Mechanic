@@ -49,3 +49,28 @@ async def test_shutdown_command():
     result = await server.execute("server.shutdown", {})
     assert_success(result)
     assert result.data.status == "shutting_down"
+
+@pytest.mark.asyncio
+async def test_addon_output_command():
+    """Test addon.output returns structured data (AFD compliance)."""
+    server = get_server()
+    result = await server.execute("addon.output", {})
+    
+    # Should always succeed (even with no data)
+    data = assert_success(result)
+    
+    # Verify output schema
+    assert hasattr(data, 'output')
+    assert hasattr(data, 'error_count')
+    assert hasattr(data, 'test_count')
+    assert hasattr(data, 'console_count')
+    
+    # Verify AFD fields
+    assert_has_reasoning(result)
+    assert_has_sources(result)
+    
+    # Output should be markdown formatted
+    assert "## Addon Output" in data.output
+    assert "### Errors" in data.output
+    assert "### Tests" in data.output
+    assert "### Console" in data.output

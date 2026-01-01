@@ -49,7 +49,7 @@ Technical reference for AI agents working on the Mechanic project.
 ## ⚠️ CRITICAL: AFD Development Standards
 
 > **All new features MUST follow Agent-First Development (AFD) principles.**
-> Reference: https://github.com/Falkicon/Agent-First-Development
+> Reference: https://github.com/Falkicon/afd
 
 ### Core Principles
 
@@ -137,6 +137,25 @@ async def my_command(input: MyInput, context: Any = None) -> CommandResult[MyOut
 | `addon.sync` | `addon`, `flavors?` | `AddonSyncResult` | Create junction links |
 | `libs.check` | `addon`, `mode` | `LibsCheckResult` | Check library status |
 
+### Output Commands (output.py)
+
+| Command | Input | Output | Description |
+|---------|-------|--------|-------------|
+| `addon.output` | `agent_mode?` | `AddonOutputResult` | Get all addon data (errors, tests, console) as markdown |
+
+> **Agent Mode**: Use `agent_mode: true` or CLI flag `--agent` for smart compression:
+> - Groups errors by addon, deduplicates by file:line
+> - Shows top 5 errors per addon with occurrence counts
+> - **~70% smaller output** while preserving understanding
+
+### Documentation Commands (docs.py)
+
+| Command | Input | Output | Description |
+|---------|-------|--------|-------------|
+| `docs.generate` | `output_path?`, `format?` | `DocsGenerateOutput` | Auto-generate CLI reference from registered commands |
+
+> **Self-Documenting**: Run `mech docs` to regenerate `docs/cli-reference.md` whenever commands change.
+
 ---
 
 ## CLI Commands
@@ -148,7 +167,17 @@ async def my_command(input: MyInput, context: Any = None) -> CommandResult[MyOut
 | `mech reload` | Trigger in-game reload |
 | `mech stop` | Gracefully stop running server via API |
 | `mech call <cmd>` | Execute any AFD command directly |
+| `mech --agent call <cmd>` | Execute with agent-optimized output |
+| `mech docs` | **Convenience**: generates docs/cli-reference.md from command registry |
 | `mech release <addon> <ver> <msg>` | **Convenience**: chains version.bump → changelog.add → git.commit → git.tag |
+
+### Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output raw JSON (for parsing) |
+| `--quiet` | Suppress non-essential output |
+| `--agent` | Smart compression for AI agents (groups, dedupes, limits) |
 
 ---
 

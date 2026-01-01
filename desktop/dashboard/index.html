@@ -48,7 +48,13 @@
         .header-left { display: flex; align-items: center; gap: 1rem; }
         .logo { font-size: 1rem; font-weight: 700; color: var(--primary); letter-spacing: -0.025em; }
         .logo span { color: var(--text-dim); font-weight: 400; font-size: 0.7rem; margin-left: 0.375rem; }
-        .header-actions { display: flex; gap: 0.75rem; align-items: center; }
+        .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .header-spacer { width: 1px; height: 20px; background: var(--border); margin: 0 0.5rem; }
+        .addon-output-btn { font-size: 0.75rem; }
+        .addon-output-btn.active { background: var(--primary-glow); border-color: var(--primary); color: var(--primary); }
+        .btn-icon-only { padding: 0.375rem 0.5rem; min-width: 36px; justify-content: center; }
+        .btn-stop { color: var(--text); background-color: var(--error); border-color: rgba(255, 255, 255, 1); }
+        .btn-stop:hover { background: var(--error-glow); }
         
         /* Layout */
         .app-container { display: flex; flex: 1; overflow: hidden; }
@@ -81,6 +87,16 @@
         .btn-primary:hover { background: #7dd3fc; }
         .btn-run { background: var(--success); color: var(--bg); font-size: 0.8rem; padding: 0.5rem 1rem; }
         .btn-run:hover { background: #86efac; }
+        .btn-run.loading { 
+            background: var(--primary); 
+            cursor: wait; 
+            pointer-events: none;
+            animation: pulse-loading 1.2s ease-in-out infinite;
+        }
+        @keyframes pulse-loading {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
         .btn-danger { background: transparent; color: var(--error); border: 1px solid var(--error); }
         .btn-danger:hover { background: var(--error-glow); }
         .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--border); }
@@ -114,12 +130,6 @@
         .get-started-text { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; max-width: 400px; line-height: 1.6; }
         .get-started-btn { background: var(--primary); color: var(--bg); padding: 0.75rem 1.5rem; border-radius: 8px; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
         .get-started-btn:hover { background: #7dd3fc; }
-
-        /* Mechanic Tab */
-        .mechanic-tab { padding: 0.625rem 0.75rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); cursor: pointer; transition: all 0.15s; }
-        .mechanic-tab:hover { background: var(--card); }
-        .mechanic-tab.active { background: var(--primary-glow); border-left: 3px solid var(--primary); }
-        .mechanic-tab-title { font-size: 0.7rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
 
         /* Sidebar Sections */
         .sidebar-section { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
@@ -265,6 +275,81 @@
         .flavor-badge.active { background: var(--success-glow); border-color: var(--success); color: var(--success); }
         .flavor-badge.inactive { color: var(--text-dim); }
         .path-display { font-family: var(--mono); font-size: 0.7rem; color: var(--text-muted); padding: 0.5rem; background: var(--bg); border-radius: 4px; margin-top: 0.5rem; word-break: break-all; }
+
+        /* Addon Management in Settings */
+        .settings-card-full { grid-column: 1 / -1; }
+        .addon-list { max-height: 200px; overflow-y: auto; margin-bottom: 0.75rem; }
+        .addon-list-empty { color: var(--text-dim); font-size: 0.8rem; padding: 1rem; text-align: center; }
+        .addon-list-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+        .addon-list-item:last-child { border-bottom: none; }
+        .addon-list-item:hover { background: var(--bg-tertiary); }
+        .addon-list-item .addon-name { font-weight: 600; color: var(--text); }
+        .addon-list-item .addon-path { font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); margin-top: 0.125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+        .addon-list-item .btn-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; }
+        .addon-list-item .btn-remove:hover { background: var(--error-glow); color: var(--error); }
+        .addon-list-actions { display: flex; gap: 0.5rem; }
+
+        /* Addon Output Pane */
+        .output-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+        .output-header-title { font-size: 0.9rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+        .output-header-meta { font-size: 0.7rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+        
+        .output-stats { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+        .output-stat { flex: 1; background: var(--card); border-radius: 6px; padding: 0.625rem 0.75rem; border: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+        .output-stat-icon { font-size: 1.25rem; }
+        .output-stat-info { flex: 1; }
+        .output-stat-value { font-size: 1.25rem; font-weight: 700; line-height: 1; }
+        .output-stat-value.error { color: var(--error); }
+        .output-stat-value.success { color: var(--success); }
+        .output-stat-value.info { color: var(--primary); }
+        .output-stat-label { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; }
+        .output-stat-action { padding: 0.375rem 0.625rem; font-size: 0.65rem; }
+        
+        .output-section { background: var(--card); border-radius: 8px; border: 1px solid var(--border); margin-bottom: 0.75rem; overflow: hidden; }
+        .output-section-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); cursor: pointer; }
+        .output-section-header:hover { background: var(--bg-secondary); }
+        .output-section-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+        .output-section-meta { font-size: 0.65rem; color: var(--text-dim); }
+        .output-section-body { max-height: 250px; overflow-y: auto; }
+        .output-section-body.collapsed { display: none; }
+        
+        .error-tree { padding: 0.5rem 0; }
+        .error-addon { border-bottom: 1px solid var(--border); }
+        .error-addon:last-child { border-bottom: none; }
+        .error-addon-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.75rem; }
+        .error-addon-header:hover { background: var(--bg-tertiary); }
+        .error-addon-name { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 0.375rem; }
+        .error-addon-name .chevron { color: var(--text-dim); transition: transform 0.15s; }
+        .error-addon-name.expanded .chevron { transform: rotate(90deg); }
+        .error-addon-count { font-size: 0.65rem; color: var(--error); background: var(--error-glow); padding: 0.125rem 0.375rem; border-radius: 4px; }
+        .error-addon-items { display: none; padding-left: 1.25rem; }
+        .error-addon-items.expanded { display: block; }
+        .error-item { display: flex; gap: 0.5rem; padding: 0.375rem 0.75rem; font-size: 0.7rem; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+        .error-item:hover { background: var(--bg-tertiary); }
+        .error-item:last-child { border-bottom: none; }
+        .error-location { font-family: var(--mono); color: var(--primary); white-space: nowrap; }
+        .error-count { font-size: 0.6rem; color: var(--warning); margin-left: 0.25rem; }
+        .error-message { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .error-detail { display: none; background: var(--bg); padding: 0.5rem 0.75rem; margin: 0.25rem 0.75rem; border-radius: 4px; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); white-space: pre-wrap; }
+        .error-detail.expanded { display: block; }
+        
+        .test-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; }
+        .test-badge { display: flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.625rem; border-radius: 6px; font-size: 0.7rem; font-family: var(--mono); }
+        .test-badge.pass { background: var(--success-glow); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
+        .test-badge.fail { background: var(--error-glow); color: var(--error); border: 1px solid rgba(248, 113, 113, 0.3); }
+        .test-badge-icon { font-size: 0.8rem; }
+        
+        .console-log { font-family: var(--mono); font-size: 0.65rem; }
+        .console-filters { display: flex; gap: 0.375rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+        .console-filter { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.6rem; background: var(--bg); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; }
+        .console-filter:hover { border-color: var(--border-light); }
+        .console-filter.active { background: var(--primary-glow); border-color: var(--primary); color: var(--primary); }
+        .console-entries { padding: 0.5rem 0; }
+        .console-entry { padding: 0.25rem 0.75rem; display: flex; gap: 0.5rem; }
+        .console-entry:hover { background: var(--bg-tertiary); }
+        .console-source { color: var(--primary); white-space: nowrap; }
+        .console-category { color: var(--warning); white-space: nowrap; }
+        .console-message { color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -275,23 +360,22 @@
     <header class="header">
         <div class="header-left">
             <div class="logo">MECHANIC <span>v0.3.0</span></div>
+            <button id="mechanic-tab" class="btn btn-ghost addon-output-btn" title="View addon sync status">
+                <span>📊</span> Addon Output
+            </button>
         </div>
         <div class="header-actions">
             <button id="btn-create-nav" class="btn btn-ghost">➕ Create</button>
             <button id="btn-reload" class="btn btn-primary">⚡ Reload <span class="kbd">R</span></button>
-            <button id="btn-settings" class="btn btn-icon" title="Settings">⚙️</button>
-            <button id="btn-stop" class="btn btn-danger">🛑</button>
+            <div class="header-spacer"></div>
+            <button id="btn-settings" class="btn btn-ghost btn-icon-only" title="Settings">⚙️</button>
+            <button id="btn-stop" class="btn btn-ghost btn-icon-only btn-stop" title="Stop Server">⏻</button>
         </div>
     </header>
 
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <!-- Mechanic Output Tab -->
-            <div id="mechanic-tab" class="mechanic-tab active" data-view="mechanic">
-                <div class="mechanic-tab-title"><span>📊</span> Mechanic Output</div>
-            </div>
-
             <!-- Addon Selector -->
             <div class="addon-context">
                 <div class="addon-context-label">🎯 Target Addon</div>
@@ -306,7 +390,7 @@
 
             <!-- Development -->
             <div class="sidebar-section">
-                <div class="sidebar-title">⚡ Development</div>
+                <div class="sidebar-title">Development</div>
                 <button class="cmd-btn" data-cmd="addon.validate"><span class="cmd-icon">✓</span> Validate</button>
                 <button class="cmd-btn" data-cmd="addon.lint"><span class="cmd-icon">🔍</span> Lint</button>
                 <button class="cmd-btn" data-cmd="addon.format"><span class="cmd-icon">✨</span> Format</button>
@@ -316,7 +400,7 @@
 
             <!-- Release -->
             <div class="sidebar-section">
-                <div class="sidebar-title">📦 Release</div>
+                <div class="sidebar-title">Release</div>
                 <button class="cmd-btn" data-cmd="release.all"><span class="cmd-icon">🚀</span> Release All</button>
                 <button class="cmd-btn" data-cmd="version.bump"><span class="cmd-icon">🏷️</span> Bump Version</button>
                 <button class="cmd-btn" data-cmd="changelog.add"><span class="cmd-icon">📝</span> Changelog</button>
@@ -326,7 +410,7 @@
 
             <!-- Quality -->
             <div class="sidebar-section">
-                <div class="sidebar-title">🌐 Quality</div>
+                <div class="sidebar-title">Quality</div>
                 <button class="cmd-btn" data-cmd="locale.validate"><span class="cmd-icon">🗣️</span> Validate Locale</button>
                 <button class="cmd-btn" data-cmd="locale.extract"><span class="cmd-icon">📤</span> Extract Locals</button>
                 <button class="cmd-btn" data-cmd="atlas.search"><span class="cmd-icon">🎨</span> Atlas</button>
@@ -334,7 +418,7 @@
 
             <!-- Libraries -->
             <div class="sidebar-section">
-                <div class="sidebar-title">📚 Libraries</div>
+                <div class="sidebar-title">Libraries</div>
                 <button class="cmd-btn" data-view="libraries"><span class="cmd-icon">📊</span> Library Manager</button>
                 <button class="cmd-btn" data-cmd="libs.check"><span class="cmd-icon">✓</span> Check Status</button>
                 <button class="cmd-btn" data-cmd="libs.sync"><span class="cmd-icon">🔄</span> Sync Libraries</button>
@@ -343,7 +427,7 @@
 
             <!-- Environment -->
             <div class="sidebar-section">
-                <div class="sidebar-title">🔗 Sync</div>
+                <div class="sidebar-title">Sync</div>
                 <button class="cmd-btn" data-cmd="addon.sync"><span class="cmd-icon">📂</span> Sync to Client</button>
             </div>
 
@@ -372,27 +456,88 @@
             </div>
             
             <div class="content-area">
-                <!-- Mechanic Output View -->
+                <!-- Addon Output View -->
                 <div id="view-mechanic" class="view active">
-                    <div class="mechanic-grid">
-                        <div class="mechanic-card">
-                            <div class="mechanic-card-title">Addon Health</div>
-                            <div class="health-row"><span>Interface Version</span><span id="health-interface" class="value">120001</span></div>
-                            <div class="health-row"><span>TOC Status</span><span id="health-toc" class="value success">Valid</span></div>
-                            <div class="health-row"><span>Luacheck</span><span id="health-lint" class="value warning">—</span></div>
-                            <div class="health-row"><span>Locales</span><span id="health-locale" class="value success">—</span></div>
-                        </div>
-                        <div class="mechanic-card">
-                            <div class="mechanic-card-title">Last Reload</div>
-                            <div class="health-row"><span>Time</span><span id="reload-time" class="value">—</span></div>
-                            <div class="health-row"><span>Addon</span><span id="reload-addon" class="value">—</span></div>
+                    <!-- Header -->
+                    <div class="output-header">
+                        <div class="output-header-title">📊 Addon Output</div>
+                        <div class="output-header-meta">
+                            Last reload: <span id="output-reload-time">—</span>
+                            <button id="btn-copy-output" class="btn btn-ghost output-stat-action" style="padding: 0.125rem 0.5rem; height: auto;" title="Copy all output as markdown for AI">
+                                📋 Copy All
+                            </button>
                         </div>
                     </div>
-                    <div id="test-hero" class="test-hero">
-                        <div class="test-hero-status">⏳</div>
-                        <div class="test-hero-count">Waiting for /reload...</div>
+                    
+                    <!-- Stats Bar -->
+                    <div class="output-stats">
+                        <div class="output-stat">
+                            <div class="output-stat-icon">❌</div>
+                            <div class="output-stat-info">
+                                <div id="output-error-count" class="output-stat-value error">0</div>
+                                <div class="output-stat-label">Errors</div>
+                            </div>
+                        </div>
+                        <div class="output-stat">
+                            <div class="output-stat-icon">✅</div>
+                            <div class="output-stat-info">
+                                <div id="output-test-count" class="output-stat-value success">0/0</div>
+                                <div class="output-stat-label">Tests</div>
+                            </div>
+                        </div>
+                        <div class="output-stat">
+                            <div class="output-stat-icon">📝</div>
+                            <div class="output-stat-info">
+                                <div id="output-console-count" class="output-stat-value info">0</div>
+                                <div class="output-stat-label">Console</div>
+                            </div>
+                        </div>
                     </div>
-                    <ul id="test-list" class="test-list"></ul>
+                    
+                    <!-- Errors Section -->
+                    <div class="output-section">
+                        <div class="output-section-header" onclick="toggleSection('errors')">
+                            <div class="output-section-title">❌ Errors <span id="output-error-summary" style="font-weight: normal; color: var(--text-dim);">(grouped by addon)</span></div>
+                            <div class="output-section-meta">▼</div>
+                        </div>
+                        <div id="output-errors-body" class="output-section-body">
+                            <div id="output-error-tree" class="error-tree">
+                                <div style="padding: 1rem; color: var(--text-dim); text-align: center;">No errors. Do /reload in-game to capture data.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tests Section -->
+                    <div class="output-section">
+                        <div class="output-section-header" onclick="toggleSection('tests')">
+                            <div class="output-section-title">✅ Tests</div>
+                            <div class="output-section-meta">▼</div>
+                        </div>
+                        <div id="output-tests-body" class="output-section-body">
+                            <div id="output-test-badges" class="test-badges">
+                                <div style="padding: 0.5rem; color: var(--text-dim);">No test results yet.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Console Section -->
+                    <div class="output-section">
+                        <div class="output-section-header" onclick="toggleSection('console')">
+                            <div class="output-section-title">📝 Console</div>
+                            <div class="output-section-meta">▼</div>
+                        </div>
+                        <div id="output-console-body" class="output-section-body console-log">
+                            <div class="console-filters">
+                                <button class="console-filter active" data-filter="all">All</button>
+                                <button class="console-filter" data-filter="System">System</button>
+                                <button class="console-filter" data-filter="Debug">Debug</button>
+                                <button class="console-filter" data-filter="Error">Error</button>
+                            </div>
+                            <div id="output-console-entries" class="console-entries">
+                                <div style="padding: 0.5rem 0.75rem; color: var(--text-dim);">No console entries. Do /reload in-game to capture logs.</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Command View (dynamic for each command) -->
@@ -449,7 +594,8 @@
                         <div class="lib-header-title">📚 Library Manager</div>
                         <div class="lib-header-actions">
                             <button id="btn-lib-refresh" class="btn btn-ghost">🔄 Refresh</button>
-                            <button id="btn-lib-sync" class="btn btn-primary">⬇️ Sync All</button>
+                            <button id="btn-lib-sync" class="btn btn-ghost">⬇️ Sync Missing</button>
+                            <button id="btn-lib-force-sync" class="btn btn-primary">⬆️ Force Update All</button>
                         </div>
                     </div>
 
@@ -553,6 +699,16 @@
                                 <span id="settings-data-dir" class="value">—</span>
                             </div>
                         </div>
+
+                        <div class="settings-card settings-card-full">
+                            <div class="settings-card-title">📦 Registered Addons</div>
+                            <div id="settings-addon-list" class="addon-list">
+                                <div class="addon-list-empty">No addons registered. Click + in the sidebar to add one.</div>
+                            </div>
+                            <div class="addon-list-actions">
+                                <button id="btn-settings-add-addon" class="btn btn-ghost">➕ Add Addon</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -561,7 +717,6 @@
             <div class="console-area">
                 <div class="console-header">
                     <span>🖥️ Console</span>
-                    <span class="kbd">:</span>
                 </div>
                 <div class="console-body">
                     <div class="console-input-row">
@@ -661,8 +816,8 @@
             
             const addonPath = knownAddons[selectedAddon];
             if (addonPath) {
-                // Show truncated path (end of path), full path on hover
-                const shortPath = '✓ ...' + addonPath.slice(-35);
+                // Show truncated path (start of path), full path on hover
+                const shortPath = addonPath.length > 35 ? addonPath.slice(-35) + '…' : addonPath;
                 addonStatus.textContent = shortPath;
                 addonStatus.title = addonPath; // Full path on hover
             } else {
@@ -895,15 +1050,24 @@
             }
         }
         
-        async function syncLibraries() {
+        async function syncLibraries(force = false) {
             if (!selectedAddon) return;
             
-            const result = await executeCommand('libs.sync', { addon: selectedAddon });
+            const result = await executeCommand('libs.sync', { addon: selectedAddon, force });
             if (result.success) {
-                const actions = result.data?.actions || [];
-                const copied = actions.filter(a => a.action === 'copied').length;
-                const removed = actions.filter(a => a.action === 'removed').length;
-                showToast('Sync Complete', `Copied: ${copied}, Removed: ${removed}`, 'success');
+                const data = result.data || {};
+                const copied = data.copied || 0;
+                const updated = data.updated || 0;
+                const skipped = data.skipped || 0;
+                const errors = data.errors || 0;
+                
+                let message = [];
+                if (copied > 0) message.push(`${copied} copied`);
+                if (updated > 0) message.push(`${updated} updated`);
+                if (skipped > 0) message.push(`${skipped} skipped`);
+                if (errors > 0) message.push(`${errors} errors`);
+                
+                showToast('Sync Complete', message.join(', ') || 'No changes', errors > 0 ? 'warning' : 'success');
                 refreshLibraries();
             } else {
                 showToast('Sync Failed', result.error?.message || 'Failed to sync libraries', 'error');
@@ -961,6 +1125,38 @@
                 updateTool('settings-stylua', toolsByName.stylua);
                 updateTool('settings-lua', toolsByName.lua);
                 updateTool('settings-busted', toolsByName.busted);
+            }
+            
+            // Populate addon list
+            const addonListEl = document.getElementById('settings-addon-list');
+            const addonNames = Object.keys(knownAddons);
+            if (addonNames.length > 0) {
+                addonListEl.innerHTML = addonNames.map(name => `
+                    <div class="addon-list-item" data-addon="${name}">
+                        <div>
+                            <div class="addon-name">${name}</div>
+                            <div class="addon-path" title="${knownAddons[name]}">${knownAddons[name]}</div>
+                        </div>
+                        <button class="btn-remove" onclick="removeAddon('${name}')" title="Remove addon">🗑️</button>
+                    </div>
+                `).join('');
+            } else {
+                addonListEl.innerHTML = '<div class="addon-list-empty">No addons registered. Click + in the sidebar to add one.</div>';
+            }
+        }
+        
+        // Remove addon function
+        async function removeAddon(addonName) {
+            if (!confirm(`Remove "${addonName}" from registered addons?`)) return;
+            
+            const result = await executeCommand('addon.remove', { addon: addonName });
+            if (result.success) {
+                delete knownAddons[addonName];
+                populateAddonSelector();
+                refreshSettings();
+                showToast('Addon Removed', `${addonName} has been removed`, 'success');
+            } else {
+                showToast('Error', result.error?.message || 'Failed to remove addon', 'error');
             }
         }
 
@@ -1076,15 +1272,23 @@
             }
         }
 
-        // Run button
-        btnRunCmd.onclick = () => {
-            if (currentCommand) {
+        // Run button with loading state
+        btnRunCmd.onclick = async () => {
+            if (currentCommand && !btnRunCmd.classList.contains('loading')) {
                 try {
                     // Read current input from the console box to capture defaults/edits
                     const input = JSON.parse(consoleInput.value.trim() || '{}');
-                    executeCommand(currentCommand, input);
+                    
+                    // Show loading state (keeps "▶ Run" text)
+                    btnRunCmd.classList.add('loading');
+                    
+                    await executeCommand(currentCommand, input);
+                    
+                    // Reset button
+                    btnRunCmd.classList.remove('loading');
                 } catch (e) {
                     showToast('Input Error', 'Invalid JSON in console input', 'error');
+                    btnRunCmd.classList.remove('loading');
                 }
             }
         };
@@ -1116,10 +1320,12 @@
         
         // Library Manager buttons
         document.getElementById('btn-lib-refresh').onclick = () => refreshLibraries();
-        document.getElementById('btn-lib-sync').onclick = () => syncLibraries();
+        document.getElementById('btn-lib-sync').onclick = () => syncLibraries(false);
+        document.getElementById('btn-lib-force-sync').onclick = () => syncLibraries(true);
         
         // Settings buttons
         document.getElementById('btn-settings-refresh').onclick = () => refreshSettings();
+        document.getElementById('btn-settings-add-addon').onclick = () => addAddon().then(() => refreshSettings());
 
         // Addon selector
         addonSelect.onchange = () => {
@@ -1130,7 +1336,7 @@
 
         // Header buttons
         document.getElementById('btn-create-nav').onclick = () => navigateToCommand('addon.create');
-        document.getElementById('btn-reload').onclick = () => executeCommand('reload.trigger', { key: '9' });
+        document.getElementById('btn-reload').onclick = () => executeCommand('reload.trigger', {});  // Uses default CTRL+SHIFT+R
         document.getElementById('btn-stop').onclick = () => {
             if (confirm('Stop the Mechanic server?')) executeCommand('server.shutdown');
         };
@@ -1183,40 +1389,266 @@
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
             switch(e.key.toLowerCase()) {
-                case 'r': executeCommand('reload.trigger', { key: '9' }); break;
+                case 'r': executeCommand('reload.trigger', {}); break;  // Uses default CTRL+SHIFT+R
                 case 'v': navigateToCommand('addon.validate'); break;
                 case ':': e.preventDefault(); consoleCmd.focus(); break;
             }
         });
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // TEST RESULTS
+        // ADDON OUTPUT PANE
         // ═══════════════════════════════════════════════════════════════════════════
-        function updateTestResults(msg) {
-            const tests = msg.data?.tests || [];
-            const passed = tests.filter(t => t.passed).length;
-            const failed = tests.length - passed;
-            
-            document.getElementById('reload-time').textContent = new Date().toLocaleTimeString();
-            document.getElementById('reload-addon').textContent = msg.addon;
-            
-            if (failed > 0) {
-                testHero.className = 'test-hero failing';
-                testHero.innerHTML = `<div class="test-hero-status">❌</div><div class="test-hero-count">${failed} test(s) failing</div>`;
-            } else if (tests.length > 0) {
-                testHero.className = 'test-hero';
-                testHero.innerHTML = `<div class="test-hero-status">✅</div><div class="test-hero-count">All ${passed} tests passing</div>`;
-            }
-            
-            if (tests.length > 0) {
-                testList.innerHTML = tests.map(t => `
-                    <li class="test-item">
-                        <span>${t.name}</span>
-                        <span style="color: ${t.passed ? 'var(--success)' : 'var(--error)'}">${t.passed ? '✓' : '✗'}</span>
-                    </li>
-                `).join('');
+        
+        // State for output pane
+        let outputData = { errors: [], tests: [], console: [], timestamp: null };
+        let consoleFilter = 'all';
+        
+        // Toggle section collapse
+        function toggleSection(section) {
+            const body = document.getElementById(`output-${section}-body`);
+            body.classList.toggle('collapsed');
+        }
+        
+        // Fetch and render addon output
+        async function fetchAddonOutput() {
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'addon.output', input: {} })
+                });
+                const result = await response.json();
+                if (result.success && result.data) {
+                    // Parse the data from the result
+                    updateOutputPane(result.data);
+                }
+            } catch (e) {
+                console.log('Failed to fetch addon output:', e);
             }
         }
+        
+        // Update the output pane from WebSocket msg or API result
+        function updateOutputPane(data) {
+            // Update header meta
+            document.getElementById('output-reload-time').textContent = data.timestamp || new Date().toLocaleTimeString();
+            // Removed addon name display as requested
+            
+            // Update stats
+            document.getElementById('output-error-count').textContent = data.error_count || 0;
+            document.getElementById('output-console-count').textContent = data.console_count || 0;
+            
+            // Store for rendering
+            outputData = data;
+            
+            // Render sections from WebSocket data if available
+            if (data.errors) renderErrorTree(data.errors);
+            if (data.tests) renderTestBadges(data.tests);
+            if (data.console) renderConsoleLog(data.console);
+        }
+        
+        // Handle WebSocket messages for real-time updates
+        function updateTestResults(msg) {
+            // Update header
+            document.getElementById('output-reload-time').textContent = new Date().toLocaleTimeString();
+            // Removed addon name display as requested
+            
+            const tests = msg.data?.tests || [];
+            const passed = tests.filter(t => t.passed).length;
+            
+            // Update test count
+            document.getElementById('output-test-count').textContent = `${passed}/${tests.length}`;
+            
+            // Render test badges
+            renderTestBadges(tests);
+            
+            // Fetch full output to get errors and console
+            fetchAddonOutput();
+        }
+        
+        // Render error tree grouped by addon
+        function renderErrorTree(errors) {
+            const container = document.getElementById('output-error-tree');
+            
+            if (!errors || errors.length === 0) {
+                container.innerHTML = '<div style="padding: 1rem; color: var(--text-dim); text-align: center;">No errors. Do /reload in-game to capture data.</div>';
+                return;
+            }
+            
+            // Group by addon
+            const byAddon = {};
+            for (const err of errors) {
+                const addon = err.addon || 'Unknown';
+                if (!byAddon[addon]) byAddon[addon] = [];
+                byAddon[addon].push(err);
+            }
+            
+            // Sort addons alphabetically
+            const sortedAddons = Object.keys(byAddon).sort();
+            
+            let html = '';
+            for (const addon of sortedAddons) {
+                const addonErrors = byAddon[addon];
+                const count = addonErrors.reduce((sum, e) => sum + (e.counter || 1), 0);
+                
+                html += `
+                    <div class="error-addon">
+                        <div class="error-addon-header" onclick="toggleAddonErrors('${addon}')">
+                            <div class="error-addon-name" id="addon-name-${addon}">
+                                <span class="chevron">▶</span> ${addon}
+                            </div>
+                            <span class="error-addon-count">${count}</span>
+                        </div>
+                        <div id="addon-errors-${addon}" class="error-addon-items">
+                `;
+                
+                for (let i = 0; i < Math.min(addonErrors.length, 10); i++) {
+                    const err = addonErrors[i];
+                    const location = `${err.file || 'unknown'}:${err.line || 0}`;
+                    const countStr = (err.counter || 1) > 1 ? `<span class="error-count">×${err.counter}</span>` : '';
+                    const msg = extractErrorMessage(err.message);
+                    const errId = `err-${addon}-${i}`;
+                    
+                    html += `
+                        <div class="error-item" onclick="toggleErrorDetail('${errId}')">
+                            <span class="error-location">${location}</span>${countStr}
+                            <span class="error-message">${msg}</span>
+                        </div>
+                        <div id="${errId}" class="error-detail">${err.stack || err.message || 'No details'}</div>
+                    `;
+                }
+                
+                if (addonErrors.length > 10) {
+                    html += `<div class="error-item" style="color: var(--text-dim);">... and ${addonErrors.length - 10} more</div>`;
+                }
+                
+                html += '</div></div>';
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Extract clean error message
+        function extractErrorMessage(msg) {
+            if (!msg) return '';
+            const parts = msg.split(':');
+            if (parts.length > 3) return parts.slice(3).join(':').trim().substring(0, 80);
+            return msg.substring(0, 80);
+        }
+        
+        // Toggle addon errors visibility
+        function toggleAddonErrors(addon) {
+            const items = document.getElementById(`addon-errors-${addon}`);
+            const name = document.getElementById(`addon-name-${addon}`);
+            items.classList.toggle('expanded');
+            name.classList.toggle('expanded');
+        }
+        
+        // Toggle error detail visibility
+        function toggleErrorDetail(errId) {
+            const detail = document.getElementById(errId);
+            detail.classList.toggle('expanded');
+        }
+        
+        // Render test badges
+        function renderTestBadges(tests) {
+            const container = document.getElementById('output-test-badges');
+            
+            if (!tests || tests.length === 0) {
+                container.innerHTML = '<div style="padding: 0.5rem; color: var(--text-dim);">No test results yet.</div>';
+                return;
+            }
+            
+            const passed = tests.filter(t => t.passed).length;
+            document.getElementById('output-test-count').textContent = `${passed}/${tests.length}`;
+            
+            let html = '';
+            for (const test of tests) {
+                const icon = test.passed ? '✓' : '✗';
+                const cls = test.passed ? 'pass' : 'fail';
+                html += `<div class="test-badge ${cls}"><span class="test-badge-icon">${icon}</span> ${test.name || 'unnamed'}</div>`;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Render console log
+        function renderConsoleLog(entries) {
+            const container = document.getElementById('output-console-entries');
+            
+            if (!entries || entries.length === 0) {
+                container.innerHTML = '<div style="padding: 0.5rem 0.75rem; color: var(--text-dim);">No console entries. Do /reload in-game to capture logs.</div>';
+                return;
+            }
+            
+            // Filter entries
+            const filtered = consoleFilter === 'all' 
+                ? entries 
+                : entries.filter(e => e.category === consoleFilter || e.source === consoleFilter);
+            
+            let html = '';
+            
+            // Sequence deduplication for display
+            const deduped = [];
+            let currentKey = null;
+            let currentEntry = null;
+            let count = 0;
+            
+            for (const entry of filtered.slice(-50)) {
+                const key = `${entry.source}|${entry.category}|${entry.message}`;
+                if (currentKey === null) {
+                    currentKey = key;
+                    currentEntry = entry;
+                    count = 1;
+                } else if (key === currentKey) {
+                    count++;
+                } else {
+                    deduped.push({ ...currentEntry, count });
+                    currentKey = key;
+                    currentEntry = entry;
+                    count = 1;
+                }
+            }
+            if (currentEntry) deduped.push({ ...currentEntry, count });
+
+            for (const entry of deduped) {
+                const source = entry.source || 'System';
+                const category = entry.category ? `[${entry.category}]` : '';
+                const message = entry.message || '';
+                const countStr = entry.count > 1 ? ` <span style="color: var(--text-dim); font-size: 0.825em; font-weight: normal; margin-left: 0.25rem;">(x${entry.count})</span>` : '';
+                html += `<div class="console-entry"><span class="console-source">[${source}]</span><span class="console-category">${category}</span><span class="console-message">${message}${countStr}</span></div>`;
+            }
+            
+            container.innerHTML = html;
+            document.getElementById('output-console-count').textContent = entries.length;
+        }
+        
+        // Console filter click handler
+        document.querySelectorAll('.console-filter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.console-filter').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                consoleFilter = btn.dataset.filter;
+                if (outputData.console) renderConsoleLog(outputData.console);
+            });
+        });
+        
+        // Copy all output for AI
+        document.getElementById('btn-copy-output')?.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'addon.output', input: { agent_mode: true } })
+                });
+                const result = await response.json();
+                if (result.success && result.data?.output) {
+                    await navigator.clipboard.writeText(result.data.output);
+                    showToast('Copied!', 'Agent-optimized output copied to clipboard', 'success');
+                }
+            } catch (e) {
+                showToast('Error', 'Failed to copy output', 'error');
+            }
+        });
 
         // ═══════════════════════════════════════════════════════════════════════════
         // INITIALIZATION

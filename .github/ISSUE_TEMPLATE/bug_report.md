@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve !Mechanic
+about: Report a bug in Mechanic
 title: ''
 labels: bug
 assignees: ''
@@ -8,26 +8,37 @@ assignees: ''
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear description of what the bug is.
+
+**Which component?**
+- [ ] In-game addon
+- [ ] Desktop dashboard
+- [ ] CLI (`mech` command)
 
 **To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Cast spell '...'
+Steps to reproduce:
+1. Run '...'
+2. Click on '...'
 3. See error
 
 **Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+What you expected to happen.
 
 **Debug Output**
-Please run `/ta debug` in-game and paste any relevant output here.
+```
+Run `mech addon.output` and paste relevant output here.
+For CLI errors, include the full error message.
+```
 
-**Addon Version**
- - Version [e.g. 1.0.0]
+**Environment**
+- Mechanic version: [e.g. 0.2.1]
+- WoW version: [e.g. 11.2.7]
+- OS: [e.g. Windows 11, macOS 14]
+- Python version (for desktop issues): [e.g. 3.11]
+
+**Screenshots**
+If applicable, add screenshots.
 
 **Additional context**
-Add any other context about the problem here.
+Any other relevant information.
 

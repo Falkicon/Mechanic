@@ -22,7 +22,7 @@ class SavedVariables(BaseModel):
     addons: Dict[str, Any] = Field(..., description="Dictionary of addon data")
 
 class ReloadInput(BaseModel):
-    key: str = Field(default="9", description="PowerShell SendKeys sequence (default: 9)")
+    key: str = Field(default="^+r", description="SendKeys sequence (default: ^+r = CTRL+SHIFT+R for Mechanic keybinding)")
 
 class ReloadOutput(BaseModel):
     key: str
@@ -87,10 +87,16 @@ async def parse_sv(input: ParseInput, context: Any = None) -> CommandResult[Save
             if "profiles" in addon_data and profile_name in addon_data["profiles"]:
                 addon_data = addon_data["profiles"][profile_name]
         
-        # Map key 'testResults' to 'tests'
+        # Map key 'testResults' to 'tests' - preserve test ID as 'name'
         if isinstance(addon_data, dict):
             if "testResults" in addon_data and "tests" not in addon_data:
-                addon_data["tests"] = list(addon_data["testResults"].values())
+                # Convert { "test_id": {passed, message, ...} } to [ {name, passed, ...} ]
+                tests = []
+                for test_id, result in addon_data["testResults"].items():
+                    if isinstance(result, dict):
+                        test_entry = {"name": test_id, **result}
+                        tests.append(test_entry)
+                addon_data["tests"] = tests
 
         src = create_source(
             type="file",
@@ -250,6 +256,14 @@ def get_server():
         # Register tool management commands
         from . import tools
         tools.register_tools_commands(server)
+        
+        # Register addon output command (AFD)
+        from . import output
+        output.register_commands(server)
+        
+        # Register documentation generation commands
+        from . import docs
+        docs.register_commands(server)
         
         _commands_registered = True
     

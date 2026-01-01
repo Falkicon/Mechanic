@@ -4,6 +4,11 @@
 -- See PLAN/MASTER_PLAN.md for full specification.
 -- Implementation tracked in PLAN/01-foundation.plan.md through PLAN/04-migration.plan.md
 
+-- Keybinding localization (must be global)
+BINDING_HEADER_MECHANIC = "Mechanic (Dev)"
+BINDING_NAME_MECHANIC_DEV_RELOAD = "Reload UI (Dev)"
+BINDING_NAME_MECHANIC_TOGGLE = "Toggle Mechanic Panel"
+
 local ADDON_NAME, ns = ...
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local ICON_PATH = [[Interface\AddOns\!Mechanic\Assets\Icons\]]
@@ -56,6 +61,9 @@ local defaults = {
 		healthLog = {},
 		-- NEW: Test Results persistence for Mechanic Desktop
 		testResults = {},
+		-- NEW: Console persistence for Mechanic Desktop (AFD)
+		consoleBuffer = {},
+		consoleBufferMax = 100,
 	},
 }
 
@@ -153,7 +161,12 @@ function Mechanic:OnEnable()
 	end
 	if self.Console and self.Console.OnEnable then
 		self.Console:OnEnable()
+		-- Restore persisted console buffer from SavedVariables (AFD)
+		self.Console:RestoreBuffer()
 	end
+
+	-- Register for logout to persist console buffer (AFD)
+	self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
 
 	-- UI creation will happen here (Phase 1)
 	-- Modules will also be initialized here
@@ -164,6 +177,13 @@ function Mechanic:OnEnable()
 	-- Initialize event tracking if enabled (Phase 3)
 	if self.db.profile.trackEventFrequency and self.Perf then
 		self.Perf:EnableEventTracking()
+	end
+end
+
+--- Persist console buffer before logout/reload for desktop agent access (AFD).
+function Mechanic:OnPlayerLogout()
+	if self.Console and self.Console.PersistBuffer then
+		self.Console:PersistBuffer()
 	end
 end
 

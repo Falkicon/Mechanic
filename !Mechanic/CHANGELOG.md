@@ -1,4 +1,9 @@
 # Changelog
+## [1.3.0] - 2026-01-01
+
+### Changed
+- Documentation overhaul, CI/CD pipeline, GitHub project setup
+
 ## [1.2.3] - 2026-01-01
 
 ### Changed

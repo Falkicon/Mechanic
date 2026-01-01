@@ -6,15 +6,19 @@ import subprocess
 import sys
 
 
-def trigger_wow_reload(keys: str = "9", delay: float = 0.1) -> bool:
+def trigger_wow_reload(keys: str = "^+r", delay: float = 0.1) -> bool:
     """
     Focuses the 'World of Warcraft' window and sends key sequences.
     
     Windows: Uses PowerShell with WScript.Shell
     macOS: Uses osascript (AppleScript)
     
+    The default key combo is CTRL+SHIFT+R which maps to the Mechanic addon's
+    MECHANIC_DEV_RELOAD keybinding (Bindings.xml).
+    
     Args:
-        keys: Key sequence to send (default: "9" for Numpad 9)
+        keys: Key sequence to send (default: "^+r" = CTRL+SHIFT+R)
+              SendKeys syntax: ^ = Ctrl, + = Shift, % = Alt
         delay: Delay in seconds before sending keys
         
     Returns:
@@ -72,14 +76,29 @@ def _trigger_reload_windows(keys: str, delay: float) -> bool:
 
 def _trigger_reload_macos(keys: str, delay: float) -> bool:
     """macOS implementation using AppleScript."""
-    # Map common keys to AppleScript key codes
-    key_map = {
-        "9": "key code 92",  # Numpad 9
-        "{ENTER}": "key code 36",
-        "{ESC}": "key code 53",
-    }
+    # Parse SendKeys-style modifiers and convert to AppleScript
+    # SendKeys: ^ = Ctrl, + = Shift, % = Alt
+    # AppleScript: control down, shift down, option down, command down
     
-    key_cmd = key_map.get(keys, f'keystroke "{keys}"')
+    modifiers = []
+    key_char = keys
+    
+    # Extract modifiers from the beginning of the string
+    while key_char and key_char[0] in "^+%":
+        if key_char[0] == "^":
+            modifiers.append("control down")
+        elif key_char[0] == "+":
+            modifiers.append("shift down")
+        elif key_char[0] == "%":
+            modifiers.append("option down")
+        key_char = key_char[1:]
+    
+    # Build the keystroke command
+    modifier_str = ", ".join(modifiers)
+    if modifier_str:
+        key_cmd = f'keystroke "{key_char}" using {{{modifier_str}}}'
+    else:
+        key_cmd = f'keystroke "{key_char}"'
     
     script = f'''
     tell application "World of Warcraft" to activate

@@ -8,9 +8,13 @@ ignore:
   - .cursorignore
   - AGENTS.md
   - CHANGELOG.md
+  - CODE_OF_CONDUCT.md
+  - CONTRIBUTING.md
   - ROADMAP.md
+  - SECURITY.md
   - PLAN
   - desktop
+  - docs
   - _TemplateAddon
 
 externals:

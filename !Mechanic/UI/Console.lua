@@ -522,3 +522,67 @@ function Mechanic:InitializeConsole()
 	end
 	self.Console:Initialize(self.frame.moduleContent)
 end
+
+--------------------------------------------------------------------------------
+-- Console Persistence (AFD - for Mechanic Desktop)
+--------------------------------------------------------------------------------
+
+--- Persist console buffer to SavedVariables for desktop agent access.
+--- Called on PLAYER_LOGOUT. Desktop can then parse MechanicDB.lua.
+function Console:PersistBuffer()
+	local maxEntries = Mechanic.db.profile.consoleBufferMax or 100
+	local entries = {}
+
+	-- Extract last N entries from ring buffer in chronological order
+	local count = math.min(self.count, maxEntries)
+	local maxLimit = Mechanic.db.profile.bufferSize or 1000
+
+	-- Calculate starting position (oldest entry we want to save)
+	local start = self.head - count
+	if start < 1 then
+		start = start + maxLimit
+	end
+
+	for i = 0, count - 1 do
+		local idx = ((start + i - 1) % maxLimit) + 1
+		local entry = self.buffer[idx]
+		if entry then
+			table.insert(entries, {
+				source = entry.source,
+				category = entry.category,
+				message = entry.message,
+				time = entry.time,
+			})
+		end
+	end
+
+	Mechanic.db.profile.consoleBuffer = entries
+end
+
+--- Restore console buffer from SavedVariables on load.
+--- Called during OnEnable to recover previous session's logs.
+function Console:RestoreBuffer()
+	local saved = Mechanic.db.profile.consoleBuffer
+	if not saved or #saved == 0 then
+		return
+	end
+
+	local maxLimit = Mechanic.db.profile.bufferSize or 1000
+
+	for _, entry in ipairs(saved) do
+		-- Add to ring buffer without triggering UI refresh
+		self.buffer[self.head] = {
+			source = entry.source,
+			category = entry.category,
+			message = entry.message,
+			time = entry.time,
+		}
+		self.head = (self.head % maxLimit) + 1
+		if self.count < maxLimit then
+			self.count = self.count + 1
+		end
+	end
+
+	-- Mark nav as dirty to refresh on next show
+	self.navDirty = true
+end

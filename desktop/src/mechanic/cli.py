@@ -34,7 +34,7 @@ def print_result(result: Any, json_output: bool = False, quiet: bool = False) ->
     
     if result.success:
         if not quiet:
-            click.secho("✅ Success", fg="green", bold=True)
+            click.secho("[OK] Success", fg="green", bold=True)
             if result.reasoning:
                 click.echo(f"   {result.reasoning}")
         # In non-quiet mode, show key data
@@ -80,7 +80,7 @@ def print_result(result: Any, json_output: bool = False, quiet: bool = False) ->
                     else:
                         click.echo(f"   {key}: {value}")
     else:
-        click.secho("❌ Failed", fg="red", bold=True)
+        click.secho("[X] Failed", fg="red", bold=True)
         if result.error:
             click.echo(f"   {result.error.code}: {result.error.message}")
             if result.error.suggestion:
@@ -118,7 +118,7 @@ def print_commands(commands: list, json_output: bool = False) -> None:
 # SERVER MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def start_services(port, watch_paths, src_paths=None, auto_reload=False, reload_key="9", stop_event=None):
+async def start_services(port, watch_paths, src_paths=None, auto_reload=False, reload_key="^+r", stop_event=None):
     if stop_event is None:
         stop_event = asyncio.Event()
 
@@ -138,7 +138,7 @@ async def start_services(port, watch_paths, src_paths=None, auto_reload=False, r
     await asyncio.gather(server_task, watcher_task, return_exceptions=True)
 
 
-def start_server(port, watch_paths, src_paths=None, auto_reload=False, reload_key="9"):
+def start_server(port, watch_paths, src_paths=None, auto_reload=False, reload_key="^+r"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -169,9 +169,10 @@ def start_server(port, watch_paths, src_paths=None, auto_reload=False, reload_ke
 @click.group(invoke_without_command=True)
 @click.option("--json", "json_output", is_flag=True, help="Output raw JSON (for agents)")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output")
+@click.option("--agent", is_flag=True, help="Agent mode: smart compression, grouped output")
 @click.version_option(package_name="mechanic-desktop", prog_name="mechanic")
 @click.pass_context
-def main(ctx, json_output, quiet):
+def main(ctx, json_output, quiet, agent):
     """Mechanic Desktop - AFD-powered companion for WoW addon development.
     
     \b
@@ -184,14 +185,17 @@ def main(ctx, json_output, quiet):
     AFD Patterns:
       mechanic call <cmd> '<json>'   Call command with JSON args
       mechanic --json call ...       Get raw JSON output
+      mechanic --agent call ...      Agent-optimized output
       mechanic shell                 Interactive command shell
     """
     ctx.ensure_object(dict)
     ctx.obj["json_output"] = json_output
     ctx.obj["quiet"] = quiet
-    
+    ctx.obj["agent"] = agent
+
     if ctx.invoked_subcommand is None:
         ctx.invoke(dashboard)
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -225,7 +229,7 @@ def list_commands(ctx, pattern, cmd_name):
     if cmd_name:
         matching = [c for c in commands if c.name == cmd_name]
         if not matching:
-            click.secho(f"❌ Command '{cmd_name}' not found", fg="red")
+            click.secho(f"[X] Command '{cmd_name}' not found", fg="red")
             sys.exit(1)
         
         cmd = matching[0]
@@ -280,14 +284,19 @@ def call(ctx, command_name, args):
     
     json_output = ctx.obj.get("json_output", False)
     quiet = ctx.obj.get("quiet", False)
+    agent = ctx.obj.get("agent", False)
     server = get_server()
     
     # Parse args
     try:
         input_data = json.loads(args)
     except json.JSONDecodeError as e:
-        click.secho(f"❌ Invalid JSON: {e}", fg="red")
+        click.secho(f"[X] Invalid JSON: {e}", fg="red")
         sys.exit(1)
+    
+    # Inject agent_mode when --agent flag is set
+    if agent and isinstance(input_data, dict):
+        input_data["agent_mode"] = True
     
     if not quiet and not json_output:
         click.echo(f"Calling {command_name}...")
@@ -431,7 +440,7 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
                 click.secho(f"✅ Found {len(watch_paths)} SavedVariables folder(s)", fg="green")
         else:
             message = result.error.message if result.error else "Unknown error"
-            click.secho(f"❌ Error: {message}", fg="red")
+            click.secho(f"[X] Error: {message}", fg="red")
             click.echo('Use -w to specify a path: mechanic dashboard -w "C:\\Path\\To\\SavedVariables"')
             return
 
@@ -441,13 +450,14 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
     if not quiet:
         click.echo(f"Starting dashboard on port {port}...")
         if auto_reload:
-            click.secho(f"🔥 Hot Reload ACTIVE (key: {reload_key})", fg="yellow")
+            key_display = reload_key.replace("^", "Ctrl+").replace("+", "Shift+").upper() if reload_key.startswith("^") else reload_key
+            click.secho(f"🔥 Hot Reload ACTIVE (key: {key_display})", fg="yellow")
     
     start_server(port, watch_paths, src_paths=src_paths, auto_reload=auto_reload, reload_key=reload_key)
 
 
 @main.command()
-@click.option("--key", "-k", default="9", help="Key sequence to send (default: 9).")
+@click.option("--key", "-k", default="^+r", help="Key sequence (default: ^+r = CTRL+SHIFT+R).")
 @click.pass_context
 def reload(ctx, key):
     """Trigger an in-game reload."""
@@ -457,8 +467,10 @@ def reload(ctx, key):
     quiet = ctx.obj.get("quiet", False)
     server = get_server()
     
+    # Display friendly key name
+    key_display = "CTRL+SHIFT+R" if key == "^+r" else key
     if not quiet and not json_output:
-        click.echo(f"Triggering reload (key: {key})...")
+        click.echo(f"Triggering reload (key: {key_display})...")
     
     result = asyncio.run(server.execute("reload.trigger", {"key": key}))
     print_result(result, json_output=json_output, quiet=quiet)
@@ -485,17 +497,55 @@ def stop(ctx, port):
             elif result.get("success"):
                 click.secho("✅ Server stopping...", fg="green")
             else:
-                click.secho(f"❌ {result.get('error', {}).get('message', 'Failed')}", fg="red")
+                click.secho(f"[X] {result.get('error', {}).get('message', 'Failed')}", fg="red")
     except Exception as e:
         if json_output:
             click.echo(json.dumps({"success": False, "error": {"message": str(e)}}))
         else:
-            click.secho(f"❌ Could not connect to port {port}", fg="red")
+            click.secho(f"[X] Could not connect to port {port}", fg="red")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMMANDS - Convenience Wrappers
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@main.command()
+@click.option("--output", "-o", default=None, help="Output file path (default: docs/cli-reference.md)")
+@click.option("--format", "-f", "fmt", default="markdown", type=click.Choice(["markdown", "json"]), help="Output format")
+@click.pass_context
+def docs(ctx, output, fmt):
+    """Generate CLI reference documentation.
+    
+    \b
+    Examples:
+      mech docs                    # Generate docs/cli-reference.md
+      mech docs -f json            # Generate JSON format
+      mech docs -o ./API.md        # Custom output path
+    """
+    from .commands.core import get_server
+    
+    json_output = ctx.obj.get("json_output", False)
+    quiet = ctx.obj.get("quiet", False)
+    server = get_server()
+    
+    async def run():
+        input_data = {"format": fmt}
+        if output:
+            input_data["output_path"] = output
+        return await server.execute("docs.generate", input_data)
+    
+    result = asyncio.run(run())
+    
+    if json_output:
+        click.echo(json.dumps(result, indent=2, default=str))
+    else:
+        print_result(result, quiet=quiet)
+        if result.get("success"):
+            data = result.get("data", {})
+            click.echo("")
+            click.secho(f"[OK] Generated {data.get('path', 'docs')}", fg="green")
+            click.echo(f"     {data.get('command_count', 0)} commands across {len(data.get('categories', []))} categories")
+
 
 @main.command()
 @click.argument("addon")
@@ -529,7 +579,7 @@ def release(ctx, addon, version, message, skip_tag):
         
         for cmd, args in steps:
             if not quiet and not json_output:
-                click.echo(f"  → {cmd}...")
+                click.echo(f"  -> {cmd}...")
             result = await server.execute(cmd, args)
             results.append({"command": cmd, "result": result.model_dump()})
             if not result.success:
@@ -548,12 +598,12 @@ def release(ctx, addon, version, message, skip_tag):
         if r["result"]["success"]:
             click.secho(f"  ✅ {r['command']}", fg="green")
         else:
-            click.secho(f"  ❌ {r['command']}: {r['result']['error']['message']}", fg="red")
+            click.secho(f"  [X] {r['command']}: {r['result']['error']['message']}", fg="red")
     
     if all_success:
         click.secho(f"\n🎉 Released {addon} v{version}!", fg="green", bold=True)
     else:
-        click.secho(f"\n⚠️  Release incomplete", fg="yellow")
+        click.secho(f"\n[!] Release incomplete", fg="yellow")
         sys.exit(1)
 
 
@@ -584,13 +634,13 @@ def setup(ctx, verify, force):
         if tool.get("installed"):
             click.secho(f"  ✅ {tool['name']} v{tool.get('version', '?')}", fg="green")
         else:
-            click.secho(f"  ❌ {tool['name']}: {tool.get('message', 'missing')}", fg="red")
+            click.secho(f"  [X] {tool['name']}: {tool.get('message', 'missing')}", fg="red")
     
     click.echo("")
     if summary["success"]:
         click.secho("✅ All tools ready!", fg="green", bold=True)
     else:
-        click.secho(f"⚠️  {summary['required_missing']} tool(s) missing", fg="yellow")
+        click.secho(f"[!] {summary['required_missing']} tool(s) missing", fg="yellow")
 
 
 if __name__ == "__main__":

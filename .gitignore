@@ -7,6 +7,7 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+*.orig
 
 # WoW / Addon Dev
 *.bak
@@ -15,6 +16,9 @@ desktop.ini
 *.log
 _test_/
 tmp/
+
+# Test Coverage Reports
+.coverage/
 
 # Cursor IDE
 .cursor/
@@ -29,5 +33,7 @@ __pycache__/
 .eggs/
 dist/
 build/
+venv/
+.venv/
+.env
 desktop/data/
-

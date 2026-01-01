@@ -1,21 +1,31 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
+about: Suggest an idea for Mechanic
 title: ''
 labels: enhancement
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**What problem are you trying to solve?**
+A clear description of the pain point or workflow gap. Ex. "When I'm debugging aura issues, I have to..."
 
 **Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+What would the ideal solution look like? How would you use it?
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**Which layer does this affect?**
+- [ ] In-game addon (Lua)
+- [ ] Desktop dashboard (UI)
+- [ ] CLI / Commands (Python)
+- [ ] Documentation
+
+**Alternatives you've considered**
+Any workarounds you're currently using or other approaches you've thought about.
 
 **Additional context**
-Add any other context or screenshots about the feature request here.
+Screenshots, code snippets, or links to related issues.
+
+---
+
+> 💡 Feature requests that clearly explain the use case are more likely to be prioritized. If this would significantly improve your workflow, consider [sponsoring](https://github.com/sponsors/Falkicon) to help prioritize development.
 

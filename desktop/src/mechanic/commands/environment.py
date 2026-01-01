@@ -421,7 +421,7 @@ def register_commands(server):
 
     @server.command(
         name="libs.init",
-        description="Generate libs.json from existing Libs folder",
+        description="Creates a libs.json config file from currently installed libraries. ⚠️ Will NOT overwrite existing config unless overwrite=true is set.",
         input_schema=LibsInitInput,
         output_schema=LibsInitResult,
     )
@@ -497,11 +497,12 @@ def register_commands(server):
         addon: str = Field(..., description="Name of the addon to sync")
         source: Optional[str] = Field(None, description="Source library path (defaults to ADDON_DEV Libs)")
         dry_run: bool = Field(False, description="Preview changes without applying")
+        force: bool = Field(False, description="Force update existing libraries (replaces them)")
         remove_extra: bool = Field(False, description="Remove libraries not in config")
 
     class SyncAction(BaseModel):
         library: str
-        action: str  # copy, skip, remove, error
+        action: str  # copy, update, skip, remove, error
         source: Optional[str] = None
         target: Optional[str] = None
         reason: str
@@ -511,9 +512,65 @@ def register_commands(server):
         dry_run: bool
         actions: List[SyncAction] = []
         copied: int = 0
+        updated: int = 0
         skipped: int = 0
         removed: int = 0
         errors: int = 0
+
+    def _find_library_source(lib_name: str, lib_config, default_source: Optional[Path], dev_path: Optional[Path]) -> Optional[Path]:
+        """Find the source path for a library.
+        
+        Checks in order:
+        1. Per-library 'source' in libs.json config
+        2. Default source path (from command input or auto-detected)
+        3. Standalone repo in dev_path (e.g., _dev_/FenUI)
+        """
+        # 1. Check per-library source config
+        if isinstance(lib_config, dict) and lib_config.get("source"):
+            custom_source = Path(lib_config["source"])
+            # Handle relative paths (relative to dev_path)
+            if not custom_source.is_absolute() and dev_path:
+                custom_source = dev_path / custom_source
+            if custom_source.exists():
+                return custom_source
+        
+        # 2. Check default source path
+        if default_source and (default_source / lib_name).exists():
+            return default_source / lib_name
+        
+        # 3. Check for standalone repo in dev_path (e.g., FenUI as its own folder)
+        if dev_path and (dev_path / lib_name).exists():
+            standalone = dev_path / lib_name
+            # Verify it looks like a library (has .lua files or .toc)
+            if any(standalone.glob("*.lua")) or any(standalone.glob("*.toc")):
+                return standalone
+        
+        return None
+
+    def _get_lib_version_config(lib_config) -> str:
+        """Extract version from library config (handles both string and dict formats)."""
+        if isinstance(lib_config, dict):
+            return lib_config.get("version", "latest")
+        return lib_config  # Simple string format
+
+    # Folders to exclude when copying libraries
+    IGNORE_PATTERNS = {'.git', '.coverage', '__pycache__', '.github', 'Tests', '.deprecation-report.md', 'PLANS'}
+    
+    def _copy_library(src: Path, dst: Path) -> None:
+        """Copy a library, excluding development-only folders."""
+        def ignore_patterns(directory, files):
+            return [f for f in files if f in IGNORE_PATTERNS]
+        shutil.copytree(src, dst, ignore=ignore_patterns)
+    
+    def _remove_tree_robust(path: Path) -> None:
+        """Remove a directory tree, handling .git permission issues on Windows."""
+        import stat
+        def on_rm_error(func, path, exc_info):
+            # Handle read-only files (common in .git)
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        import os
+        shutil.rmtree(path, onerror=on_rm_error)
 
     @server.command(
         name="libs.sync",
@@ -553,12 +610,11 @@ def register_commands(server):
         configured_libs = libs_config.get("libraries", {})
         notes = libs_config.get("notes", {})
         
-        # Find source library path
-        source_path = Path(input.source) if input.source else None
-        if not source_path:
+        # Find default source library path
+        default_source = Path(input.source) if input.source else None
+        if not default_source:
             # Try common locations
             if config.dev_path:
-                # Check for central Libs in ADDON_DEV or similar
                 possible_sources = [
                     config.dev_path / "ADDON_DEV" / "Libs",
                     config.dev_path / "_SharedLibs",
@@ -566,19 +622,20 @@ def register_commands(server):
                 ]
                 for p in possible_sources:
                     if p.exists():
-                        source_path = p
+                        default_source = p
                         break
         
         actions = []
-        copied = skipped = removed = errors = 0
+        copied = updated = skipped = removed = errors = 0
         
         # Get currently installed
         installed = {item.name for item in libs_path.iterdir() if item.is_dir()}
         
         if mode == "include":
             # Process configured libraries
-            for lib_name, version in configured_libs.items():
+            for lib_name, lib_config in configured_libs.items():
                 target_path = libs_path / lib_name
+                version = _get_lib_version_config(lib_config)
                 
                 # Skip local libs
                 if version == "local":
@@ -590,29 +647,62 @@ def register_commands(server):
                     skipped += 1
                     continue
                 
+                # Find source for this library
+                src_lib = _find_library_source(lib_name, lib_config, default_source, config.dev_path)
+                
                 # Check if already installed
                 if target_path.exists():
-                    actions.append(SyncAction(
-                        library=lib_name,
-                        action="skip",
-                        target=str(target_path),
-                        reason="Already installed"
-                    ))
-                    skipped += 1
+                    if input.force and src_lib:
+                        # Force update: remove and re-copy
+                        if not input.dry_run:
+                            try:
+                                _remove_tree_robust(target_path)
+                                _copy_library(src_lib, target_path)
+                                actions.append(SyncAction(
+                                    library=lib_name,
+                                    action="update",
+                                    source=str(src_lib),
+                                    target=str(target_path),
+                                    reason=f"Force updated from {src_lib.name}"
+                                ))
+                                updated += 1
+                            except Exception as e:
+                                actions.append(SyncAction(
+                                    library=lib_name,
+                                    action="error",
+                                    reason=str(e)
+                                ))
+                                errors += 1
+                        else:
+                            actions.append(SyncAction(
+                                library=lib_name,
+                                action="update",
+                                source=str(src_lib),
+                                target=str(target_path),
+                                reason=f"Would update from {src_lib.name}"
+                            ))
+                            updated += 1
+                    else:
+                        actions.append(SyncAction(
+                            library=lib_name,
+                            action="skip",
+                            target=str(target_path),
+                            reason="Already installed (use force=true to update)"
+                        ))
+                        skipped += 1
                     continue
                 
-                # Find source
-                if source_path and (source_path / lib_name).exists():
-                    src_lib = source_path / lib_name
+                # Copy new library
+                if src_lib:
                     if not input.dry_run:
                         try:
-                            shutil.copytree(src_lib, target_path)
+                            _copy_library(src_lib, target_path)
                             actions.append(SyncAction(
                                 library=lib_name,
                                 action="copy",
                                 source=str(src_lib),
                                 target=str(target_path),
-                                reason=f"Copied (version: {version})"
+                                reason=f"Copied from {src_lib.name}"
                             ))
                             copied += 1
                         except Exception as e:
@@ -628,7 +718,7 @@ def register_commands(server):
                             action="copy",
                             source=str(src_lib),
                             target=str(target_path),
-                            reason=f"Would copy (version: {version})"
+                            reason=f"Would copy from {src_lib.name}"
                         ))
                         copied += 1
                 else:
@@ -683,11 +773,12 @@ def register_commands(server):
                 dry_run=input.dry_run,
                 actions=actions,
                 copied=copied,
+                updated=updated,
                 skipped=skipped,
                 removed=removed,
                 errors=errors
             ),
-            reasoning=f"{'Preview: ' if input.dry_run else ''}{copied} copied, {skipped} skipped, {removed} removed, {errors} errors",
+            reasoning=f"{'Preview: ' if input.dry_run else ''}{copied} copied, {updated} updated, {skipped} skipped, {removed} removed, {errors} errors",
             sources=[src],
             confidence=1.0
         )

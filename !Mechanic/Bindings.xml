@@ -1,0 +1,9 @@
+<Bindings>
+  <!-- Mechanic Development Tools Keybindings -->
+  <Binding name="MECHANIC_DEV_RELOAD" header="MECHANIC" default="CTRL-SHIFT-R">
+    ReloadUI()
+  </Binding>
+  <Binding name="MECHANIC_TOGGLE" default="CTRL-SHIFT-M">
+    if Mechanic and Mechanic.Toggle then Mechanic:Toggle() end
+  </Binding>
+</Bindings>
