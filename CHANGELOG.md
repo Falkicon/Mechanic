@@ -4,6 +4,74 @@ All notable changes to Mechanic Desktop will be documented in this file.
 
 For the !Mechanic WoW addon changelog, see [!Mechanic/CHANGELOG.md](./!Mechanic/CHANGELOG.md).
 
+## [0.4.0] - 2026-01-01
+
+### Added
+
+#### Lua Eval Queue (Round-Trip Execution)
+- **`lua.queue`**: Queue Lua code snippets for in-game execution via CLI
+- **`lua.results`**: Read execution results from MechanicDB after reload
+- **Round-trip workflow**: Agent queues code → User reloads → Addon executes → Agent reads results
+- Supports labeled snippets for easier result identification
+- Results include success/failure status, return values, and error messages
+- Integrated into `addon.output` for unified data retrieval
+
+#### API Reference Commands (Offline)
+- **`api.search`**: Search WoW APIs by pattern without game running
+- **`api.info`**: Get detailed API signature, parameters, return types
+- **`api.list`**: List APIs by namespace (C_Spell, C_Item, etc.) or category
+- **`api.queue`**: Queue API tests for in-game execution with parameters
+- **`api.stats`**: Get statistics (total count, by category, protected count)
+
+#### Sandbox Commands (Offline Lua Testing)
+- **`sandbox.generate`**: Generate WoW API stubs from APIDefs database (~5000+ APIs)
+- **`sandbox.exec`**: Execute Lua code in sandbox with mocked WoW APIs
+- **`sandbox.test`**: Run Busted-compatible tests with WoW API stubs
+- Busted-compatible test framework with full assertion library
+- Lifecycle hooks: `before_each`, `after_each`, `before_all`, `after_all`
+- Searches both `Core/` and `Tests/` folders for `*_spec.lua` files
+- Dashboard integration via Sandbox tab
+- Enables testing addon logic without launching the game
+
+#### Tools Management
+- **`tools.status`**: Check installation status of all dev tools (luacheck, stylua, etc.)
+
+#### Library Management
+- **`libs.check`**: Check library status vs libs.json configuration
+- **`libs.init`**: Create libs.json from currently installed libraries
+- **`libs.sync`**: Sync libraries based on libs.json (copy from shared source)
+
+#### Environment & System
+- **`env.status`**: Get environment configuration and paths
+- **`system.pick_file`**: Open native file picker dialog for file selection
+
+#### Release Workflow
+- **`release.all`**: Full release workflow in one command (version.bump → changelog.add → git.commit → git.tag)
+
+#### Documentation
+- **`docs.generate`**: Auto-generate CLI reference from registered commands
+
+---
+
+## [0.3.0] - 2026-01-01
+
+### Added
+
+#### In-Game Diagnostic Hub
+- Implemented central aggregation hub in `!Mechanic` core
+- Addons now register tests, perf metrics, and logs via `MechanicLib` for hub persistence
+- Consolidated `!Mechanic.lua` is now the primary data source for the ecosystem
+
+#### Modular Dashboard UI
+- **Row-per-Addon Architecture**: Replaced monolithic test view with individual addon sections
+- **System Health Integration**: Collapsible performance metrics embedded directly within each addon block
+- **Actionable-Only Details**: Hidden empty expansion panes for tests without logs/messages
+- **Formatted Diagnostic Steps**: Structured parsing of step objects (e.g. Flightsim diagnostics)
+
+#### Technical Refinements
+- **Performance Schema Fix**: Standardized on `ms` and `percent` across all layers
+- **Data Integrity**: Improved handling of complex Lua-to-JSON type conversions in `output.py`
+
 ---
 
 ## [0.2.1] - 2024-12-31

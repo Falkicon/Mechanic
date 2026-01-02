@@ -1,9 +1,94 @@
 # Test Integration
 
-Mechanic supports two types of testing:
+Mechanic supports three types of testing:
 
-1. **Desktop Tests (Busted)** — Unit tests run via CLI outside the game
-2. **In-Game Tests** — Runtime tests that verify actual WoW API behavior
+1. **Sandbox Tests** — Offline tests using generated WoW API stubs (no Busted required)
+2. **Desktop Tests (Busted)** — Unit tests run via CLI outside the game
+3. **In-Game Tests** — Runtime tests that verify actual WoW API behavior
+
+---
+
+## Sandbox Tests (Recommended)
+
+The sandbox provides a complete WoW API stub environment for testing addons offline without external dependencies.
+
+### Setup
+
+Your addon needs test files with the `_spec.lua` suffix in either `Core/` or `Tests/` folders:
+
+```
+MyAddon/
+├── Core.lua
+├── Core/
+│   └── utils_spec.lua      # Tests in Core/
+└── Tests/
+    └── core_spec.lua       # Tests in Tests/
+```
+
+### Writing Tests
+
+Tests use a Busted-compatible API:
+
+```lua
+-- Tests/core_spec.lua
+
+describe("MyAddon Core", function()
+    before_each(function()
+        -- Setup code runs before each test
+    end)
+
+    after_each(function()
+        -- Cleanup code runs after each test
+    end)
+
+    it("should initialize correctly", function()
+        assert.is_not_nil(_G.MyAddon)
+    end)
+
+    it("should clamp values", function()
+        assert.equals(50, MyAddon.Utils.Clamp(50, 0, 100))
+        assert.equals(0, MyAddon.Utils.Clamp(-10, 0, 100))
+        assert.equals(100, MyAddon.Utils.Clamp(150, 0, 100))
+    end)
+end)
+```
+
+### Available Assertions
+
+| Assertion | Description |
+|-----------|-------------|
+| `assert.equals(expected, actual)` | Strict equality |
+| `assert.not_equals(a, b)` | Values are different |
+| `assert.is_true(val)` | Strictly `true` |
+| `assert.is_false(val)` | Strictly `false` |
+| `assert.truthy(val)` | Truthy value |
+| `assert.falsy(val)` | Falsy value |
+| `assert.is_nil(val)` | Value is nil |
+| `assert.is_not_nil(val)` | Value is not nil |
+| `assert.is_near(expected, actual, tolerance)` | Numeric proximity |
+| `assert.match(pattern, str)` | String pattern match |
+| `assert.same(expected, actual)` | Deep table equality |
+| `assert.has_error(fn, pattern)` | Function throws error |
+
+### Running Sandbox Tests
+
+```bash
+# Generate WoW API stubs (run once or after API changes)
+mech call sandbox.generate
+
+# Run tests for an addon
+mech call sandbox.test -i '{"addon": "MyAddon"}'
+```
+
+### How It Works
+
+1. `sandbox.generate` parses WoW's APIDefs and generates Lua stubs (~5000+ APIs)
+2. `sandbox.test` builds a test script with:
+   - WoW API stubs
+   - Test framework
+   - Addon source files
+   - Spec files from `Core/` and `Tests/`
+3. Tests run in plain Lua with mocked WoW environment
 
 ---
 

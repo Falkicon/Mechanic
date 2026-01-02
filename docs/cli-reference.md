@@ -33,8 +33,18 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `libs.sync` | Sync addon libraries based on libs.json config |
 | `tools.status` | Check the status of development tools (luacheck, stylua, etc... |
 | `docs.generate` | Generate CLI reference documentation from registered command... |
+| `api.info` | Get detailed information about a specific WoW API |
+| `api.list` | List APIs by namespace or category |
+| `api.queue` | Queue API tests for in-game execution. After running this, /... |
+| `api.search` | Search WoW APIs by name pattern. Works offline (reads static... |
+| `api.stats` | Get statistics about available WoW APIs |
 | `env.status` | Get Mechanic environment configuration and status |
+| `lua.queue` | Queue Lua code snippets for in-game execution. After running... |
+| `lua.results` | Get results from the last Lua eval queue execution |
 | `release.all` | Run full release: bump version, update changelog, commit, an... |
+| `sandbox.exec` | Execute Lua code in sandbox environment with WoW API stubs |
+| `sandbox.generate` | Generate WoW API stubs from APIDefs database for sandbox tes... |
+| `sandbox.test` | Run Busted tests for an addon's Core layer with WoW API stub... |
 | `system.pick_file` | Open a native file picker dialog to select a file |
 
 ---
@@ -522,6 +532,98 @@ mech call docs.generate
 
 ## Other Commands
 
+### `api.info`
+
+Get detailed information about a specific WoW API
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `api_name` | `string` | Yes | Full API name (e.g., C_Spell.GetSpellInfo) |
+
+**Example:**
+
+```bash
+mech call api.info -i '{"api_name": "<api_name>"}'
+```
+
+---
+
+### `api.list`
+
+List APIs by namespace or category
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | `string` | No (default: `None`) | Namespace to list (e.g., C_Spell) |
+| `category` | `string` | No (default: `None`) | Category to list |
+| `limit` | `number` | No (default: `50`) | Max results |
+
+**Example:**
+
+```bash
+mech call api.list
+```
+
+---
+
+### `api.queue`
+
+Queue API tests for in-game execution. After running this, /reload in WoW to execute tests.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `apis` | `array` | Yes | List of API names to queue for testing |
+| `params` | `string` | No (default: `None`) | Optional parameters per API: {'C_Spell.GetSpellInfo': {'spellID': 8690}} |
+
+**Example:**
+
+```bash
+mech call api.queue -i '{"apis": "<apis>"}'
+```
+
+---
+
+### `api.search`
+
+Search WoW APIs by name pattern. Works offline (reads static definitions).
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | `string` | Yes | Search pattern (supports * wildcards) |
+| `category` | `string` | No (default: `None`) | Filter by category |
+| `namespace` | `string` | No (default: `None`) | Filter by namespace |
+| `limit` | `number` | No (default: `20`) | Max results to return |
+
+**Example:**
+
+```bash
+mech call api.search -i '{"query": "<query>"}'
+```
+
+---
+
+### `api.stats`
+
+Get statistics about available WoW APIs
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call api.stats
+```
+
+---
+
 ### `env.status`
 
 Get Mechanic environment configuration and status
@@ -532,6 +634,39 @@ Get Mechanic environment configuration and status
 
 ```bash
 mech call env.status
+```
+
+---
+
+### `lua.queue`
+
+Queue Lua code snippets for in-game execution. After running this, /reload in WoW to execute.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | `array` | Yes | List of Lua code snippets to execute. Each snippet should return a value. |
+| `labels` | `string` | No (default: `None`) | Optional labels for each snippet (for easier identification in results) |
+
+**Example:**
+
+```bash
+mech call lua.queue -i '{"code": "<code>"}'
+```
+
+---
+
+### `lua.results`
+
+Get results from the last Lua eval queue execution
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call lua.results
 ```
 
 ---
@@ -554,6 +689,64 @@ Run full release: bump version, update changelog, commit, and tag
 
 ```bash
 mech call release.all -i '{"addon": "<addon>", "version": "<version>", "message": "<message>"}'
+```
+
+---
+
+### `sandbox.exec`
+
+Execute Lua code in sandbox environment with WoW API stubs
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | `string` | Yes | Lua code to execute |
+| `addon` | `string` | No (default: `None`) | Name of addon to load before execution (looks in _dev_ folder) |
+| `load_stubs` | `boolean` | No (default: `True`) | Whether to load WoW API stubs |
+
+**Example:**
+
+```bash
+mech call sandbox.exec -i '{"code": "<code>"}'
+```
+
+---
+
+### `sandbox.generate`
+
+Generate WoW API stubs from APIDefs database for sandbox testing
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | `string` | No (default: `None`) | Specific namespace to generate (e.g., 'C_Spell'). If not provided, generates all. |
+| `force` | `boolean` | No (default: `False`) | Regenerate even if stubs exist |
+
+**Example:**
+
+```bash
+mech call sandbox.generate
+```
+
+---
+
+### `sandbox.test`
+
+Run Busted tests for an addon's Core layer with WoW API stubs
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of addon to test (looks in _dev_ folder) |
+| `filter` | `string` | No (default: `None`) | Filter pattern for test names |
+
+**Example:**
+
+```bash
+mech call sandbox.test -i '{"addon": "<addon>"}'
 ```
 
 ---

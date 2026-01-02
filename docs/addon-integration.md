@@ -15,14 +15,15 @@ Integrate your World of Warcraft addon with Mechanic's development ecosystem.
 ### Minimum Setup (5 minutes)
 
 ```bash
-# 1. Create junction links to WoW clients
-mech call addon.sync -i '{"addon": "MyAddon"}'
+# 1. Register with MechanicLib in your addon
+# local MechanicLib = LibStub("MechanicLib-1.0", true)
+# MechanicLib:Register("MyAddon", { version = "1.0.0" })
 
 # 2. Start the dashboard
 mech
 
-# 3. Reload WoW (Ctrl+Shift+R if using Mechanic keybindings)
-# → Your addon's errors and logs now appear in the dashboard
+# 3. Reload WoW
+# → !Mechanic aggregates your data and pushes it to the dashboard automatically
 ```
 
 That's it for basic integration. Read on for deeper integration.
@@ -95,7 +96,7 @@ Deep-dive documentation for each Mechanic feature:
 | **Inspect** | [Inspect Integration](./integration/inspect.md) | Frame watch list, click-through patterns |
 | **Console** | [Console Integration](./integration/console.md) | Logging, categories, lifecycle messages |
 | **Errors** | [Error Tracking](./integration/errors.md) | BugGrabber integration |
-| **Tests** | [Test Integration](./integration/testing.md) | Desktop (Busted) + in-game tests |
+| **Tests** | [Test Integration](./integration/testing.md) | Sandbox, Desktop (Busted), + in-game tests |
 | **Performance** | [Performance Profiling](./integration/performance.md) | Block timing, sub-metrics |
 | **Tools** | [Tools Integration](./integration/tools.md) | Custom tools panels |
 
@@ -116,9 +117,9 @@ Deep-dive documentation for each Mechanic feature:
 | Section | Source | Updates On |
 |---------|--------|------------|
 | **Errors** | BugGrabber SavedVariables | `/reload` |
-| **Tests** | Busted test results | `/reload` |
-| **Console** | MechanicDB console buffer | `/reload` |
-| **Metrics** | Reload timestamp, session info | `/reload` |
+| **Tests** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
+| **Console** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
+| **Metrics** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
 
 ### Real-Time Updates
 

@@ -333,11 +333,71 @@
         .error-detail { display: none; background: var(--bg); padding: 0.5rem 0.75rem; margin: 0.25rem 0.75rem; border-radius: 4px; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); white-space: pre-wrap; }
         .error-detail.expanded { display: block; }
         
-        .test-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem; }
-        .test-badge { display: flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.625rem; border-radius: 6px; font-size: 0.7rem; font-family: var(--mono); }
-        .test-badge.pass { background: var(--success-glow); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
-        .test-badge.fail { background: var(--error-glow); color: var(--error); border: 1px solid rgba(248, 113, 113, 0.3); }
-        .test-badge-icon { font-size: 0.8rem; }
+        /* Test Results Tree */
+        .test-tree { padding: 0.5rem 0; }
+        .test-addon { border-bottom: 1px solid var(--border); }
+        .test-addon:last-child { border-bottom: none; }
+        .test-addon-header { 
+            padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.02);
+            font-size: 0.75rem; font-weight: 700; color: var(--text);
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .test-category { padding-left: 0.75rem; margin-bottom: 0.5rem; }
+        .test-category-header { 
+            padding: 0.375rem 0.75rem; font-size: 0.65rem; font-weight: 600; 
+            text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.05em;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .test-category-header::before { content: ''; width: 4px; height: 1px; background: var(--border-light); }
+        
+        .test-row { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 0.375rem 0.75rem 0.375rem 2rem; font-size: 0.75rem; 
+            cursor: pointer; transition: background 0.1s;
+        }
+        .test-row:hover { background: var(--bg-tertiary); }
+        .test-row.no-click { cursor: default; }
+        .test-row.no-click:hover { background: transparent; }
+        .test-info { display: flex; align-items: center; gap: 0.625rem; flex: 1; }
+        .test-status-bullet { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .test-status-bullet.pass { background: var(--success); box-shadow: 0 0 6px var(--success-glow); }
+        .test-status-bullet.fail { background: var(--error); box-shadow: 0 0 6px var(--error-glow); }
+        .test-name { color: var(--text); font-weight: 500; }
+        .test-meta { color: var(--text-dim); font-size: 0.65rem; font-family: var(--mono); }
+        .test-chevron { font-size: 0.6rem; color: var(--text-dim); margin-left: 0.5rem; transition: transform 0.15s; }
+        .test-row.expanded .test-chevron { transform: rotate(90deg); }
+
+        .test-details-pane-perf { 
+            display: none; background: rgba(56, 189, 248, 0.03); margin: 0.25rem 0.75rem 0.75rem 0.75rem; 
+            border-radius: 6px; border: 1px solid var(--border-light); padding: 0.75rem;
+            font-size: 0.7rem;
+        }
+        .test-details-pane-perf.expanded { display: block; }
+        .test-addon-perf-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.5rem 0.75rem; margin: 0.25rem 0.75rem;
+            background: rgba(56, 189, 248, 0.05); border-radius: 6px;
+            cursor: pointer; font-size: 0.7rem; color: var(--text); border: 1px solid transparent;
+            transition: all 0.1s;
+        }
+        .test-addon-perf-row:hover { border-color: var(--primary); background: rgba(56, 189, 248, 0.08); }
+        .test-chevron-perf { font-size: 0.6rem; color: var(--primary); transition: transform 0.15s; }
+
+        .test-details-pane { 
+            display: none; background: var(--bg); margin: 0 0.75rem 0.5rem 2.5rem; 
+            border-radius: 6px; border: 1px solid var(--border); padding: 0.75rem;
+            font-size: 0.7rem;
+        }
+        .test-details-pane.expanded { display: block; }
+        .test-msg { color: var(--warning); margin-bottom: 0.5rem; font-family: var(--mono); }
+        .test-detail-item { color: var(--text-muted); padding: 0.125rem 0; display: flex; gap: 0.5rem; }
+        .test-detail-item span { color: var(--primary); font-family: var(--mono); }
+        .test-captured-logs { 
+            margin-top: 0.75rem; background: var(--bg-secondary); border-radius: 4px; 
+            padding: 0.5rem; font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim);
+            max-height: 150px; overflow-y: auto; border-left: 2px solid var(--border-light);
+        }
+        .test-label-small { font-size: 0.6rem; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.25rem; display: block; }
         
         .console-log { font-family: var(--mono); font-size: 0.65rem; }
         .console-filters { display: flex; gap: 0.375rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
@@ -350,6 +410,35 @@
         .console-source { color: var(--primary); white-space: nowrap; }
         .console-category { color: var(--warning); white-space: nowrap; }
         .console-message { color: var(--text-muted); }
+        .lib-badge-small {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-family: var(--mono);
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            transition: all 0.1s;
+        }
+        .lib-badge-small:hover {
+            border-color: var(--border-light);
+            color: var(--text);
+        }
+        .lib-badge-small.highlight {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-glow);
+        }
+        .lib-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.375rem;
+            margin-bottom: 1rem;
+            padding: 0 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -362,6 +451,9 @@
             <div class="logo">MECHANIC <span>v0.3.0</span></div>
             <button id="mechanic-tab" class="btn btn-ghost addon-output-btn" title="View addon sync status">
                 <span>📊</span> Addon Output
+            </button>
+            <button id="sandbox-tab" class="btn btn-ghost addon-output-btn" title="Run sandbox tests offline">
+                <span>🧪</span> Sandbox
             </button>
         </div>
         <div class="header-actions">
@@ -494,6 +586,10 @@
                         </div>
                     </div>
                     
+                    <!-- Libraries Row -->
+                    <div id="output-libraries-row" class="lib-row" style="display: none;">
+                    </div>
+                    
                     <!-- Errors Section -->
                     <div class="output-section">
                         <div class="output-section-header" onclick="toggleSection('errors')">
@@ -507,18 +603,8 @@
                         </div>
                     </div>
                     
-                    <!-- Tests Section -->
-                    <div class="output-section">
-                        <div class="output-section-header" onclick="toggleSection('tests')">
-                            <div class="output-section-title">✅ Tests</div>
-                            <div class="output-section-meta">▼</div>
-                        </div>
-                        <div id="output-tests-body" class="output-section-body">
-                            <div id="output-test-badges" class="test-badges">
-                                <div style="padding: 0.5rem; color: var(--text-dim);">No test results yet.</div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Addon Tests Container (dynamic sections per addon) -->
+                    <div id="output-addon-tests-container"></div>
                     
                     <!-- Console Section -->
                     <div class="output-section">
@@ -711,6 +797,74 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Sandbox View -->
+                <div id="view-sandbox" class="view">
+                    <div class="output-header">
+                        <div class="output-header-title">🧪 Sandbox Testing</div>
+                        <div class="output-header-meta">
+                            Test addon Core logic outside WoW
+                            <button id="btn-sandbox-run" class="btn btn-run" style="margin-left: 0.5rem;">▶ Run Tests</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Stats -->
+                    <div class="output-stats">
+                        <div class="output-stat">
+                            <div class="output-stat-icon">✅</div>
+                            <div class="output-stat-info">
+                                <div id="sandbox-passed" class="output-stat-value success">0</div>
+                                <div class="output-stat-label">Passed</div>
+                            </div>
+                        </div>
+                        <div class="output-stat">
+                            <div class="output-stat-icon">❌</div>
+                            <div class="output-stat-info">
+                                <div id="sandbox-failed" class="output-stat-value error">0</div>
+                                <div class="output-stat-label">Failed</div>
+                            </div>
+                        </div>
+                        <div class="output-stat">
+                            <div class="output-stat-icon">📁</div>
+                            <div class="output-stat-info">
+                                <div id="sandbox-addon" class="output-stat-value info">—</div>
+                                <div class="output-stat-label">Addon</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Test Results -->
+                    <div class="output-section">
+                        <div class="output-section-header">
+                            <div class="output-section-title">🧪 Test Results</div>
+                            <div id="sandbox-summary" class="output-section-meta">No tests run yet</div>
+                        </div>
+                        <div id="sandbox-results-body" class="output-section-body">
+                            <div id="sandbox-results" class="test-tree">
+                                <div style="padding: 1rem; color: var(--text-dim); text-align: center;">
+                                    Select an addon and click "Run Tests" to execute sandbox tests.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Stubs Info -->
+                    <div class="output-section">
+                        <div class="output-section-header" onclick="toggleSection('sandbox-stubs')">
+                            <div class="output-section-title">📦 API Stubs</div>
+                            <div class="output-section-meta">▼</div>
+                        </div>
+                        <div id="output-sandbox-stubs-body" class="output-section-body collapsed">
+                            <div style="padding: 0.75rem;">
+                                <div class="health-row"><span>Status</span><span id="sandbox-stubs-status" class="value success">—</span></div>
+                                <div class="health-row"><span>Total APIs</span><span id="sandbox-stubs-total" class="value">—</span></div>
+                                <div class="health-row"><span>Protected</span><span id="sandbox-stubs-protected" class="value">—</span></div>
+                                <div class="health-row"><span>Normal</span><span id="sandbox-stubs-normal" class="value">—</span></div>
+                                <button id="btn-sandbox-generate" class="btn btn-ghost" style="margin-top: 0.5rem;">🔄 Regenerate Stubs</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Console -->
@@ -870,6 +1024,7 @@
         const consoleInput = document.getElementById('console-input');
         const accountsInfo = document.getElementById('accounts-info');
         const mechanicTab = document.getElementById('mechanic-tab');
+        const sandboxTab = document.getElementById('sandbox-tab');
         const testHero = document.getElementById('test-hero');
         const testList = document.getElementById('test-list');
 
@@ -933,6 +1088,7 @@
             document.getElementById(`view-${viewName}`).classList.add('active');
             
             mechanicTab.classList.toggle('active', viewName === 'mechanic');
+            sandboxTab.classList.toggle('active', viewName === 'sandbox');
             document.querySelectorAll('.cmd-btn').forEach(b => b.classList.remove('active'));
             
             if (viewName === 'command' && currentCommand) {
@@ -949,6 +1105,7 @@
             // Auto-refresh data for specific views
             if (viewName === 'libraries') refreshLibraries();
             if (viewName === 'settings') refreshSettings();
+            if (viewName === 'sandbox') refreshSandboxStubs();
         }
 
         function navigateToCommand(cmd) {
@@ -1307,6 +1464,9 @@
         // Mechanic tab
         mechanicTab.onclick = () => showView('mechanic');
         
+        // Sandbox tab
+        sandboxTab.onclick = () => showView('sandbox');
+        
         // Command buttons (navigation only) and view buttons
         document.querySelectorAll('.cmd-btn').forEach(btn => {
             if (btn.dataset.view) {
@@ -1342,6 +1502,10 @@
         };
         document.getElementById('btn-settings').onclick = () => showView('settings');
         
+        // Sandbox buttons
+        document.getElementById('btn-sandbox-run').onclick = () => runSandboxTests();
+        document.getElementById('btn-sandbox-generate').onclick = () => generateSandboxStubs();
+        
         // Get Started overlay buttons
         document.getElementById('btn-get-started').onclick = () => document.getElementById('btn-add-addon').click();
         
@@ -1373,6 +1537,94 @@
                  showToast('Error', 'Failed to pick file', 'error');
              }
         };
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SANDBOX LOGIC
+        // ═══════════════════════════════════════════════════════════════════════════
+        async function refreshSandboxStubs() {
+            const statusEl = document.getElementById('sandbox-stubs-status');
+            const totalEl = document.getElementById('sandbox-stubs-total');
+            const protectedEl = document.getElementById('sandbox-stubs-protected');
+            const normalEl = document.getElementById('sandbox-stubs-normal');
+            
+            statusEl.textContent = 'Ready';
+            statusEl.className = 'value success';
+        }
+
+        async function generateSandboxStubs() {
+            const btn = document.getElementById('btn-sandbox-generate');
+            const totalEl = document.getElementById('sandbox-stubs-total');
+            const protectedEl = document.getElementById('sandbox-stubs-protected');
+            const normalEl = document.getElementById('sandbox-stubs-normal');
+            
+            btn.classList.add('loading');
+            
+            const result = await executeCommand('sandbox.generate', {});
+            
+            if (result.success) {
+                showToast('Stubs Generated', result.reasoning, 'success');
+                const data = result.data || {};
+                totalEl.textContent = data.total_apis || '—';
+                protectedEl.textContent = data.protected_apis || '—';
+                normalEl.textContent = data.normal_apis || '—';
+            } else {
+                showToast('Generation Failed', result.error?.message || 'Unknown error', 'error');
+            }
+            
+            btn.classList.remove('loading');
+        }
+
+        async function runSandboxTests() {
+            if (!selectedAddon) {
+                showToast('No Addon', 'Select an addon in the sidebar first', 'error');
+                return;
+            }
+            
+            const btn = document.getElementById('btn-sandbox-run');
+            const resultsEl = document.getElementById('sandbox-results');
+            
+            btn.classList.add('loading');
+            btn.textContent = 'Running...';
+            
+            resultsEl.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-dim);">Running sandbox tests...</div>';
+            
+            const result = await executeCommand('sandbox.test', { addon: selectedAddon });
+            
+            if (result.success) {
+                renderSandboxResults(result.data);
+                showToast('Tests Complete', `${result.data.passed_count} passed, ${result.data.failed_count} failed`, result.data.passed ? 'success' : 'error');
+            } else {
+                resultsEl.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--error);">${result.error?.message || 'Failed to run tests'}</div>`;
+                showToast('Test Failed', result.error?.message || 'Unknown error', 'error');
+            }
+            
+            btn.classList.remove('loading');
+            btn.textContent = '▶ Run Tests';
+        }
+
+        function renderSandboxResults(data) {
+            document.getElementById('sandbox-passed').textContent = data.passed_count;
+            document.getElementById('sandbox-failed').textContent = data.failed_count;
+            document.getElementById('sandbox-addon').textContent = data.addon;
+            document.getElementById('sandbox-summary').textContent = `${data.passed_count} / ${data.total} passed`;
+            
+            const resultsEl = document.getElementById('sandbox-results');
+            
+            if (!data.tests || data.tests.length === 0) {
+                resultsEl.innerHTML = '<div style="padding: 1rem; color: var(--text-dim); text-align: center;">No tests found for this addon.</div>';
+                return;
+            }
+            
+            resultsEl.innerHTML = data.tests.map(test => `
+                <div class="test-row no-click">
+                    <div class="test-info">
+                        <div class="test-status-bullet ${test.passed ? 'pass' : 'fail'}"></div>
+                        <div class="test-name">${test.name}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
 
         // Console
         document.getElementById('btn-execute').onclick = async () => {
@@ -1441,9 +1693,31 @@
             outputData = data;
             
             // Render sections from WebSocket data if available
+            if (data.libraries) renderLibraryTags(data.libraries);
             if (data.errors) renderErrorTree(data.errors);
-            if (data.tests) renderTestBadges(data.tests);
+            if (data.tests) renderTestBadges(data.tests, data.perf);
             if (data.console) renderConsoleLog(data.console);
+        }
+        
+        // Render library version badges
+        function renderLibraryTags(libraries) {
+            const container = document.getElementById('output-libraries-row');
+            
+            if (!libraries || libraries.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'flex';
+            
+            // Highlight important libraries
+            const highlights = ['FenUI', 'MechanicLib', 'AceAddon-3.0'];
+            
+            container.innerHTML = libraries.map(lib => {
+                const isHighlight = highlights.some(h => lib.name.includes(h));
+                const cls = isHighlight ? 'lib-badge-small highlight' : 'lib-badge-small';
+                return `<div class="${cls}" title="${lib.name}">${lib.name} ${lib.version}</div>`;
+            }).join('');
         }
         
         // Handle WebSocket messages for real-time updates
@@ -1459,7 +1733,7 @@
             document.getElementById('output-test-count').textContent = `${passed}/${tests.length}`;
             
             // Render test badges
-            renderTestBadges(tests);
+            renderTestBadges(tests, msg.data?.perf);
             
             // Fetch full output to get errors and console
             fetchAddonOutput();
@@ -1539,36 +1813,164 @@
         function toggleAddonErrors(addon) {
             const items = document.getElementById(`addon-errors-${addon}`);
             const name = document.getElementById(`addon-name-${addon}`);
-            items.classList.toggle('expanded');
-            name.classList.toggle('expanded');
+            if (items) items.classList.toggle('expanded');
+            if (name) name.classList.toggle('expanded');
         }
         
         // Toggle error detail visibility
         function toggleErrorDetail(errId) {
             const detail = document.getElementById(errId);
-            detail.classList.toggle('expanded');
+            if (detail) detail.classList.toggle('expanded');
         }
-        
-        // Render test badges
-        function renderTestBadges(tests) {
-            const container = document.getElementById('output-test-badges');
+        function renderTestBadges(tests, perfData = {}) {
+            const container = document.getElementById('output-addon-tests-container');
+            if (!container) return;
             
             if (!tests || tests.length === 0) {
-                container.innerHTML = '<div style="padding: 0.5rem; color: var(--text-dim);">No test results yet.</div>';
+                container.innerHTML = '';
                 return;
             }
             
-            const passed = tests.filter(t => t.passed).length;
-            document.getElementById('output-test-count').textContent = `${passed}/${tests.length}`;
+            // Group by Addon -> Category
+            const grouped = {};
+            for (const t of tests) {
+                const addon = t.addon || '!Mechanic';
+                const cat = t.category || 'General';
+                if (!grouped[addon]) grouped[addon] = {};
+                if (!grouped[addon][cat]) grouped[addon][cat] = [];
+                grouped[addon][cat].push(t);
+            }
             
             let html = '';
-            for (const test of tests) {
-                const icon = test.passed ? '✓' : '✗';
-                const cls = test.passed ? 'pass' : 'fail';
-                html += `<div class="test-badge ${cls}"><span class="test-badge-icon">${icon}</span> ${test.name || 'unnamed'}</div>`;
+            const addons = Object.keys(grouped).sort();
+            
+            for (const addon of addons) {
+                const addonTests = tests.filter(t => t.addon === addon);
+                const addonPassed = addonTests.filter(t => t.passed).length;
+                const addonPerf = (perfData && perfData[addon]) || [];
+                const perfId = `perf-${addon}`.replace(/\s+/g, '-');
+                const sectionId = `section-tests-${addon}`.replace(/\s+/g, '-');
+
+                html += `
+                    <div class="output-section">
+                        <div class="output-section-header" onclick="toggleSection('${sectionId}')">
+                            <div class="output-section-title">
+                                ✅ TESTS: ${addon}
+                                <span style="font-weight: normal; opacity: 0.6; font-size: 0.75rem; margin-left: 0.5rem;">
+                                    ${addonPassed}/${addonTests.length} Passed
+                                </span>
+                            </div>
+                            <div class="output-section-meta">▼</div>
+                        </div>
+                        <div id="output-${sectionId}-body" class="output-section-body">
+                            <div class="test-tree">
+                                <!-- Addon Performance Sub-Section (Optional) -->
+                                ${addonPerf.length > 0 ? `
+                                    <div class="test-addon-perf-row" onclick="togglePerfDetail('${perfId}')">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--primary);">
+                                            <span>🛡️</span> SYSTEM HEALTH
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <span style="font-size: 0.65rem; opacity: 0.7;">${addonPerf.length} Metrics</span>
+                                            <span class="test-chevron-perf">▶</span>
+                                        </div>
+                                    </div>
+                                    <div id="${perfId}" class="test-details-pane-perf">
+                                        ${addonPerf.map(p => `
+                                            <div class="test-detail-item" style="justify-content: space-between;">
+                                                <div><span>⚡</span> ${p.name} <span style="font-size: 0.9em; opacity: 0.7;">(${p.description})</span></div>
+                                                <div style="color: var(--text); font-weight: 600;">${p.ms != null ? p.ms : ''}${p.percent != null ? ' (' + p.percent + '%)' : ''}</div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                `;
+                
+                const cats = Object.keys(grouped[addon]).sort();
+                for (const cat of cats) {
+                    html += `
+                        <div class="test-category">
+                            <div class="test-category-header">${cat}</div>
+                    `;
+                    
+                    for (let i = 0; i < grouped[addon][cat].length; i++) {
+                        const t = grouped[addon][cat][i];
+                        const testId = `test-${addon}-${cat}-${i}`.replace(/\s+/g, '-');
+                        const statusClass = t.passed ? 'pass' : 'fail';
+                        const duration = t.duration ? `${(t.duration * 1000).toFixed(1)}ms` : '';
+                        
+                        // Check if we have any useful data to show in a detail pane
+                        const hasDetails = t.message || (t.details && Object.keys(t.details).length > 0) || (t.logs && t.logs.length > 0);
+                        const rowCls = hasDetails ? 'test-row' : 'test-row no-click';
+
+                        html += `
+                            <div class="${rowCls}" ${hasDetails ? `onclick="toggleTestDetail('${testId}')"` : ''} id="row-${testId}">
+                                <div class="test-info">
+                                    <div class="test-status-bullet ${statusClass}"></div>
+                                    <span class="test-name">${t.name || 'unnamed'}</span>
+                                    <span class="test-meta">${duration}</span>
+                                </div>
+                                ${hasDetails ? '<span class="test-chevron">▶</span>' : ''}
+                            </div>
+                            ${hasDetails ? `
+                                <div id="${testId}" class="test-details-pane">
+                                    ${t.message ? `<div class="test-msg">${t.message}</div>` : ''}
+                                    
+                                    ${t.details && Object.keys(t.details).length > 0 ? `
+                                        <span class="test-label-small">Steps / Details</span>
+                                        ${Object.values(t.details).map(d => {
+                                            if (typeof d === 'string') return `<div class="test-detail-item"><span>•</span> ${d}</div>`;
+                                            
+                                            // Handle structured step objects (common in Flightsim/DIAG)
+                                            if (typeof d === 'object' && d !== null) {
+                                                const label = d.label || d.msg || d.text || '';
+                                                const value = d.value !== undefined ? `: <span style="color: var(--text); font-weight: 500;">${d.value}</span>` : '';
+                                                const status = d.status ? ` <span style="font-size: 0.8em; opacity: 0.6;">(${d.status})</span>` : '';
+                                                
+                                                if (label || value) {
+                                                    return `<div class="test-detail-item"><span>•</span> ${label}${value}${status}</div>`;
+                                                }
+                                                return `<div class="test-detail-item"><span>•</span> ${JSON.stringify(d)}</div>`;
+                                            }
+                                            return `<div class="test-detail-item"><span>•</span> ${d}</div>`;
+                                        }).join('')}
+                                    ` : ''}
+                                    
+                                    ${t.logs && t.logs.length > 0 ? `
+                                        <span class="test-label-small" style="margin-top: 0.75rem;">Captured Logs</span>
+                                        <div class="test-captured-logs">${t.logs.join('\n')}</div>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                        `;
+                    }
+                    html += `</div>`; // end category
+                }
+                html += `</div></div></div>`; // end body, section
             }
             
             container.innerHTML = html;
+        }
+
+        // Toggle test detail pane
+        function toggleTestDetail(testId) {
+            const pane = document.getElementById(testId);
+            const row = document.getElementById(`row-${testId}`);
+            if (pane) pane.classList.toggle('expanded');
+            if (row) row.classList.toggle('expanded');
+        }
+
+        // Toggle performance detail pane
+        function togglePerfDetail(perfId) {
+            const pane = document.getElementById(perfId);
+            if (pane) pane.classList.toggle('expanded');
+            // Find the chevron in the header above
+            const header = pane.previousElementSibling;
+            const chevron = header.querySelector('.test-chevron-perf');
+            if (chevron) {
+                const isExpanded = pane.classList.contains('expanded');
+                chevron.style.transform = isExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+            }
         }
         
         // Render console log
@@ -1696,7 +2098,7 @@
 
             if (lastView === 'command' && lastCommand) {
                 navigateToCommand(lastCommand);
-            } else if (['mechanic', 'libraries', 'settings'].includes(lastView)) {
+            } else if (['mechanic', 'libraries', 'settings', 'sandbox'].includes(lastView)) {
                 showView(lastView);
             } else {
                 showView('mechanic');
