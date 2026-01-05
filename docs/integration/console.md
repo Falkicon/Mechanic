@@ -55,25 +55,47 @@ For rich categorization in Mechanic's console:
 ```lua
 local MechanicLib = LibStub("MechanicLib-1.0", true)
 
+-- Throttle state to prevent console flooding
+local logThrottle = {}
+local LOG_THROTTLE_INTERVAL = 0.1 -- seconds between identical messages
+
 local function Log(msg, category)
+    if not MyAddon.debugMode then
+        return
+    end
+
+    -- Throttle identical messages (important for per-frame logging)
+    local now = GetTime()
+    if logThrottle[msg] and (now - logThrottle[msg]) < LOG_THROTTLE_INTERVAL then
+        return
+    end
+    logThrottle[msg] = now
+
     -- Store in internal buffer for Mechanic's pull model
     table.insert(MyAddon.debugBuffer, {
         msg = msg,
         time = GetTime(),
     })
-    
-    -- Log to Mechanic's live console if available
+    if #MyAddon.debugBuffer > 500 then
+        table.remove(MyAddon.debugBuffer, 1)
+    end
+
+    -- Log to Mechanic's console only (no chat spam)
     if MechanicLib then
         category = category or MechanicLib.Categories.CORE
         MechanicLib:Log("MyAddon", msg, category)
     end
-    
-    -- Also print to chat if debug mode enabled
-    if MyAddon.debugMode then
-        print("|cff74AFFF[MyAddon]|r", msg)
-    end
 end
 ```
+
+### Best Practices
+
+| Practice | Reason |
+|----------|--------|
+| **Console only, no chat** | Chat can't be scrolled/copied easily; use Mechanic Console instead |
+| **Throttle identical messages** | Per-frame logging can flood the console (1000+ entries/sec) |
+| **Cap buffer size** | Prevent memory bloat from unbounded growth |
+| **Guard with debugMode** | No overhead when debugging is disabled |
 
 ### Available Categories
 

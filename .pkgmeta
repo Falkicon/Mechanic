@@ -13,6 +13,7 @@ ignore:
   - ROADMAP.md
   - SECURITY.md
   - PLAN
+  - sandbox
   - desktop
   - docs
   - _TemplateAddon

@@ -67,7 +67,7 @@
             overflow-y: auto;
         }
         .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .content-area { flex: 1; overflow-y: auto; padding: 1rem; }
+        .content-area { flex: 1; overflow: hidden; padding: 1rem; display: flex; flex-direction: column; }
         .console-area { 
             height: 180px;
             min-height: 180px;
@@ -145,8 +145,28 @@
         .cmd-icon { font-size: 0.75rem; width: 1rem; text-align: center; }
 
         /* Main Content Views */
-        .view { display: none; }
+        .view { display: none; flex: 1 1 0; min-height: 0; overflow-y: auto; }
         .view.active { display: block; }
+        #view-sandbox { flex-direction: column; }
+        #view-sandbox.active { display: flex; overflow: hidden; }
+        #view-sandbox .output-header,
+        #view-sandbox .output-stats { flex-shrink: 0; }
+        #view-sandbox .output-section.sandbox-stubs { flex-shrink: 0; }
+        #view-sandbox .output-section.sandbox-results {
+            flex: 1 1 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        #view-sandbox .output-section.sandbox-results .output-section-header { flex-shrink: 0; }
+        #view-sandbox .output-section.sandbox-results .output-section-body {
+            flex: 1 1 0;
+            overflow-y: auto;
+            min-height: 0;
+            max-height: none;
+        }
 
         /* Command View Header */
         .command-header { 
@@ -452,9 +472,6 @@
             <button id="mechanic-tab" class="btn btn-ghost addon-output-btn" title="View addon sync status">
                 <span>📊</span> Addon Output
             </button>
-            <button id="sandbox-tab" class="btn btn-ghost addon-output-btn" title="Run sandbox tests offline">
-                <span>🧪</span> Sandbox
-            </button>
         </div>
         <div class="header-actions">
             <button id="btn-create-nav" class="btn btn-ghost">➕ Create</button>
@@ -478,6 +495,14 @@
                     <button id="btn-add-addon" class="btn-icon" title="Add Addon from .toc">➕</button>
                 </div>
                 <div id="addon-status" class="addon-status">Add an addon to get started</div>
+            </div>
+
+            <!-- Sandbox -->
+            <div class="sidebar-section">
+                <div class="sidebar-title">Sandbox</div>
+                <button id="sandbox-tab" class="cmd-btn" title="Test Core/ layer offline without WoW">
+                    <span class="cmd-icon">🧪</span> Sandbox Tests
+                </button>
             </div>
 
             <!-- Development -->
@@ -807,7 +832,7 @@
                             <button id="btn-sandbox-run" class="btn btn-run" style="margin-left: 0.5rem;">▶ Run Tests</button>
                         </div>
                     </div>
-                    
+
                     <!-- Stats -->
                     <div class="output-stats">
                         <div class="output-stat">
@@ -833,8 +858,24 @@
                         </div>
                     </div>
                     
-                    <!-- Test Results -->
-                    <div class="output-section">
+                    <!-- API Stubs (compact, always visible) -->
+                    <div class="output-section sandbox-stubs">
+                        <div class="output-section-header">
+                            <div class="output-section-title">📦 API Stubs</div>
+                            <button id="btn-sandbox-generate" class="btn btn-ghost" style="padding: 0.125rem 0.5rem; height: auto;">🔄 Regenerate</button>
+                        </div>
+                        <div class="output-section-body" style="padding: 0.5rem 0.75rem;">
+                            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                                <div class="health-row" style="margin: 0;"><span>Status</span><span id="sandbox-stubs-status" class="value success">—</span></div>
+                                <div class="health-row" style="margin: 0;"><span>Total</span><span id="sandbox-stubs-total" class="value">—</span></div>
+                                <div class="health-row" style="margin: 0;"><span>Protected</span><span id="sandbox-stubs-protected" class="value">—</span></div>
+                                <div class="health-row" style="margin: 0;"><span>Normal</span><span id="sandbox-stubs-normal" class="value">—</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Results (takes remaining space) -->
+                    <div class="output-section sandbox-results">
                         <div class="output-section-header">
                             <div class="output-section-title">🧪 Test Results</div>
                             <div id="sandbox-summary" class="output-section-meta">No tests run yet</div>
@@ -844,23 +885,6 @@
                                 <div style="padding: 1rem; color: var(--text-dim); text-align: center;">
                                     Select an addon and click "Run Tests" to execute sandbox tests.
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Stubs Info -->
-                    <div class="output-section">
-                        <div class="output-section-header" onclick="toggleSection('sandbox-stubs')">
-                            <div class="output-section-title">📦 API Stubs</div>
-                            <div class="output-section-meta">▼</div>
-                        </div>
-                        <div id="output-sandbox-stubs-body" class="output-section-body collapsed">
-                            <div style="padding: 0.75rem;">
-                                <div class="health-row"><span>Status</span><span id="sandbox-stubs-status" class="value success">—</span></div>
-                                <div class="health-row"><span>Total APIs</span><span id="sandbox-stubs-total" class="value">—</span></div>
-                                <div class="health-row"><span>Protected</span><span id="sandbox-stubs-protected" class="value">—</span></div>
-                                <div class="health-row"><span>Normal</span><span id="sandbox-stubs-normal" class="value">—</span></div>
-                                <button id="btn-sandbox-generate" class="btn btn-ghost" style="margin-top: 0.5rem;">🔄 Regenerate Stubs</button>
                             </div>
                         </div>
                     </div>
@@ -1546,31 +1570,58 @@
             const totalEl = document.getElementById('sandbox-stubs-total');
             const protectedEl = document.getElementById('sandbox-stubs-protected');
             const normalEl = document.getElementById('sandbox-stubs-normal');
-            
-            statusEl.textContent = 'Ready';
-            statusEl.className = 'value success';
+
+            // Fetch actual status from sandbox.status command
+            const result = await executeCommand('sandbox.status', {});
+
+            if (result.success && result.data) {
+                const data = result.data;
+                if (data.stubs_exist) {
+                    statusEl.textContent = 'Ready';
+                    statusEl.className = 'value success';
+                    totalEl.textContent = data.stubs_generated || '—';
+                    protectedEl.textContent = data.protected_count || '—';
+                    normalEl.textContent = data.normal_count || '—';
+                } else {
+                    statusEl.textContent = 'Not Generated';
+                    statusEl.className = 'value warning';
+                    totalEl.textContent = '—';
+                    protectedEl.textContent = '—';
+                    normalEl.textContent = '—';
+                }
+            } else {
+                statusEl.textContent = 'Error';
+                statusEl.className = 'value error';
+            }
         }
 
         async function generateSandboxStubs() {
             const btn = document.getElementById('btn-sandbox-generate');
+            const statusEl = document.getElementById('sandbox-stubs-status');
             const totalEl = document.getElementById('sandbox-stubs-total');
             const protectedEl = document.getElementById('sandbox-stubs-protected');
             const normalEl = document.getElementById('sandbox-stubs-normal');
-            
+
             btn.classList.add('loading');
-            
+            statusEl.textContent = 'Generating...';
+            statusEl.className = 'value warning';
+
             const result = await executeCommand('sandbox.generate', {});
-            
+
             if (result.success) {
                 showToast('Stubs Generated', result.reasoning, 'success');
                 const data = result.data || {};
-                totalEl.textContent = data.total_apis || '—';
-                protectedEl.textContent = data.protected_apis || '—';
-                normalEl.textContent = data.normal_apis || '—';
+                statusEl.textContent = 'Ready';
+                statusEl.className = 'value success';
+                totalEl.textContent = data.stubs_generated || '—';
+                protectedEl.textContent = data.protected_count || '—';
+                normalEl.textContent = data.normal_count || '—';
             } else {
                 showToast('Generation Failed', result.error?.message || 'Unknown error', 'error');
+                statusEl.textContent = 'Error';
+                statusEl.className = 'value error';
             }
-            
+
             btn.classList.remove('loading');
         }
 
@@ -1606,23 +1657,76 @@
             document.getElementById('sandbox-passed').textContent = data.passed_count;
             document.getElementById('sandbox-failed').textContent = data.failed_count;
             document.getElementById('sandbox-addon').textContent = data.addon;
-            document.getElementById('sandbox-summary').textContent = `${data.passed_count} / ${data.total} passed`;
-            
+
+            // Enhanced summary with duration
+            const duration = data.duration_ms ? ` in ${data.duration_ms.toFixed(0)}ms` : '';
+            document.getElementById('sandbox-summary').textContent = `${data.passed_count} / ${data.total} passed${duration}`;
+
             const resultsEl = document.getElementById('sandbox-results');
-            
+
             if (!data.tests || data.tests.length === 0) {
                 resultsEl.innerHTML = '<div style="padding: 1rem; color: var(--text-dim); text-align: center;">No tests found for this addon.</div>';
                 return;
             }
-            
-            resultsEl.innerHTML = data.tests.map(test => `
-                <div class="test-row no-click">
-                    <div class="test-info">
-                        <div class="test-status-bullet ${test.passed ? 'pass' : 'fail'}"></div>
-                        <div class="test-name">${test.name}</div>
-                    </div>
+
+            // Group tests by describe block (part before " > ")
+            const groups = {};
+            data.tests.forEach(test => {
+                const parts = test.name.split(' > ');
+                const group = parts.length > 1 ? parts[0] : 'Tests';
+                const testName = parts.length > 1 ? parts.slice(1).join(' > ') : test.name;
+                if (!groups[group]) groups[group] = [];
+                groups[group].push({ ...test, shortName: testName });
+            });
+
+            // Build grouped test list
+            let testList = '';
+            for (const [groupName, tests] of Object.entries(groups)) {
+                const groupPassed = tests.filter(t => t.passed).length;
+                const groupTotal = tests.length;
+                const groupStatus = groupPassed === groupTotal ? 'pass' : 'fail';
+
+                testList += `
+                    <div class="test-group" style="margin-bottom: 0.75rem;">
+                        <div class="test-group-header" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); margin-bottom: 0.25rem;">
+                            <span class="test-status-bullet ${groupStatus}"></span>
+                            <span style="font-weight: 600; color: var(--text);">${groupName}</span>
+                            <span style="color: var(--text-dim); font-size: 0.8rem; margin-left: auto;">${groupPassed}/${groupTotal}</span>
+                        </div>
+                        <div class="test-group-items" style="padding-left: 1.25rem;">
+                `;
+
+                tests.forEach(test => {
+                    const durationStr = test.duration ? `<span style="color: var(--text-dim); font-size: 0.75rem; margin-left: auto;">${test.duration.toFixed(1)}ms</span>` : '';
+                    const errorStr = !test.passed && test.error ? `<div style="color: var(--error); font-size: 0.75rem; padding: 0.25rem 0 0.25rem 1.25rem; opacity: 0.9;">${test.error}</div>` : '';
+
+                    testList += `
+                        <div class="test-row no-click" style="padding: 0.25rem 0;">
+                            <div class="test-info" style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div class="test-status-bullet ${test.passed ? 'pass' : 'fail'}"></div>
+                                <div class="test-name" style="color: ${test.passed ? 'var(--text-dim)' : 'var(--text)'};">${test.shortName}</div>
+                                ${durationStr}
+                            </div>
+                            ${errorStr}
+                        </div>
+                    `;
+                });
+
+                testList += `</div></div>`;
+            }
+
+            // Build metadata section
+            const sourceFiles = data.source_files?.length ? data.source_files.join(', ') : 'None';
+            const specFiles = data.spec_files?.length ? data.spec_files.map(f => f.split('/').pop()).join(', ') : 'None';
+
+            const metadata = `
+                <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-dark); border-radius: 4px; font-size: 0.8rem; color: var(--text-dim);">
+                    <div style="margin-bottom: 0.25rem;"><strong>Source:</strong> ${sourceFiles}</div>
+                    <div><strong>Specs:</strong> ${specFiles}</div>
                 </div>
-            `).join('');
+            `;
+
+            resultsEl.innerHTML = testList + metadata;
         }
 
 

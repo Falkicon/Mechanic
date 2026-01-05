@@ -84,7 +84,7 @@ def print_result(result: Any, json_output: bool = False, quiet: bool = False) ->
         if result.error:
             click.echo(f"   {result.error.code}: {result.error.message}")
             if result.error.suggestion:
-                click.secho(f"   💡 {result.error.suggestion}", fg="yellow")
+                click.secho(f"   Hint: {result.error.suggestion}", fg="yellow")
 
 
 def print_commands(commands: list, json_output: bool = False) -> None:
@@ -104,7 +104,7 @@ def print_commands(commands: list, json_output: bool = False) -> None:
             groups[prefix] = []
         groups[prefix].append(cmd)
     
-    click.secho(f"\n📋 Available Commands ({len(commands)} total)\n", bold=True)
+    click.secho(f"\nAvailable Commands ({len(commands)} total)\n", bold=True)
     
     for group, cmds in sorted(groups.items()):
         click.secho(f"  {group}:", fg="cyan", bold=True)
@@ -132,7 +132,7 @@ async def start_services(port, watch_paths, src_paths=None, auto_reload=False, r
     
     await stop_event.wait()
     
-    click.echo("\n🛑 Shutting down services...")
+    click.echo("\nShutting down services...")
     watcher.stop()
     server.should_exit = True
     await asyncio.gather(server_task, watcher_task, return_exceptions=True)
@@ -457,26 +457,6 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
 
 
 @main.command()
-@click.option("--key", "-k", default="^+r", help="Key sequence (default: ^+r = CTRL+SHIFT+R).")
-@click.pass_context
-def reload(ctx, key):
-    """Trigger an in-game reload."""
-    from .commands.core import get_server
-    
-    json_output = ctx.obj.get("json_output", False)
-    quiet = ctx.obj.get("quiet", False)
-    server = get_server()
-    
-    # Display friendly key name
-    key_display = "CTRL+SHIFT+R" if key == "^+r" else key
-    if not quiet and not json_output:
-        click.echo(f"Triggering reload (key: {key_display})...")
-    
-    result = asyncio.run(server.execute("reload.trigger", {"key": key}))
-    print_result(result, json_output=json_output, quiet=quiet)
-
-
-@main.command()
 @click.option("--port", "-p", default=3100, help="Port the server is running on.")
 @click.pass_context
 def stop(ctx, port):
@@ -509,6 +489,28 @@ def stop(ctx, port):
 # COMMANDS - Convenience Wrappers
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@main.command("addon.output")
+@click.pass_context
+def addon_output(ctx):
+    """Get all addon output (errors, tests, console).
+
+    \b
+    Examples:
+      mech addon.output              # Full output
+      mech --agent addon.output      # Compressed for AI agents
+      mech --json addon.output       # Raw JSON output
+    """
+    from .commands.core import get_server
+
+    json_output = ctx.obj.get("json_output", False)
+    quiet = ctx.obj.get("quiet", False)
+    agent_mode = ctx.obj.get("agent_mode", False)
+    server = get_server()
+
+    result = asyncio.run(server.execute("addon.output", {"agent_mode": agent_mode}))
+    print_result(result, json_output=json_output, quiet=quiet)
+
+
 @main.command()
 @click.option("--output", "-o", default=None, help="Output file path (default: docs/cli-reference.md)")
 @click.option("--format", "-f", "fmt", default="markdown", type=click.Choice(["markdown", "json"]), help="Output format")
@@ -535,16 +537,19 @@ def docs(ctx, output, fmt):
         return await server.execute("docs.generate", input_data)
     
     result = asyncio.run(run())
-    
+
     if json_output:
         click.echo(json.dumps(result, indent=2, default=str))
     else:
         print_result(result, quiet=quiet)
-        if result.get("success"):
-            data = result.get("data", {})
+        if result.success:
+            data = result.data
             click.echo("")
-            click.secho(f"[OK] Generated {data.get('path', 'docs')}", fg="green")
-            click.echo(f"     {data.get('command_count', 0)} commands across {len(data.get('categories', []))} categories")
+            path = getattr(data, 'path', 'docs') if data else 'docs'
+            cmd_count = getattr(data, 'command_count', 0) if data else 0
+            categories = getattr(data, 'categories', []) if data else []
+            click.secho(f"[OK] Generated {path}", fg="green")
+            click.echo(f"     {cmd_count} commands across {len(categories)} categories")
 
 
 @main.command()
@@ -610,37 +615,215 @@ def release(ctx, addon, version, message, skip_tag):
 @main.command()
 @click.option("--verify", is_flag=True, help="Only verify, don't download.")
 @click.option("--force", is_flag=True, help="Re-download even if exists.")
+@click.option("--skip-config", is_flag=True, help="Skip configuration, only setup tools.")
 @click.pass_context
-def setup(ctx, verify, force):
-    """Download and install required development tools."""
+def setup(ctx, verify, force, skip_config):
+    """Setup Mechanic: configure paths and install development tools."""
+    from .config import get_config, MechanicConfig
     from .setup import setup_tools, get_setup_summary, get_platform
-    
+
     json_output = ctx.obj.get("json_output", False)
     quiet = ctx.obj.get("quiet", False)
-    
+
     platform = get_platform()
-    
+    config = get_config()
+
+    # ── Phase 1: Configuration ──────────────────────────────────────────────────
+    if not skip_config and not json_output:
+        click.secho("\n  Mechanic Setup\n", fg="cyan", bold=True)
+        click.secho("  Auto-detected paths:", bold=True)
+
+        wow_root = config.wow_root
+        dev_path = config.dev_path
+        data_dir = config.data_dir
+
+        # Show detected paths
+        if wow_root:
+            click.secho(f"    WoW Root:  {wow_root}", fg="green")
+        else:
+            click.secho("    WoW Root:  (not found)", fg="yellow")
+
+        if dev_path:
+            click.secho(f"    Dev Path:  {dev_path}", fg="green")
+        else:
+            click.secho("    Dev Path:  (not found)", fg="yellow")
+
+        click.echo(f"    Data Dir:  {data_dir}")
+        click.echo("")
+
+        # If paths not found, prompt for them
+        need_save = False
+        new_config = {}
+
+        if not wow_root:
+            user_path = click.prompt(
+                "  Enter WoW installation path",
+                default="",
+                show_default=False
+            )
+            if user_path:
+                from pathlib import Path
+                p = Path(user_path)
+                if p.exists():
+                    new_config["wow_root"] = str(p)
+                    need_save = True
+                else:
+                    click.secho(f"  [!] Path not found: {user_path}", fg="yellow")
+
+        if not dev_path and not new_config.get("wow_root"):
+            user_path = click.prompt(
+                "  Enter _dev_ folder path",
+                default="",
+                show_default=False
+            )
+            if user_path:
+                from pathlib import Path
+                p = Path(user_path)
+                if p.exists():
+                    new_config["dev_path"] = str(p)
+                    need_save = True
+                else:
+                    click.secho(f"  [!] Path not found: {user_path}", fg="yellow")
+
+        # Confirm and save if paths were auto-detected or entered
+        if wow_root or dev_path or new_config:
+            if new_config:
+                # User entered paths, save them
+                if click.confirm("  Save this configuration?", default=True):
+                    config.save_user_config(new_config)
+                    click.secho("  [OK] Configuration saved to ~/.mechanic/config.json", fg="green")
+                    # Reload config
+                    MechanicConfig.reset()
+            else:
+                # Paths were auto-detected
+                if click.confirm("  Save this configuration?", default=True):
+                    config.save_user_config(config.to_dict())
+                    click.secho("  [OK] Configuration saved to ~/.mechanic/config.json", fg="green")
+
+        click.echo("")
+
+    # ── Phase 2: Tool Setup ─────────────────────────────────────────────────────
     if not quiet and not json_output:
-        click.secho(f"\n⚙️  Tool Setup ({platform})\n", fg="cyan", bold=True)
-    
+        click.secho(f"  Checking tools ({platform})...\n", bold=True)
+
     results = setup_tools(verify_only=verify, force=force)
     summary = get_setup_summary(results)
-    
+
     if json_output:
         click.echo(json.dumps(summary, indent=2))
         return
-    
+
     for tool in summary["tools"]:
         if tool.get("installed"):
-            click.secho(f"  [OK] {tool['name']} v{tool.get('version', '?')}", fg="green")
+            click.secho(f"    [OK] {tool['name']} v{tool.get('version', '?')}", fg="green")
         else:
-            click.secho(f"  [X] {tool['name']}: {tool.get('message', 'missing')}", fg="red")
-    
+            click.secho(f"    [X] {tool['name']}: {tool.get('message', 'missing')}", fg="red")
+
+    # ── Phase 3: Busted Setup ───────────────────────────────────────────────────
+    if platform == "windows" and not verify:
+        from .setup import setup_busted
+        success, message = setup_busted()
+        if success:
+            click.secho(f"    [OK] busted.bat generated", fg="green")
+        else:
+            click.secho(f"    [!] busted: {message}", fg="yellow")
+
     click.echo("")
     if summary["success"]:
-        click.secho("[OK] All tools ready!", fg="green", bold=True)
+        click.secho("  [OK] Setup complete!", fg="green", bold=True)
     else:
-        click.secho(f"[!] {summary['required_missing']} tool(s) missing", fg="yellow")
+        click.secho(f"  [!] {summary['required_missing']} tool(s) missing", fg="yellow")
+
+
+@main.command("setup-busted")
+def setup_busted_cmd():
+    """Regenerate busted.bat for your LuaRocks installation."""
+    from .setup import setup_busted, get_platform
+
+    if get_platform() != "windows":
+        click.secho("busted.bat is Windows-only", fg="yellow")
+        return
+
+    success, message = setup_busted()
+    if success:
+        click.secho(f"[OK] {message}", fg="green")
+    else:
+        click.secho(f"[!] {message}", fg="yellow")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMMANDS - MCP Server (AFD Phase 2)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@main.command()
+@click.option("--transport", "-t", default="stdio", type=click.Choice(["stdio", "sse"]), help="Transport type (stdio or sse)")
+@click.option("--port", "-p", default=3100, help="Port for SSE transport (default: 3100)")
+@click.pass_context
+def mcp(ctx, transport, port):
+    """Run Mechanic as an MCP server for AI agents.
+
+    This exposes all AFD commands as MCP tools with rich descriptions,
+    parameter documentation, usage examples, and clean output formatting.
+
+    \b
+    Features:
+      - Category-organized tools (addon, api, libs, etc.)
+      - Parameter hints with types and defaults
+      - Usage examples for common operations
+      - Clean summaries alongside JSON responses
+
+    \b
+    Transports:
+      stdio  - Standard input/output (default, for Claude Code/Desktop)
+      sse    - Server-Sent Events (for web clients)
+
+    \b
+    Examples:
+      mech mcp                    # Run MCP over stdio
+      mech mcp --transport sse    # Run MCP over SSE on port 3100
+      mech mcp -t sse -p 8080     # Run SSE on custom port
+
+    \b
+    Claude Code Config (.mcp.json in project root):
+      {
+        "mcpServers": {
+          "mechanic": {
+            "command": "mech",
+            "args": ["mcp"]
+          }
+        }
+      }
+    """
+    from .commands.core import get_server
+    from .mcp_server import create_mcp_server
+
+    quiet = ctx.obj.get("quiet", False)
+    server = get_server()
+
+    # Check if FastMCP is available
+    try:
+        from mcp.server.fastmcp import FastMCP
+    except ImportError:
+        click.secho("[X] FastMCP not installed", fg="red")
+        click.echo("    Install with: pip install mcp")
+        sys.exit(1)
+
+    # Create enhanced MCP server with rich descriptions
+    verbose = not quiet and transport == "stdio"
+    mcp_server = create_mcp_server(server, verbose=verbose)
+
+    if not quiet and transport == "sse":
+        cmd_count = len(server.list_commands())
+        click.echo(f"Mechanic MCP Server starting on port {port}...")
+        click.echo(f"  Tools: {cmd_count}")
+        click.echo(f"  Transport: SSE")
+        click.echo(f"  Features: Rich descriptions, parameter hints, examples")
+
+    # Run the MCP server
+    if transport == "sse":
+        mcp_server.settings.port = port
+
+    mcp_server.run(transport=transport)
 
 
 if __name__ == "__main__":

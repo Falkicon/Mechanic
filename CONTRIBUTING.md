@@ -108,7 +108,7 @@ Commands are organized by domain in `desktop/src/mechanic/commands/`:
 
 ```
 commands/
-├── core.py        # sv.parse, reload.trigger, server.shutdown
+├── core.py        # sv.parse, sv.discover, server.shutdown
 ├── development.py # addon.validate, addon.lint, addon.format, addon.test
 ├── environment.py # addon.create, addon.sync, libs.check
 ├── release.py     # version.bump, changelog.add, git.commit, git.tag

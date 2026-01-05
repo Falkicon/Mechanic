@@ -8,47 +8,79 @@ Mechanic supports three types of testing:
 
 ---
 
+## Which Testing Approach?
+
+| Method | Speed | Requires WoW? | Best For |
+|--------|-------|---------------|----------|
+| Sandbox | ~30ms | No | Core logic, CI/CD pipelines |
+| Desktop (Busted) | ~5s | No | Integration tests, complex mocking |
+| In-Game | ~30s | Yes | API behavior, UI verification, secret values |
+
+**Recommendation:** Start with Sandbox tests for your `Core/` layer. Add In-Game tests only for features that need live API behavior.
+
+---
+
 ## Sandbox Tests (Recommended)
 
 The sandbox provides a complete WoW API stub environment for testing addons offline without external dependencies.
 
 ### Setup
 
-Your addon needs test files with the `_spec.lua` suffix in either `Core/` or `Tests/` folders:
+Sandbox tests can live in either location:
+- `Core/*_spec.lua` - Tests alongside source files
+- `Tests/**/*_spec.lua` - Dedicated test folder (recommended)
+
+The `Tests/` folder keeps source code clean while allowing organized test structure.
 
 ```
 MyAddon/
-├── Core.lua
-├── Core/
-│   └── utils_spec.lua      # Tests in Core/
-└── Tests/
-    └── core_spec.lua       # Tests in Tests/
+├── Core/                    # Source files (loaded by sandbox)
+│   ├── init.lua
+│   ├── Actions/
+│   │   └── tracker.lua
+│   └── Schemas/
+│       └── types.lua
+└── Tests/                   # All tests (searched by sandbox)
+    ├── Core/                # Tests for Core layer
+    │   ├── tracker_spec.lua
+    │   └── journal_spec.lua
+    └── Integration/         # Full addon tests (Busted only)
+        └── ui_spec.lua
 ```
 
 ### Writing Tests
 
-Tests use a Busted-compatible API:
+Tests use a Busted-compatible API. Since WoW addons use `local _, ns = ...` for namespace access, you need a helper to load source files with proper varargs:
 
 ```lua
--- Tests/core_spec.lua
+-- Tests/Core/tracker_spec.lua
 
-describe("MyAddon Core", function()
-    before_each(function()
-        -- Setup code runs before each test
-    end)
+-- Set up globals for addon loading (sandbox pattern)
+_G.ns = { Actions = {} }
 
-    after_each(function()
-        -- Cleanup code runs after each test
-    end)
+-- Stub the vararg loader that WoW addons use
+local function loadAddonFile(path)
+    local chunk = loadfile(path)
+    if chunk then
+        chunk("MyAddon", _G.ns)  -- Pass addon name and namespace
+    end
+end
 
-    it("should initialize correctly", function()
-        assert.is_not_nil(_G.MyAddon)
-    end)
+-- Load the Core layer files
+loadAddonFile("Core/Actions/tracker.lua")
+local Tracker = _G.ns.Actions.Tracker
 
-    it("should clamp values", function()
-        assert.equals(50, MyAddon.Utils.Clamp(50, 0, 100))
-        assert.equals(0, MyAddon.Utils.Clamp(-10, 0, 100))
-        assert.equals(100, MyAddon.Utils.Clamp(150, 0, 100))
+-- Tests
+describe("Tracker.GetCurrencyStatus", function()
+    it("returns capped status when at weekly max", function()
+        local result = Tracker.GetCurrencyStatus({
+            quantity = 500,
+            maxWeeklyQuantity = 500,
+            quantityEarnedThisWeek = 500,
+        })
+
+        assert.is_true(result.success)
+        assert.is_true(result.data.isCapped)
     end)
 end)
 ```
@@ -80,15 +112,36 @@ mech call sandbox.generate
 mech call sandbox.test -i '{"addon": "MyAddon"}'
 ```
 
+### What Failures Look Like
+
+When a test fails, you'll see clear output with the file, line, and assertion that failed:
+
+```
+FAIL Tests/Core/tracker_spec.lua:47
+  Tracker.GetCurrencyStatus > returns isCapped=true when at weekly max
+    Expected: true
+    Got: false
+
+  Stack: tracker_spec.lua:47: in function <tracker_spec.lua:40>
+
+Tests: 42 total, 41 passed, 1 failed
+```
+
+**Debugging tips:**
+- Check the line number in the stack trace
+- Look at what the test expected vs. what it got
+- Add `print()` statements temporarily to see intermediate values
+- Run with `--verbose` for more detail: `mech call sandbox.test -i '{"addon": "MyAddon", "verbose": true}'`
+
 ### How It Works
 
 1. `sandbox.generate` parses WoW's APIDefs and generates Lua stubs (~5000+ APIs)
 2. `sandbox.test` builds a test script with:
    - WoW API stubs
    - Test framework
-   - Addon source files
-   - Spec files from `Core/` and `Tests/`
-3. Tests run in plain Lua with mocked WoW environment
+   - All `*.lua` files from `Core/` (source files)
+   - All `*_spec.lua` files from `Core/` and `Tests/` (test files)
+3. Tests run in plain Lua 5.1 with mocked WoW environment
 
 ---
 
@@ -286,5 +339,6 @@ Each test should return:
 
 ## Related Guides
 
+- [Addon Architecture](../addon-architecture.md) — Three-layer design for testable addons
 - [MechanicLib Registration](./mechaniclib.md)
 - [Performance Profiling](./performance.md)

@@ -16,9 +16,13 @@ desktop.ini
 *.log
 _test_/
 tmp/
+*_output.txt
 
 # Test Coverage Reports
 .coverage/
+
+# Sandbox
+sandbox/generated/
 
 # Cursor IDE
 .cursor/
@@ -37,3 +41,6 @@ venv/
 .venv/
 .env
 desktop/data/
+nul
+
+nul

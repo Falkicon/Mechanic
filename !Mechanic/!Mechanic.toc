@@ -1,6 +1,6 @@
 ## Interface: 120001, 120000
 ## Title: !Mechanic
-## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
+## Notes: Bootstrap loader for Mechanic. Provides MechanicLib registration API and early initialization.
 ## Author: Fen (Falkicon)
 ## Version: 1.3.0
 ## X-License: GPL-3.0
@@ -9,39 +9,14 @@
 ## SavedVariables: MechanicDB
 ## OptionalDeps: !BugGrabber
 
-# Libraries
-embeds.xml
+# LibStub (required for MechanicLib)
+Libs\LibStub\LibStub.lua
 
-# Localization
-Locales\enUS.lua
-
-# MechanicLib (embedded, also synced to other addons)
+# MechanicLib - Registration API for other addons
 Libs\MechanicLib\MechanicLib.lua
 
-# Shared UI Modules
-UI\Shared\SplitNavLayout.lua
-UI\Shared\FrameResolver.lua
+# CLI Queue file (written by mech lua.queue / mech api.queue)
+MechanicQueue.lua
 
-# Core
-Utils.lua
-Core.lua
-
-# Settings (Phase 3)
-Settings.lua
-
-# UI Modules
-UI\MainFrame.lua
-UI\Console.lua
-UI\Errors.lua
-UI\Tests.lua
-UI\Tools.lua
-UI\APIDefinitions.lua
-UI\APIDefinitions_Registry.lua
-UI\APIDefs\APIDefs.xml
-UI\API.lua
-UI\Inspect.lua
-UI\InspectTree.lua
-UI\InspectDetails.lua
-UI\InspectProperties.lua
-UI\InspectWatch.lua
-UI\Performance.lua
+# Bootstrap - Minimal init, globals, queue processing
+Bootstrap.lua

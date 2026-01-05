@@ -39,6 +39,11 @@ manager = ConnectionManager()
 async def root():
     return {"status": "Mechanic Desktop is running", "ui": "/dashboard/", "api": "/api"}
 
+@app.get("/health")
+async def health():
+    """Health check endpoint for monitoring."""
+    return {"status": "healthy"}
+
 @app.post("/api/execute")
 async def execute_command(req: dict):
     """Bridge between FastAPI and AFD Server. Persists results to history."""

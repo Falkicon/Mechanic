@@ -147,19 +147,22 @@ def generate_markdown(commands: List[dict], server_name: str, server_version: st
                 "",
                 "```bash",
             ])
-            
+
+            # Build example: use short form when no params, call form when params needed
             if cmd["parameters"]:
-                # Build example input
                 example_input = {}
                 for field in cmd["parameters"]:
                     if field["required"]:
                         example_input[field["name"]] = f"<{field['name']}>"
                 if example_input:
+                    # Required params: must use 'call' with -i
                     lines.append(f"mech call {cmd['name']} -i '{json.dumps(example_input)}'")
                 else:
-                    lines.append(f"mech call {cmd['name']}")
+                    # Optional params only: use short form
+                    lines.append(f"mech {cmd['name']}")
             else:
-                lines.append(f"mech call {cmd['name']}")
+                # No params: use short form
+                lines.append(f"mech {cmd['name']}")
             
             lines.extend(["```", "", "---", ""])
     
@@ -182,7 +185,6 @@ def generate_markdown(commands: List[dict], server_name: str, server_version: st
         "mech call <command> -i '{\"param\": \"value\"}'",
         "",
         "# Shorthand for common commands",
-        "mech reload        # Equivalent to: mech call reload.trigger",
         "mech addon.output  # Direct command shortcut",
         "```",
         "",

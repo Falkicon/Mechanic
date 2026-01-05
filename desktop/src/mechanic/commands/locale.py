@@ -1,6 +1,6 @@
 """
-Localization and asset commands for WoW addon development.
-Handles locale validation, string extraction, and atlas icon search.
+Localization commands for WoW addon development.
+Handles locale validation and string extraction.
 """
 
 from afd import CommandResult, success, error
@@ -200,108 +200,4 @@ def register_commands(server):
             reasoning=f"Extracted {len(filtered)} potential localizable strings",
             sources=[src],
             confidence=0.8
-        )
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # atlas.search - Search Blizzard UI Atlas icons
-    # ═══════════════════════════════════════════════════════════════════════════
-    
-    class AtlasSearchInput(BaseModel):
-        query: str = Field(..., description="Search query for atlas icons")
-        limit: int = Field(20, description="Maximum results to return")
-
-    class AtlasIcon(BaseModel):
-        name: str
-        file: Optional[str] = None
-
-    class AtlasSearchResult(BaseModel):
-        query: str
-        count: int = 0
-        icons: List[AtlasIcon] = []
-
-    # Common Blizzard atlas patterns (subset for quick search)
-    COMMON_ATLASES = [
-        "UI-HUD-", "UI-LFG-", "UI-QuestIcon-", "UI-Frame-",
-        "Garr_", "ClassHall_", "Profession-",
-        "Icon-", "Vehicle-", "Map-",
-    ]
-
-    @server.command(
-        name="atlas.search",
-        description="Search Blizzard UI Atlas icons by name pattern",
-        input_schema=AtlasSearchInput,
-        output_schema=AtlasSearchResult,
-    )
-    async def search_atlas(input: AtlasSearchInput, context: Any = None) -> CommandResult[AtlasSearchResult]:
-        # Check for atlas index file in configured locations
-        config = get_config()
-        atlas_index_paths = []
-        
-        # Build search paths dynamically
-        if config.dev_path:
-            atlas_index_paths.extend([
-                config.dev_path / "ADDON_DEV" / "Tools" / "AtlasScanner" / "atlas_index.json",
-                config.dev_path / "ADDON_DEV" / "Data" / "atlas_index.json",
-            ])
-        
-        # Also check data directory
-        atlas_index_paths.append(config.data_dir / "atlas_index.json")
-        
-        import json
-        atlas_data = None
-        index_path = None
-        
-        for path in atlas_index_paths:
-            if path.exists():
-                try:
-                    atlas_data = json.loads(path.read_text())
-                    index_path = path
-                    break
-                except Exception:
-                    continue
-        
-        if not atlas_data:
-            # Fallback: return common patterns matching query
-            matching = [
-                AtlasIcon(name=f"{prefix}{input.query}")
-                for prefix in COMMON_ATLASES
-                if input.query.lower() in prefix.lower()
-            ]
-            
-            return success(
-                data=AtlasSearchResult(
-                    query=input.query,
-                    count=len(matching),
-                    icons=matching[:input.limit]
-                ),
-                reasoning="Atlas index not found - returning common pattern suggestions",
-                confidence=0.5
-            )
-        
-        # Search the index
-        query_lower = input.query.lower()
-        matches = []
-        
-        for icon_name in atlas_data.get('icons', []):
-            if query_lower in icon_name.lower():
-                matches.append(AtlasIcon(name=icon_name))
-                if len(matches) >= input.limit:
-                    break
-        
-        src = create_source(
-            type="file",
-            id="atlas-index",
-            title="Atlas Index",
-            location=str(index_path) if index_path else "builtin"
-        )
-        
-        return success(
-            data=AtlasSearchResult(
-                query=input.query,
-                count=len(matches),
-                icons=matches
-            ),
-            reasoning=f"Found {len(matches)} atlas icons matching '{input.query}'",
-            sources=[src],
-            confidence=0.9
         )

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(release)",
+      "Skill(release:*)",
+      "Skill(c-clean)",
+      "Skill(c-clean:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "mechanic"
+  ],
+  "outputStyle": "default"
+}

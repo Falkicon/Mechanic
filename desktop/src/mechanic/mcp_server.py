@@ -45,7 +45,7 @@ TOOL_CATEGORIES = {
     # Environment
     "env": "Environment - Configuration and status",
     "tools": "Tools - Development tool status",
-    "docs": "Docs - Generate documentation",
+    "docs": "Docs - Generate and analyze documentation",
 
     # Research & Assets
     "research": "Research - Web search for addon development info",
@@ -76,6 +76,10 @@ TOOL_ANNOTATIONS = {
     "addon.lint": {"readOnly": True, "idempotent": True},
     "addon.deprecations": {"readOnly": True, "idempotent": True},
     "addon.output": {"readOnly": True, "idempotent": True},
+    "addon.deadcode": {"readOnly": True, "idempotent": True},
+    "addon.security": {"readOnly": True, "idempotent": True},
+    "addon.complexity": {"readOnly": True, "idempotent": True},
+    "docs.stale": {"readOnly": True, "idempotent": True},
     "libs.check": {"readOnly": True, "idempotent": True},
     "api.search": {"readOnly": True, "idempotent": True},
     "api.info": {"readOnly": True, "idempotent": True},
@@ -112,13 +116,16 @@ TOOL_ANNOTATIONS = {
 TOOL_TITLES = {
     "sv.parse": "Parse SavedVariables",
     "sv.discover": "Discover SV Paths",
-    "reload.trigger": "Trigger /reload",
     "addon.validate": "Validate Addon TOC",
     "addon.lint": "Lint Addon Code",
     "addon.format": "Format Addon Code",
     "addon.test": "Run Addon Tests",
     "addon.deprecations": "Check Deprecations",
     "addon.output": "Get Addon Output",
+    "addon.deadcode": "Detect Dead Code",
+    "addon.security": "Security Analysis",
+    "addon.complexity": "Complexity Analysis",
+    "docs.stale": "Detect Stale Docs",
     "addon.create": "Create New Addon",
     "addon.sync": "Sync to WoW Clients",
     "libs.check": "Check Library Status",
@@ -149,13 +156,16 @@ TOOL_TITLES = {
 TOOL_INTENTS = {
     "sv.parse": "Use this when you need to extract addon data from a SavedVariables file after a game session.",
     "sv.discover": "Use this first to find all available SavedVariables paths before parsing.",
-    "reload.trigger": "Use this to reload the UI in-game when testing addon changes.",
     "addon.validate": "Use this to check if an addon's TOC file is valid before release.",
     "addon.lint": "Use this to find code quality issues and potential bugs in addon Lua code.",
     "addon.format": "Use this to auto-format Lua code to match style guidelines.",
     "addon.test": "Use this to run unit tests for an addon.",
     "addon.deprecations": "Use this to find deprecated API calls that need updating for Midnight.",
     "addon.output": "Use this to get the latest errors, test results, and console output from the game.",
+    "addon.deadcode": "Use this to find unused functions, orphaned files, dead exports, and other dead code in addon source.",
+    "addon.security": "Use this to find security issues like combat lockdown violations, secret value leaks, taint risks, and unsafe eval patterns.",
+    "addon.complexity": "Use this to find code complexity issues like deep nesting, long functions, magic numbers, and duplicate code.",
+    "docs.stale": "Use this to find stale, outdated, or broken documentation including dead links, old version references, and docs not updated with code.",
     "libs.check": "Use this to verify which libraries are installed and if updates are available.",
     "libs.sync": "Use this to download and update addon dependencies.",
     "api.search": "Use this when looking for a WoW API by name pattern.",
@@ -179,7 +189,6 @@ TOOL_EXAMPLES = {
     # Core Operations
     "sv.parse": '{"file_path": "C:/WoW/_retail_/WTF/Account/USER/SavedVariables/!Mechanic.lua"}',
     "sv.discover": "{}",
-    "reload.trigger": '{"key": "^+r"}',
     "dashboard.metrics": "{}",
     "server.shutdown": "{}",
 
@@ -190,6 +199,10 @@ TOOL_EXAMPLES = {
     "addon.test": '{"addon": "Weekly"}',
     "addon.deprecations": '{"addon": "Weekly"}',
     "addon.output": '{"agent_mode": true}',
+    "addon.deadcode": '{"addon": "Weekly", "include_suspicious": false}',
+    "addon.security": '{"addon": "Weekly"}',
+    "addon.complexity": '{"addon": "Weekly", "max_nesting": 5}',
+    "docs.stale": '{"addon": "Weekly", "commits_threshold": 10}',
     "addon.create": '{"name": "MyNewAddon", "path": "C:/WoW/_dev_"}',
     "addon.sync": '{"addon": "Weekly"}',
 
@@ -641,7 +654,11 @@ def _register_enhanced_tool(mcp_server, afd_server, cmd):
     - Rich description including parameters and examples
     - Clean formatted output with summary and JSON
     - Proper kwargs unwrapping for Claude Code
+    - Robust error handling with logging
     """
+    import sys
+    import traceback
+    
     # Store original name for AFD execution
     afd_name = cmd.name
     # Use dashes instead of dots for Cursor compatibility
@@ -667,26 +684,62 @@ def _register_enhanced_tool(mcp_server, afd_server, cmd):
 
     @mcp_server.tool(name=mcp_tool_name, description=rich_description)
     async def tool_handler(**kwargs) -> str:
-        """MCP tool handler with enhanced output formatting."""
-        # Handle Claude Code's parameter wrapping
-        params = kwargs
+        """MCP tool handler with enhanced output formatting and error handling."""
+        
+        try:
+            # Handle Claude Code's parameter wrapping
+            params = kwargs
 
-        # Unwrap if nested under 'kwargs' key
-        if "kwargs" in params and len(params) == 1:
-            inner = params["kwargs"]
-            if isinstance(inner, dict):
-                params = inner
-            elif isinstance(inner, str):
-                try:
-                    params = json.loads(inner) if inner else {}
-                except json.JSONDecodeError:
-                    params = {}
+            # Unwrap if nested under 'kwargs' key
+            if "kwargs" in params and len(params) == 1:
+                inner = params["kwargs"]
+                if isinstance(inner, dict):
+                    params = inner
+                elif isinstance(inner, str):
+                    try:
+                        params = json.loads(inner) if inner else {}
+                    except json.JSONDecodeError:
+                        params = {}
 
-        # Execute the command using original AFD name (dot notation)
-        result = await afd_server.execute(afd_name, params)
-        result_dict = result.model_dump()
 
-        # Return formatted output
-        return format_result_for_agent(result_dict)
+
+            # Execute the command using original AFD name (dot notation)
+            result = await afd_server.execute(afd_name, params)
+            
+
+            
+            result_dict = result.model_dump()
+
+
+
+            # Return formatted output
+            formatted = format_result_for_agent(result_dict)
+            
+
+            
+            return formatted
+            
+        except Exception as e:
+            # Log the full error to stderr for debugging
+            error_msg = f"[MCP ERROR] {afd_name} failed: {type(e).__name__}: {e}"
+            print(error_msg, file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            
+            # Return a clean error response to the agent
+            error_result = {
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": "MCP_EXECUTION_ERROR",
+                    "message": f"Command '{afd_name}' failed: {str(e)}",
+                    "suggestion": "Check the Mechanic server logs for details",
+                    "retryable": True,
+                },
+                "reasoning": None,
+                "sources": None,
+                "confidence": None,
+            }
+            return format_result_for_agent(error_result)
 
     return tool_handler
+

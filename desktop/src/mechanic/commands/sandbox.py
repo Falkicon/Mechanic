@@ -15,6 +15,8 @@ from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
+from ..config import get_config, find_addon_path
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SCHEMAS
@@ -31,6 +33,19 @@ class GenerateResult(BaseModel):
     output_path: str
     protected_count: int
     normal_count: int
+
+
+class StatusInput(BaseModel):
+    pass  # No input needed
+
+
+class StatusResult(BaseModel):
+    stubs_exist: bool
+    stubs_path: Optional[str] = None
+    stubs_generated: int = 0
+    protected_count: int = 0
+    normal_count: int = 0
+    last_modified: Optional[str] = None
 
 
 class ExecInput(BaseModel):
@@ -65,45 +80,38 @@ class TestResult(BaseModel):
     passed_count: int = 0
     failed_count: int = 0
     tests: List[TestCase] = []
+    # Enhanced metadata
+    source_files: List[str] = []  # Core/*.lua files loaded
+    spec_files: List[str] = []    # *_spec.lua files run
+    duration_ms: float = 0.0      # Total execution time
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def find_mechanic_addon_path() -> Optional[Path]:
-    """Find the !Mechanic addon folder."""
-    # Try common locations
-    candidates = [
-        Path(r"C:\Program Files (x86)\World of Warcraft\_dev_\!Mechanic\!Mechanic"),
-        Path(r"C:\Program Files (x86)\World of Warcraft\_dev_\!Mechanic"),
-    ]
-    
-    for path in candidates:
-        if (path / "UI" / "APIDefs").exists():
-            return path
-    
+    """Find the Mechanic repo folder (with UI/APIDefs)."""
+    config = get_config()
+    if config.dev_path:
+        # Check for Mechanic repo: _dev_/Mechanic/UI/APIDefs
+        mechanic_repo = config.dev_path / "Mechanic"
+        if (mechanic_repo / "UI" / "APIDefs").exists():
+            return mechanic_repo
     return None
 
 
 def find_dev_addon_path(addon_name: str) -> Optional[Path]:
     """Find an addon in the _dev_ folder."""
-    dev_folder = Path(r"C:\Program Files (x86)\World of Warcraft\_dev_")
-    addon_path = dev_folder / addon_name
-    
-    if addon_path.exists():
-        return addon_path
-    
-    # Try case-insensitive search
-    for item in dev_folder.iterdir():
-        if item.is_dir() and item.name.lower() == addon_name.lower():
-            return item
-    
-    return None
+    # Use centralized addon discovery from config
+    return find_addon_path(addon_name)
 
 
 def find_sandbox_folder() -> Path:
     """Get the sandbox folder path."""
-    mechanic_root = Path(r"C:\Program Files (x86)\World of Warcraft\_dev_\!Mechanic")
-    return mechanic_root / "sandbox"
+    config = get_config()
+    if config.dev_path:
+        return config.dev_path / "Mechanic" / "sandbox"
+    # Fallback: relative to this file (for development)
+    return Path(__file__).parent.parent.parent.parent.parent / "sandbox"
 
 
 def parse_apidef_file(filepath: Path) -> List[Dict[str, Any]]:
@@ -220,7 +228,7 @@ def generate_stubs_file(apis: List[Dict[str, Any]], output_path: Path) -> Dict[s
     """Generate the complete wow_stubs.lua file."""
     lines = [
         "-- WoW API Stubs for Sandbox Testing",
-        "-- Auto-generated from !Mechanic/UI/APIDefs",
+        "-- Auto-generated from Mechanic/UI/APIDefs",
         f"-- Generated: {__import__('datetime').datetime.now().isoformat()}",
         "",
         "-- Namespace setup",
@@ -291,8 +299,8 @@ def register_commands(server):
         if not mechanic_path:
             return error(
                 code="MECHANIC_NOT_FOUND",
-                message="Could not find !Mechanic addon folder",
-                suggestion="Ensure !Mechanic is installed in _dev_ folder"
+                message="Could not find Mechanic repo folder",
+                suggestion="Ensure Mechanic repo is in _dev_ folder"
             )
         
         apidefs_path = mechanic_path / "UI" / "APIDefs"
@@ -300,7 +308,7 @@ def register_commands(server):
             return error(
                 code="APIDEFS_NOT_FOUND",
                 message=f"APIDefs folder not found at {apidefs_path}",
-                suggestion="Ensure !Mechanic addon has UI/APIDefs folder"
+                suggestion="Ensure Mechanic repo has UI/APIDefs folder"
             )
         
         # Find all API definition files
@@ -351,7 +359,54 @@ def register_commands(server):
             sources=[src],
             confidence=1.0
         )
-    
+
+    @server.command(
+        name="sandbox.status",
+        description="Get status of generated WoW API stubs",
+        input_schema=StatusInput,
+        output_schema=StatusResult,
+    )
+    async def sandbox_status(input: StatusInput, context: Any = None) -> CommandResult[StatusResult]:
+        sandbox_folder = find_sandbox_folder()
+        stubs_path = sandbox_folder / "generated" / "wow_stubs.lua"
+
+        if not stubs_path.exists():
+            return success(
+                data=StatusResult(stubs_exist=False),
+                reasoning="No stubs generated yet. Run sandbox.generate first."
+            )
+
+        # Get file stats
+        import os
+        from datetime import datetime
+        stat = stubs_path.stat()
+        last_modified = datetime.fromtimestamp(stat.st_mtime).isoformat()
+
+        # Count APIs by parsing the generated file
+        content = stubs_path.read_text(encoding="utf-8", errors="replace")
+
+        # Count function definitions
+        import re
+        functions = re.findall(r'^function [A-Z]', content, re.MULTILINE)
+        total_count = len(functions)
+
+        # Count protected (those that throw errors)
+        protected = re.findall(r'error\("[^"]+is protected/restricted', content)
+        protected_count = len(protected)
+        normal_count = total_count - protected_count
+
+        return success(
+            data=StatusResult(
+                stubs_exist=True,
+                stubs_path=str(stubs_path),
+                stubs_generated=total_count,
+                protected_count=protected_count,
+                normal_count=normal_count,
+                last_modified=last_modified,
+            ),
+            reasoning=f"Stubs ready: {total_count} APIs ({protected_count} protected, {normal_count} normal)"
+        )
+
     @server.command(
         name="sandbox.exec",
         description="Execute Lua code in sandbox environment with WoW API stubs",
@@ -470,33 +525,45 @@ end
                 suggestion="Check addon name or path"
             )
         
-        # Find spec files in Core/ or Tests/ folders
+        # Find spec files from:
+        # 1. Core/*_spec.lua (tests alongside source)
+        # 2. Tests/**/*_spec.lua (dedicated test folder)
         core_path = addon_path / "Core"
         tests_path = addon_path / "Tests"
 
         spec_files = []
         source_files = []
 
-        # Collect spec files from Core/ and Tests/
+        # Collect source files from Core/ (non-spec files)
         if core_path.exists():
+            # Also check Core/ for inline spec files
             spec_files.extend(core_path.rglob("*_spec.lua"))
-            # Collect source files (non-spec) from Core/
-            for lua_file in sorted(core_path.glob("*.lua")):
-                if not lua_file.name.endswith("_spec.lua"):
-                    source_files.append(lua_file)
+            # Only load top-level Core/*.lua files to avoid dependency issues
+            # Subdirectories (Logic/, Actions/) have cross-dependencies that need
+            # proper load ordering - those should use addon.test with full TOC
+            all_lua = [f for f in core_path.glob("*.lua") if not f.name.endswith("_spec.lua")]
 
+            def load_order_key(path):
+                # init.lua first, then alphabetically
+                is_init = 0 if path.name == "init.lua" else 1
+                return (is_init, str(path))
+
+            source_files = sorted(all_lua, key=load_order_key)
+
+        # Collect spec files from Tests/ folder (preferred location)
         if tests_path.exists():
             spec_files.extend(tests_path.rglob("*_spec.lua"))
 
         spec_files = list(spec_files)
 
         if not spec_files:
-            # No spec files found - check if either folder exists
-            if not core_path.exists() and not tests_path.exists():
+            has_core = core_path.exists()
+            has_tests = tests_path.exists()
+            if not has_core and not has_tests:
                 return error(
                     code="NO_TEST_FOLDERS",
                     message=f"No Core/ or Tests/ folder found in {input.addon}",
-                    suggestion="Create a Core/ or Tests/ folder with *_spec.lua test files"
+                    suggestion="Create Tests/Core/*_spec.lua for sandbox tests"
                 )
             return success(
                 data=TestResult(addon=input.addon, passed=True, total=0),
@@ -541,7 +608,11 @@ end
         lua_parts.append('_SANDBOX_AUTO_RUN()')
 
         full_script = "\n".join(lua_parts)
-        
+
+        # Track execution time
+        import time
+        start_time = time.perf_counter()
+
         try:
             result = subprocess.run(
                 [str(lua_path), "-e", full_script],
@@ -552,6 +623,8 @@ end
             )
         except subprocess.TimeoutExpired:
             return error(code="TIMEOUT", message="Tests timed out after 60 seconds")
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
         
         # Parse output - look for SANDBOX_TESTS:passed:failed:total
         tests = []
@@ -585,12 +658,9 @@ end
             location=str(addon_path)
         )
 
-        test_locations = []
-        if core_path.exists():
-            test_locations.append("Core/")
-        if tests_path.exists():
-            test_locations.append("Tests/")
-        locations_str = " and ".join(test_locations) or "addon"
+        # Build file lists for metadata (relative paths)
+        source_file_names = [f.name for f in source_files]
+        spec_file_names = [f.relative_to(addon_path).as_posix() for f in spec_files]
 
         return success(
             data=TestResult(
@@ -599,9 +669,12 @@ end
                 total=total,
                 passed_count=passed_count,
                 failed_count=failed_count,
-                tests=tests[:20]
+                tests=tests[:20],
+                source_files=source_file_names,
+                spec_files=spec_file_names,
+                duration_ms=round(duration_ms, 1)
             ),
-            reasoning=f"Ran {total} sandbox tests for {input.addon}/{locations_str}: {passed_count} passed, {failed_count} failed" + (f"\nErrors: {result.stderr[:200]}" if result.stderr else ""),
+            reasoning=f"Ran {total} sandbox tests for {input.addon}/Core: {passed_count} passed, {failed_count} failed" + (f"\nErrors: {result.stderr[:200]}" if result.stderr else ""),
             sources=[src],
             confidence=1.0
         )

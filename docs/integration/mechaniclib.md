@@ -120,7 +120,7 @@ end
 ## Related Guides
 
 - [Console Integration](./console.md)
-- [Test Integration](./testing.md)
+- [Testing Integration](./testing.md)
 - [Performance Profiling](./performance.md)
 - [Tools Integration](./tools.md)
 - [Inspect Integration](./inspect.md)

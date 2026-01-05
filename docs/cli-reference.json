@@ -1,0 +1,1128 @@
+[
+  {
+    "name": "addon.create",
+    "description": "Create a new WoW addon from a template",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Name for the new addon",
+        "default": null
+      },
+      {
+        "name": "template",
+        "type": "string",
+        "required": false,
+        "description": "Template to use (defaults to _TemplateAddon)",
+        "default": null
+      },
+      {
+        "name": "author",
+        "type": "string",
+        "required": false,
+        "description": "Author name for metadata",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "addon.deadcode",
+    "description": "Detect dead code in a WoW addon (unused functions, orphaned files, etc.)",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to analyze",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "categories",
+        "type": "string",
+        "required": false,
+        "description": "Specific categories to check (default: all)",
+        "default": null
+      },
+      {
+        "name": "include_suspicious",
+        "type": "boolean",
+        "required": false,
+        "description": "Include lower-confidence findings",
+        "default": "True"
+      }
+    ]
+  },
+  {
+    "name": "addon.deprecations",
+    "description": "Scan a WoW addon for deprecated API calls (Midnight prep)",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to scan",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "fix",
+        "type": "boolean",
+        "required": false,
+        "description": "Attempt to auto-fix deprecated calls",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "addon.format",
+    "description": "Run StyLua formatter on a WoW addon",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to format",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "check",
+        "type": "boolean",
+        "required": false,
+        "description": "Only check formatting, don't modify files",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "addon.lint",
+    "description": "Run Luacheck linter on a WoW addon",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to lint",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "fix",
+        "type": "boolean",
+        "required": false,
+        "description": "Not applicable for Luacheck (read-only)",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "addon.output",
+    "description": "Get all addon output (errors, tests, console) for agent consumption. Use agent_mode=true for compressed output.",
+    "parameters": [
+      {
+        "name": "agent_mode",
+        "type": "boolean",
+        "required": false,
+        "description": "Enable smart compression for AI agents",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "addon.sync",
+    "description": "Create junction links from development addon to WoW client folders",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to sync",
+        "default": null
+      },
+      {
+        "name": "flavors",
+        "type": "string",
+        "required": false,
+        "description": "WoW flavors to sync to (defaults to all)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "addon.test",
+    "description": "Run Busted unit tests on a WoW addon",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to test",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "coverage",
+        "type": "boolean",
+        "required": false,
+        "description": "Generate code coverage report",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "addon.validate",
+    "description": "Validate a WoW addon's .toc file for common issues",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to operate on",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.generate",
+    "description": "Generate APIDefs Lua files from api_database.json for Mechanic",
+    "parameters": [
+      {
+        "name": "database_path",
+        "type": "string",
+        "required": false,
+        "description": "Path to api_database.json (defaults to data_dir)",
+        "default": null
+      },
+      {
+        "name": "output_path",
+        "type": "string",
+        "required": false,
+        "description": "Output path for APIDefs (defaults to Mechanic/UI/APIDefs)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.info",
+    "description": "Get detailed information about a specific WoW API",
+    "parameters": [
+      {
+        "name": "api_name",
+        "type": "string",
+        "required": true,
+        "description": "Full API name (e.g., C_Spell.GetSpellInfo)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.list",
+    "description": "List APIs by namespace or category",
+    "parameters": [
+      {
+        "name": "namespace",
+        "type": "string",
+        "required": false,
+        "description": "Namespace to list (e.g., C_Spell)",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Category to list",
+        "default": null
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Max results",
+        "default": "50"
+      }
+    ]
+  },
+  {
+    "name": "api.populate",
+    "description": "Parse Blizzard API documentation and generate api_database.json",
+    "parameters": [
+      {
+        "name": "source_path",
+        "type": "string",
+        "required": true,
+        "description": "Path to wow-ui-source repository root",
+        "default": null
+      },
+      {
+        "name": "output_path",
+        "type": "string",
+        "required": false,
+        "description": "Output path for api_database.json (defaults to data_dir)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.queue",
+    "description": "Queue API tests for in-game execution. After running this, /reload in WoW to execute tests.",
+    "parameters": [
+      {
+        "name": "apis",
+        "type": "array",
+        "required": true,
+        "description": "List of API names to queue for testing",
+        "default": null
+      },
+      {
+        "name": "params",
+        "type": "string",
+        "required": false,
+        "description": "Optional parameters per API: {'C_Spell.GetSpellInfo': {'spellID': 8690}}",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.refresh",
+    "description": "Full refresh: parse Blizzard docs and regenerate all APIDefs in one step",
+    "parameters": [
+      {
+        "name": "source_path",
+        "type": "string",
+        "required": true,
+        "description": "Path to wow-ui-source repository root",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.search",
+    "description": "Search WoW APIs by name pattern. Works offline (reads static definitions).",
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "required": true,
+        "description": "Search pattern (supports * wildcards)",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Filter by category",
+        "default": null
+      },
+      {
+        "name": "namespace",
+        "type": "string",
+        "required": false,
+        "description": "Filter by namespace",
+        "default": null
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Max results to return",
+        "default": "20"
+      }
+    ]
+  },
+  {
+    "name": "api.stats",
+    "description": "Get statistics about available WoW APIs",
+    "parameters": []
+  },
+  {
+    "name": "assets.list",
+    "description": "List asset files in an addon's assets_source and assets folders",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "assets.sync",
+    "description": "Sync addon assets: convert PNG to TGA and copy other files from assets_source to assets",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to sync assets for",
+        "default": null
+      },
+      {
+        "name": "verbose",
+        "type": "boolean",
+        "required": false,
+        "description": "Show detailed output",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "atlas.scan",
+    "description": "Scan wow-ui-source for atlas icons and generate searchable index",
+    "parameters": [
+      {
+        "name": "source_path",
+        "type": "string",
+        "required": true,
+        "description": "Path to wow-ui-source repository root",
+        "default": null
+      },
+      {
+        "name": "output_path",
+        "type": "string",
+        "required": false,
+        "description": "Output path for atlas_index.json (defaults to data_dir)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "atlas.search",
+    "description": "Search Blizzard UI atlas icons by name pattern (supports wildcards)",
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "required": true,
+        "description": "Search query for atlas icons (supports * wildcards)",
+        "default": null
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Maximum results to return",
+        "default": "20"
+      },
+      {
+        "name": "include_files",
+        "type": "boolean",
+        "required": false,
+        "description": "Include source file paths in results",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "changelog.add",
+    "description": "Add an entry to the addon's CHANGELOG.md",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "Version for the changelog entry",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": true,
+        "description": "Change description",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Category: Added, Changed, Fixed, Removed",
+        "default": "'Changed'"
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "dashboard.metrics",
+    "description": "Get the latest reload and test metrics from the local history",
+    "parameters": []
+  },
+  {
+    "name": "docs.generate",
+    "description": "Generate CLI reference documentation from registered commands",
+    "parameters": [
+      {
+        "name": "output_path",
+        "type": "string",
+        "required": false,
+        "description": "Output file path. Defaults to docs/cli-reference.md",
+        "default": null
+      },
+      {
+        "name": "format",
+        "type": "string",
+        "required": false,
+        "description": "Output format: 'markdown' or 'json'",
+        "default": "'markdown'"
+      }
+    ]
+  },
+  {
+    "name": "docs.stale",
+    "description": "Detect stale or broken documentation in a WoW addon",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to analyze",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "include_suspicious",
+        "type": "boolean",
+        "required": false,
+        "description": "Include lower-confidence findings",
+        "default": "True"
+      },
+      {
+        "name": "commits_threshold",
+        "type": "number",
+        "required": false,
+        "description": "Flag docs not updated in this many commits",
+        "default": "10"
+      }
+    ]
+  },
+  {
+    "name": "env.status",
+    "description": "Get Mechanic environment configuration and status",
+    "parameters": []
+  },
+  {
+    "name": "fencore-catalog",
+    "description": "Get full catalog of FenCore logic domains and functions",
+    "parameters": []
+  },
+  {
+    "name": "fencore-info",
+    "description": "Get detailed info about a specific FenCore function",
+    "parameters": [
+      {
+        "name": "domain",
+        "type": "string",
+        "required": true,
+        "description": "Domain name (e.g., 'Math')",
+        "default": null
+      },
+      {
+        "name": "function",
+        "type": "string",
+        "required": true,
+        "description": "Function name (e.g., 'Clamp')",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "fencore-search",
+    "description": "Search FenCore functions by name or description",
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "required": true,
+        "description": "Search query (partial match on name or description)",
+        "default": null
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Maximum results to return",
+        "default": "20"
+      }
+    ]
+  },
+  {
+    "name": "git.commit",
+    "description": "Stage all changes and commit in the addon's git repository",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": true,
+        "description": "Commit message",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "git.tag",
+    "description": "Create a git tag for a version release",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "Version to tag (e.g., '1.2.0')",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": false,
+        "description": "Tag message (defaults to version)",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "libs.check",
+    "description": "Check addon library status against libs.json config",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to check",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "libs.init",
+    "description": "Creates a libs.json config file from currently installed libraries. \u26a0\ufe0f Will NOT overwrite existing config unless overwrite=true is set.",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "required": false,
+        "description": "Config mode: 'include' (whitelist) or 'exclude' (blocklist)",
+        "default": "'include'"
+      },
+      {
+        "name": "overwrite",
+        "type": "boolean",
+        "required": false,
+        "description": "Overwrite existing libs.json",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "libs.sync",
+    "description": "Sync addon libraries based on libs.json config",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to sync",
+        "default": null
+      },
+      {
+        "name": "source",
+        "type": "string",
+        "required": false,
+        "description": "Source library path (defaults to ADDON_DEV Libs)",
+        "default": null
+      },
+      {
+        "name": "dry_run",
+        "type": "boolean",
+        "required": false,
+        "description": "Preview changes without applying",
+        "default": "False"
+      },
+      {
+        "name": "force",
+        "type": "boolean",
+        "required": false,
+        "description": "Force update existing libraries (replaces them)",
+        "default": "False"
+      },
+      {
+        "name": "remove_extra",
+        "type": "boolean",
+        "required": false,
+        "description": "Remove libraries not in config",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "locale.extract",
+    "description": "Extract potential localizable strings from addon code",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "locale.validate",
+    "description": "Validate locale coverage against the enUS baseline",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to validate",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "lua.queue",
+    "description": "Queue Lua code snippets for in-game execution. After running this, /reload in WoW to execute.",
+    "parameters": [
+      {
+        "name": "code",
+        "type": "array",
+        "required": true,
+        "description": "List of Lua code snippets to execute. Each snippet should return a value.",
+        "default": null
+      },
+      {
+        "name": "labels",
+        "type": "string",
+        "required": false,
+        "description": "Optional labels for each snippet (for easier identification in results)",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "lua.results",
+    "description": "Get results from the last Lua eval queue execution",
+    "parameters": []
+  },
+  {
+    "name": "perf.baseline",
+    "description": "Record a performance baseline measurement for an addon",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "Version being measured",
+        "default": null
+      },
+      {
+        "name": "memory_kb",
+        "type": "number",
+        "required": true,
+        "description": "Memory usage in KB",
+        "default": null
+      },
+      {
+        "name": "cpu_ms",
+        "type": "number",
+        "required": true,
+        "description": "CPU time in milliseconds",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "perf.compare",
+    "description": "Compare current performance against baseline and detect regressions",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "memory_kb",
+        "type": "number",
+        "required": true,
+        "description": "Current memory usage in KB",
+        "default": null
+      },
+      {
+        "name": "cpu_ms",
+        "type": "number",
+        "required": true,
+        "description": "Current CPU time in milliseconds",
+        "default": null
+      },
+      {
+        "name": "memory_threshold",
+        "type": "number",
+        "required": false,
+        "description": "Memory increase factor that triggers warning",
+        "default": "1.5"
+      },
+      {
+        "name": "cpu_threshold",
+        "type": "number",
+        "required": false,
+        "description": "CPU increase factor that triggers warning",
+        "default": "2.0"
+      }
+    ]
+  },
+  {
+    "name": "perf.list",
+    "description": "List all addons with performance baselines",
+    "parameters": []
+  },
+  {
+    "name": "perf.report",
+    "description": "Generate a performance report showing history and trends",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Number of recent measurements to show",
+        "default": "10"
+      }
+    ]
+  },
+  {
+    "name": "release.all",
+    "description": "Run full release: bump version, update changelog, commit, and tag",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "New version string",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": true,
+        "description": "Changelog entry and release description",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Changelog category",
+        "default": "'Changed'"
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "research.query",
+    "description": "Search the web for addon development information using Gemini with Google Search grounding",
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "required": true,
+        "description": "Search query or question",
+        "default": null
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "required": false,
+        "description": "Search mode: 'fast' (Gemini Flash, ~15-30s) or 'thinking' (Gemini Pro, ~30-90s)",
+        "default": "'fast'"
+      },
+      {
+        "name": "json_output",
+        "type": "boolean",
+        "required": false,
+        "description": "Request structured JSON response",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "sandbox.exec",
+    "description": "Execute Lua code in sandbox environment with WoW API stubs",
+    "parameters": [
+      {
+        "name": "code",
+        "type": "string",
+        "required": true,
+        "description": "Lua code to execute",
+        "default": null
+      },
+      {
+        "name": "addon",
+        "type": "string",
+        "required": false,
+        "description": "Name of addon to load before execution (looks in _dev_ folder)",
+        "default": null
+      },
+      {
+        "name": "load_stubs",
+        "type": "boolean",
+        "required": false,
+        "description": "Whether to load WoW API stubs",
+        "default": "True"
+      }
+    ]
+  },
+  {
+    "name": "sandbox.generate",
+    "description": "Generate WoW API stubs from APIDefs database for sandbox testing",
+    "parameters": [
+      {
+        "name": "namespace",
+        "type": "string",
+        "required": false,
+        "description": "Specific namespace to generate (e.g., 'C_Spell'). If not provided, generates all.",
+        "default": null
+      },
+      {
+        "name": "force",
+        "type": "boolean",
+        "required": false,
+        "description": "Regenerate even if stubs exist",
+        "default": "False"
+      }
+    ]
+  },
+  {
+    "name": "sandbox.status",
+    "description": "Get status of generated WoW API stubs",
+    "parameters": []
+  },
+  {
+    "name": "sandbox.test",
+    "description": "Run Busted tests for an addon's Core layer with WoW API stubs",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of addon to test (looks in _dev_ folder)",
+        "default": null
+      },
+      {
+        "name": "filter",
+        "type": "string",
+        "required": false,
+        "description": "Filter pattern for test names",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "server.shutdown",
+    "description": "Gracefully shut down the Mechanic Desktop server",
+    "parameters": []
+  },
+  {
+    "name": "sv.discover",
+    "description": "Automatically discover SavedVariables paths for all WoW flavors",
+    "parameters": []
+  },
+  {
+    "name": "sv.parse",
+    "description": "Parse a WoW SavedVariables file and extract !Mechanic data",
+    "parameters": [
+      {
+        "name": "file_path",
+        "type": "string",
+        "required": true,
+        "description": "Absolute path to the !Mechanic.lua file",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "system.pick_file",
+    "description": "Open a native file picker dialog to select a file",
+    "parameters": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": false,
+        "description": "Title of the dialog window",
+        "default": "'Select File'"
+      },
+      {
+        "name": "filter",
+        "type": "string",
+        "required": false,
+        "description": "File filter (e.g., 'Text Files (*.txt)|*.txt')",
+        "default": "'All Files (*.*)|*.*'"
+      }
+    ]
+  },
+  {
+    "name": "tools.status",
+    "description": "Check the status of development tools (luacheck, stylua, etc.)",
+    "parameters": []
+  },
+  {
+    "name": "version.bump",
+    "description": "Update the version in a WoW addon's .toc file",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "New version string (e.g., '1.2.0')",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  }
+]

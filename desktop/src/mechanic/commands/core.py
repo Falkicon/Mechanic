@@ -21,13 +21,6 @@ class ParseInput(BaseModel):
 class SavedVariables(BaseModel):
     addons: Dict[str, Any] = Field(..., description="Dictionary of addon data")
 
-class ReloadInput(BaseModel):
-    key: str = Field(default="^+r", description="SendKeys sequence (default: ^+r = CTRL+SHIFT+R for Mechanic keybinding)")
-
-class ReloadOutput(BaseModel):
-    key: str
-    focused_title: str
-
 class DiscoverOutput(BaseModel):
     paths: List[str]
 
@@ -148,31 +141,6 @@ async def get_metrics(input: Dict[str, Any], context: Any = None) -> CommandResu
     )
 
 @server.command(
-    name="reload.trigger",
-    description="Focus WoW and trigger an in-game /reload",
-    input_schema=ReloadInput,
-    output_schema=ReloadOutput,
-)
-async def trigger_reload(input: ReloadInput, context: Any = None) -> CommandResult[ReloadOutput]:
-    from ..utils import trigger_wow_reload
-    
-    # In a real implementation, we might want to know WHICH window was focused
-    # for the compliance record.
-    if trigger_wow_reload(input.key):
-        return success(
-            data=ReloadOutput(key=input.key, focused_title="World of Warcraft"),
-            reasoning=f"Input '{input.key}' sent to the active WoW window",
-            confidence=1.0
-        )
-    else:
-        return error(
-            code="WINDOW_NOT_FOUND", 
-            message="Could not find a World of Warcraft window to focus",
-            suggestion="Ensure World of Warcraft is running and not minimized to the tray",
-            retryable=True
-        )
-
-@server.command(
     name="sv.discover",
     description="Automatically discover SavedVariables paths for all WoW flavors",
     output_schema=DiscoverOutput,
@@ -245,9 +213,13 @@ def get_server():
         from . import release
         release.register_commands(server)
         
-        # Register locale and asset commands
+        # Register locale commands
         from . import locale
         locale.register_commands(server)
+
+        # Register atlas commands
+        from . import atlas
+        atlas.register_commands(server)
         
         # Register environment commands
         from . import environment
@@ -265,6 +237,54 @@ def get_server():
         from . import docs
         docs.register_commands(server)
         
+        # Register API reference commands
+        from . import api
+        api.register_commands(server)
+        
+        # Register Lua eval commands
+        from . import lua
+        lua.register_commands(server)
+        
+        # Register sandbox testing commands
+        from . import sandbox
+        sandbox.register_commands(server)
+
+        # Register research commands (Gemini API)
+        from . import research
+        research.register_commands(server)
+
+        # Register asset management commands
+        from . import assets
+        assets.register_commands(server)
+
+        # Register performance profiling commands
+        from . import perf
+        perf.register_commands(server)
+
+        # Register API definition generation commands
+        from . import apidefs
+        apidefs.register_commands(server)
+
+        # Register FenCore catalog commands
+        from . import fencore
+        fencore.register_commands(server)
+
+        # Register dead code detection commands
+        from . import deadcode
+        deadcode.register_commands(server)
+
+        # Register stale documentation detection commands
+        from . import staledocs
+        staledocs.register_commands(server)
+
+        # Register security analysis commands
+        from . import security
+        security.register_commands(server)
+
+        # Register complexity analysis commands
+        from . import complexity
+        complexity.register_commands(server)
+
         _commands_registered = True
     
     return server

@@ -33,12 +33,31 @@ dependencies = [
     "uvicorn[standard]>=0.20",
     "watchfiles>=0.20",
     "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 # AFD integration (install separately or use this extra)
 afd = [
     "afd[server,testing]>=0.1.0",
+]
+# MCP server support (for mech mcp command)
+mcp = [
+    "mcp>=1.0.0",
+]
+# Research commands (Gemini API)
+research = [
+    "google-genai>=0.8.0",
+]
+# Asset management (PNG to TGA conversion)
+assets = [
+    "Pillow>=10.0.0",
+]
+# All extras
+all = [
+    "mcp>=1.0.0",
+    "google-genai>=0.8.0",
+    "Pillow>=10.0.0",
 ]
 dev = [
     "pytest>=7.0",

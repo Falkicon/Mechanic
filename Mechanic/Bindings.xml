@@ -1,0 +1,11 @@
+<Bindings>
+  <!-- Mechanic Development Tools Keybindings -->
+  <!-- Note: Default keybindings cannot be set in XML - users must bind in Key Bindings UI -->
+  <!-- Suggested: CTRL-SHIFT-R for reload, CTRL-SHIFT-M for toggle -->
+  <Binding name="MECHANIC_DEV_RELOAD" header="MECHANIC">
+    ReloadUI()
+  </Binding>
+  <Binding name="MECHANIC_TOGGLE">
+    if Mechanic and Mechanic.Toggle then Mechanic:Toggle() end
+  </Binding>
+</Bindings>

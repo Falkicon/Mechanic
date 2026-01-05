@@ -1,0 +1,10 @@
+{
+  "outputStyle": "concise",
+  "permissions": {
+    "defaultAllow": [
+      "Bash(mech*)",
+      "Bash(git status)",
+      "Bash(git diff)"
+    ]
+  }
+}

@@ -62,10 +62,10 @@ end
 function MyAddonUI:GetPerformanceSubMetrics()
     local p = self.perf.blocks
     return {
-        { name = "State Detection", msPerSec = p.state, description = "State and mode detection" },
-        { name = "UI Render", msPerSec = p.render, description = "Frame updates and animations" },
-        { name = "Data Processing", msPerSec = p.data, description = "Data transforms and caching" },
-        { name = "Event Handling", msPerSec = p.events, description = "Event callbacks" },
+        { name = "State Detection", ms = p.state, description = "State and mode detection" },
+        { name = "UI Render", ms = p.render, description = "Frame updates and animations" },
+        { name = "Data Processing", ms = p.data, description = "Data transforms and caching" },
+        { name = "Event Handling", ms = p.events, description = "Event callbacks" },
     }
 end
 ```
@@ -91,7 +91,7 @@ Each metric should include:
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Display name for the metric |
-| `msPerSec` | number | Milliseconds spent per second |
+| `ms` | number | Milliseconds spent |
 | `description` | string | What this block measures |
 
 ---

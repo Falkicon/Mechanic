@@ -30,6 +30,23 @@ That's it for basic integration. Read on for deeper integration.
 
 ---
 
+## Feature Index
+
+Jump to the guide you need:
+
+| I want to... | Guide |
+|--------------|-------|
+| Add console logging | [Console Integration](./integration/console.md) |
+| Run unit tests (offline) | [Test Integration](./integration/testing.md) |
+| Track performance metrics | [Performance Profiling](./integration/performance.md) |
+| Add a custom tools panel | [Tools Integration](./integration/tools.md) |
+| Automate releases | [Release Automation](./integration/release.md) |
+| Inspect frames at runtime | [Inspect Integration](./integration/inspect.md) |
+| Track errors | [Error Tracking](./integration/errors.md) |
+| Structure my addon for testing | [Addon Architecture](./addon-architecture.md) |
+
+---
+
 ## Project Setup
 
 ### Folder Structure
@@ -86,6 +103,7 @@ Deep-dive documentation for each Mechanic feature:
 
 | Guide | Description |
 |-------|-------------|
+| [Addon Architecture](./addon-architecture.md) | Three-layer design for testable addons |
 | [MechanicLib Registration](./integration/mechaniclib.md) | Connect your addon to Mechanic's ecosystem |
 | [SavedVariables Patterns](./integration/saved-variables.md) | Expose data for the dashboard |
 

@@ -3,6 +3,38 @@
 Technical reference for AI agents working on the Mechanic project.
 
 ---
+## The year is 2026. Your Year clock may be off!
+
+
+## MCP Server (Primary)
+
+Mechanic exposes all 53 AFD commands as MCP tools. **ALWAYS use MCP tools directly** - this is the fastest and most reliable way to interact with the ecosystem.
+
+### Key MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `addon.output` | Get all errors, tests, console logs (after user confirms reload) |
+| `addon.test` | Run Busted tests for an addon |
+| `addon.lint` | Run Luacheck linter |
+| `sandbox.test` | Run tests offline (no WoW needed) |
+| `api.search` | Search WoW APIs (offline) |
+
+### After In-Game Changes
+
+**IMPORTANT**: Do NOT call `addon.output` immediately after code changes. The timing between reload and SavedVariables sync is unpredictable.
+
+1. **Ask** the user to `/reload` in WoW
+2. **Wait** for the user to confirm the reload is complete
+3. **Then** call the `addon.output` MCP tool with `agent_mode=true` to get accurate results
+
+---
+
+## CLI Fallback (Users Only)
+
+The `mech` CLI is for user interaction. AI agents should use MCP tools. Reference the CLI documentation only to understand the underlying command structure.
+
+---
 
 ## Quick Reference
 
@@ -17,10 +49,16 @@ Technical reference for AI agents working on the Mechanic project.
 ## Project Structure
 
 ```
-!Mechanic/                  ← Git repo root
-├── !Mechanic/              ← WoW addon (junction target)
+Mechanic/                   ← Git repo root
+├── !Mechanic/              ← Bootstrap addon (loads first via ! prefix)
 │   ├── !Mechanic.toc
+│   ├── Bootstrap.lua
+│   ├── MechanicQueue.lua
+│   └── Libs/
+├── Mechanic/               ← Main addon (full UI hub)
+│   ├── Mechanic.toc
 │   ├── Core.lua
+│   ├── Utils.lua
 │   ├── UI/
 │   └── Libs/
 ├── desktop/                ← Mechanic Desktop
@@ -36,7 +74,8 @@ Technical reference for AI agents working on the Mechanic project.
 │           ├── core.py       ← Base commands (sv.*, reload.*, etc.)
 │           ├── development.py ← addon.validate, addon.lint, etc.
 │           ├── release.py    ← version.bump, changelog.add, etc.
-│           ├── locale.py     ← locale.*, atlas.search
+│           ├── locale.py     ← locale.validate, locale.extract
+│           ├── atlas.py      ← atlas.scan, atlas.search
 │           └── environment.py ← addon.create, addon.sync, libs.check
 ├── PLAN/                   ← Project-wide specs
 ├── AGENTS.md               ← This file
@@ -90,94 +129,31 @@ async def my_command(input: MyInput, context: Any = None) -> CommandResult[MyOut
 
 ---
 
-## Complete AFD Command Reference
+## AFD Command Reference
 
-### Core Commands (core.py)
+For the complete command reference with all 53 commands, see the **using-mechanic** skill:
+`.claude/skills/using-mechanic/references/afd-commands.md`
 
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `sv.parse` | `file_path` | `SavedVariables` | Parse SavedVariables Lua file |
-| `sv.discover` | (none) | `DiscoverOutput` | Auto-discover WoW accounts |
-| `reload.trigger` | `key` | `ReloadOutput` | Focus WoW and send reload key |
-| `dashboard.metrics` | (none) | `Dict` | Get latest reload metrics |
-| `server.shutdown` | (none) | `ShutdownOutput` | Gracefully stop server via API |
+### Command Categories (Summary)
 
-### Development Commands (development.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `addon.validate` | `addon`, `path?` | `ValidationResult` | Validate .toc file |
-| `addon.lint` | `addon`, `path?`, `fix?` | `LintResult` | Run Luacheck linter |
-| `addon.format` | `addon`, `path?`, `check?` | `FormatResult` | Run StyLua formatter |
-| `addon.test` | `addon`, `path?`, `coverage?` | `TestResult` | Run Busted tests |
-| `addon.deprecations` | `addon`, `path?`, `fix?` | `DeprecationResult` | Scan deprecated APIs |
-
-### Release Commands (release.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `version.bump` | `addon`, `version` | `VersionBumpResult` | Update .toc version |
-| `changelog.add` | `addon`, `version`, `message`, `category?` | `ChangelogAddResult` | Add CHANGELOG entry |
-| `git.commit` | `addon`, `message` | `GitCommitResult` | Stage and commit |
-| `git.tag` | `addon`, `version`, `message?` | `GitTagResult` | Create version tag |
-
-### Locale Commands (locale.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `locale.validate` | `addon` | `LocaleValidateResult` | Check locale coverage |
-| `locale.extract` | `addon` | `LocaleExtractResult` | Find localizable strings |
-| `atlas.search` | `query`, `limit?` | `AtlasSearchResult` | Search Blizzard icons |
-
-### Environment Commands (environment.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `addon.create` | `name`, `template?`, `author?` | `AddonCreateResult` | Create from template |
-| `addon.sync` | `addon`, `flavors?` | `AddonSyncResult` | Create junction links |
-| `libs.check` | `addon`, `mode` | `LibsCheckResult` | Check library status |
-
-### Output Commands (output.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `addon.output` | `agent_mode?` | `AddonOutputResult` | Get all addon data (errors, tests, console) as markdown |
-
-> **Agent Mode**: Use `agent_mode: true` or CLI flag `--agent` for smart compression:
-> - Groups errors by addon, deduplicates by file:line
-> - Shows top 5 errors per addon with occurrence counts
-> - **~70% smaller output** while preserving understanding
-
-### Documentation Commands (docs.py)
-
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `docs.generate` | `output_path?`, `format?` | `DocsGenerateOutput` | Auto-generate CLI reference from registered commands |
-
-> **Self-Documenting**: Run `mech docs` to regenerate `docs/cli-reference.md` whenever commands change.
-
----
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `mech` | Start dashboard (default) |
-| `mech dashboard` | Start dashboard with options |
-| `mech reload` | Trigger in-game reload |
-| `mech stop` | Gracefully stop running server via API |
-| `mech call <cmd>` | Execute any AFD command directly |
-| `mech --agent call <cmd>` | Execute with agent-optimized output |
-| `mech docs` | **Convenience**: generates docs/cli-reference.md from command registry |
-| `mech release <addon> <ver> <msg>` | **Convenience**: chains version.bump → changelog.add → git.commit → git.tag |
-
-### Global Flags
-
-| Flag | Description |
-|------|-------------|
-| `--json` | Output raw JSON (for parsing) |
-| `--quiet` | Suppress non-essential output |
-| `--agent` | Smart compression for AI agents (groups, dedupes, limits) |
+| Category | Commands | File |
+|----------|----------|------|
+| Core | `sv.*`, `dashboard.*`, `server.*` | `core.py` |
+| Development | `addon.validate`, `addon.lint`, `addon.format`, `addon.test`, `addon.deprecations` | `development.py` |
+| Release | `version.bump`, `changelog.add`, `git.*`, `release.all` | `release.py` |
+| Environment | `addon.create`, `addon.sync`, `libs.*`, `env.status`, `system.pick_file` | `environment.py` |
+| Locale | `locale.validate`, `locale.extract` | `locale.py` |
+| Atlas | `atlas.scan`, `atlas.search` | `atlas.py` |
+| Lua | `lua.queue`, `lua.results` | `lua.py` |
+| API | `api.search`, `api.info`, `api.list`, `api.queue`, `api.stats`, `api.populate`, `api.generate`, `api.refresh` | `api.py`, `apidefs.py` |
+| Sandbox | `sandbox.generate`, `sandbox.status`, `sandbox.exec`, `sandbox.test` | `sandbox.py` |
+| Tools | `tools.status` | `tools.py` |
+| Output | `addon.output` | `output.py` |
+| Docs | `docs.generate` | `docs.py` |
+| Research | `research.query` | `research.py` |
+| Assets | `assets.sync`, `assets.list` | `assets.py` |
+| Perf | `perf.baseline`, `perf.compare`, `perf.report`, `perf.list` | `perf.py` |
+| FenCore | `fencore-catalog`, `fencore-search`, `fencore-info` | `fencore.py` |
 
 ---
 
@@ -212,10 +188,11 @@ Current test status: **9 tests passing**
    - Create AFD command in appropriate module (`development.py`, `release.py`, etc.)
    - Add tests in `desktop/tests/`
    - Run `pytest -v` to verify
-   - Update this AGENTS.md command reference
+   - Update `.claude/skills/using-mechanic/references/afd-commands.md` with the new command
 
-2. **Documentation updates**:
+3. **Documentation updates**:
    - Update this AGENTS.md for agent guidance
+   - Update skill reference files for detailed command docs
    - Update README.md for user-facing docs
    - Update CHANGELOG.md for version history
 
@@ -223,11 +200,12 @@ Current test status: **9 tests passing**
 
 ## Agent Guidelines
 
-1. **Addon work**: Navigate to `!Mechanic/` subfolder, reference its AGENTS.md
-2. **Desktop work**: Navigate to `desktop/` subfolder, follow AFD patterns
-3. **Always test**: Run `pytest` after making changes to desktop/
-4. **Use commands**: Prefer AFD commands over direct file manipulation
-5. **Junction links**: Must point to `!Mechanic/!Mechanic`, not root
+1. **Diagnostic Hub First**: `!Mechanic` is now the architect of all ecosystem data. When you need to understand the state of the entire project (tests, perf, logs), trigger or trust the **Diagnostic Hub**.
+2. **Addon work**: Navigate to `!Mechanic/` subfolder, reference its `AGENTS.md`.
+3. **Desktop work**: Navigate to `desktop/` subfolder, follow AFD patterns.
+4. **Always test**: Run `pytest` after making changes to `desktop/`.
+5. **Reload Workflow**: After code changes, ask the user to `/reload` and wait for confirmation before calling `addon.output`. The timing between reload and SavedVariables sync is unpredictable.
+6. **Junction links**: Must point to `!Mechanic/!Mechanic`, not root.
 
 ---
 

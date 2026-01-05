@@ -582,11 +582,13 @@ def register_commands(server):
     # ═══════════════════════════════════════════════════════════════════════════
     # addon.deprecations - Scan for deprecated APIs
     # ═══════════════════════════════════════════════════════════════════════════
-    
+
     class DeprecationInput(BaseModel):
         addon: str = Field(..., description="Name of the addon to scan")
         path: Optional[str] = Field(None, description="Override path to addon folder")
         fix: bool = Field(False, description="Attempt to auto-fix deprecated calls")
+        category: Optional[str] = Field(None, description="Filter by category (e.g., spells, items, containers)")
+        min_severity: str = Field("warning", description="Minimum severity: info, warning, or error")
 
     class DeprecationIssue(BaseModel):
         file: str
@@ -594,28 +596,54 @@ def register_commands(server):
         old_api: str
         new_api: str
         severity: str = "warning"
+        category: str = "general"
+        since: str = ""
+        notes: str = ""
 
     class DeprecationResult(BaseModel):
         addon: str
         clean: bool
         issue_count: int = 0
         issues: List[DeprecationIssue] = []
+        by_category: Dict[str, int] = {}
+        by_severity: Dict[str, int] = {}
+        database_version: str = ""
 
-    # Common deprecated APIs for WoW 12.0 (Midnight)
-    DEPRECATED_APIS = {
-        'GetAddOnInfo': {'new': 'C_AddOns.GetAddOnInfo', 'protected': False},
-        'IsAddOnLoaded': {'new': 'C_AddOns.IsAddOnLoaded', 'protected': False},
-        'LoadAddOn': {'new': 'C_AddOns.LoadAddOn', 'protected': False},
-        'EnableAddOn': {'new': 'C_AddOns.EnableAddOn', 'protected': False},
-        'DisableAddOn': {'new': 'C_AddOns.DisableAddOn', 'protected': False},
-        'GetNumAddOns': {'new': 'C_AddOns.GetNumAddOns', 'protected': False},
-        'UnitHealth': {'new': 'UnitHealth (with proper tokens)', 'protected': True},
-        'UnitPower': {'new': 'UnitPower (with proper tokens)', 'protected': True},
-    }
+    def load_deprecated_apis() -> tuple[Dict, str]:
+        """Load deprecated APIs from JSON database."""
+        import json
+
+        # Try to load from data directory
+        data_dir = Path(__file__).parent.parent.parent.parent / "data"
+        db_path = data_dir / "deprecated_apis.json"
+
+        if db_path.exists():
+            try:
+                with open(db_path, encoding='utf-8') as f:
+                    data = json.load(f)
+                    apis = {}
+                    for entry in data.get('apis', []):
+                        apis[entry['old']] = {
+                            'new': entry['new'],
+                            'severity': entry.get('severity', 'warning'),
+                            'category': entry.get('category', 'general'),
+                            'since': entry.get('since', ''),
+                            'notes': entry.get('notes', '')
+                        }
+                    return apis, data.get('version', 'unknown')
+            except Exception:
+                pass
+
+        # Fallback to hardcoded minimal set
+        return {
+            'GetAddOnInfo': {'new': 'C_AddOns.GetAddOnInfo', 'severity': 'warning', 'category': 'addons', 'since': '11.0.0', 'notes': ''},
+            'IsAddOnLoaded': {'new': 'C_AddOns.IsAddOnLoaded', 'severity': 'warning', 'category': 'addons', 'since': '11.0.0', 'notes': ''},
+            'LoadAddOn': {'new': 'C_AddOns.LoadAddOn', 'severity': 'warning', 'category': 'addons', 'since': '11.0.0', 'notes': ''},
+        }, 'fallback'
 
     @server.command(
         name="addon.deprecations",
-        description="Scan a WoW addon for deprecated API calls (Midnight prep)",
+        description="Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)",
         input_schema=DeprecationInput,
         output_schema=DeprecationResult,
     )
@@ -627,49 +655,96 @@ def register_commands(server):
                 message=f"Addon '{input.addon}' not found",
                 suggestion="Check the addon name or provide an explicit path"
             )
-        
+
+        # Load API database
+        DEPRECATED_APIS, db_version = load_deprecated_apis()
+
+        # Filter by severity
+        severity_levels = {'info': 0, 'warning': 1, 'error': 2}
+        min_level = severity_levels.get(input.min_severity, 1)
+
         issues = []
+        by_category: Dict[str, int] = {}
+        by_severity: Dict[str, int] = {}
+
         lua_files = list(addon_path.rglob("*.lua"))
-        
+
+        # Skip Libs folder
+        lua_files = [f for f in lua_files if 'Libs' not in f.parts and 'libs' not in f.parts]
+
         for lua_file in lua_files:
             try:
                 content = lua_file.read_text(encoding='utf-8', errors='replace')
                 lines = content.splitlines()
-                
+
                 for line_num, line in enumerate(lines, 1):
+                    # Skip comments
+                    if line.strip().startswith('--'):
+                        continue
+
                     for old_api, info in DEPRECATED_APIS.items():
-                        # Look for function calls (not in comments)
-                        if old_api in line and not line.strip().startswith('--'):
-                            # Check it's actually a call, not part of another word
-                            pattern = rf'\b{old_api}\s*\('
+                        # Filter by category if specified
+                        if input.category and info.get('category') != input.category:
+                            continue
+
+                        # Filter by severity
+                        api_severity = info.get('severity', 'warning')
+                        if severity_levels.get(api_severity, 1) < min_level:
+                            continue
+
+                        # Check for API call (word boundary + parenthesis)
+                        if old_api in line:
+                            pattern = rf'\b{re.escape(old_api)}\s*\('
                             if re.search(pattern, line):
+                                cat = info.get('category', 'general')
+                                sev = info.get('severity', 'warning')
+
                                 issues.append(DeprecationIssue(
                                     file=str(lua_file.relative_to(addon_path)),
                                     line=line_num,
                                     old_api=old_api,
                                     new_api=info['new'],
-                                    severity='error' if info['protected'] else 'warning'
+                                    severity=sev,
+                                    category=cat,
+                                    since=info.get('since', ''),
+                                    notes=info.get('notes', '')
                                 ))
+
+                                by_category[cat] = by_category.get(cat, 0) + 1
+                                by_severity[sev] = by_severity.get(sev, 0) + 1
+
             except Exception:
                 continue  # Skip unreadable files
-        
+
         clean = len(issues) == 0
-        
+
         src = create_source(
             type="scan",
             id="deprecation-scanner",
             title="Deprecation Scanner",
             location=str(addon_path)
         )
-        
+
+        # Build reasoning with category breakdown
+        if clean:
+            reasoning = f"No deprecated APIs found in {input.addon} ({len(lua_files)} files, {len(DEPRECATED_APIS)} APIs checked)"
+        else:
+            parts = [f"{count} {cat}" for cat, count in sorted(by_category.items(), key=lambda x: -x[1])[:3]]
+            reasoning = f"Found {len(issues)} deprecated API calls in {input.addon}: {', '.join(parts)}"
+            if by_severity.get('error', 0) > 0:
+                reasoning += f" ({by_severity['error']} critical)"
+
         return success(
             data=DeprecationResult(
                 addon=input.addon,
                 clean=clean,
                 issue_count=len(issues),
-                issues=issues[:50]  # Limit to 50 issues
+                issues=issues[:100],  # Limit to 100 issues
+                by_category=by_category,
+                by_severity=by_severity,
+                database_version=db_version
             ),
-            reasoning=f"Scanned {len(lua_files)} files in {input.addon}: found {len(issues)} deprecated API calls",
+            reasoning=reasoning,
             sources=[src],
-            confidence=0.9
+            confidence=0.95
         )

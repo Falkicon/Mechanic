@@ -1,10 +1,9 @@
 # Mechanic
 
-**The complete addon development platform for World of Warcraft.**
+**The addon development platform built for AI-assisted workflows.**
 
-![WoW Version](https://img.shields.io/badge/WoW-11.2.7%2B-blue)
+![WoW Version](https://img.shields.io/badge/WoW-12.0%2B-blue)
 ![Interface](https://img.shields.io/badge/Interface-120001-green)
-![Status](https://img.shields.io/badge/Status-Alpha-orange)
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
@@ -12,16 +11,8 @@
 ![Commands](https://img.shields.io/badge/Commands-21-purple)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 
-> **⚠️ Alpha Software**
-> 
-> I found WoW addon development tooling to be fragmented, outdated, and disconnected from modern developer workflows. So I built the tooling I wished existed — bringing patterns from professional developer tooling to the addon community.
-> 
-> - **Alpha status:** Core features work well, but expect rough edges and evolving APIs
-> - **Contributions:** PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
-> - **Feature requests:** Open an issue with your use case — community feedback shapes the roadmap
-> - **Sponsorship:** [Supporting the project](https://github.com/sponsors/Falkicon) helps prioritize features 💜
-> 
-> If you're building WoW addons and want a better developer experience, give it a try!
+> **Status:** Core features production-ready. Built for WoW 12.0 Midnight.
+> Alpha phase — expect evolving APIs. [Roadmap](ROADMAP.md) | [Contributing](CONTRIBUTING.md) | [Sponsor](https://github.com/sponsors/Falkicon)
 
 ---
 
@@ -33,12 +24,12 @@ Building WoW addons means constantly switching between the game client and your 
 
 ```
 ┌─────────────────┐      /reload      ┌─────────────────┐      mech       ┌─────────────────┐
-│   In-Game Hub   │ ───────────────▶  │    Desktop UI   │ ◀────────────▶  │   Agent CLI     │
-│                 │   SavedVariables  │                 │   Full Access   │                 │
-│ • Inspect       │                   │ • Errors        │                 │ • Automate      │
-│ • Debug         │                   │ • Tests         │                 │ • Validate      │
-│ • Test          │                   │ • Console       │                 │ • Release       │
-│ • Profile       │                   │ • Metrics       │                 │ • Create        │
+│ Diagnostic Hub  │ ───────────────▶  │    Desktop UI   │ ◀────────────▶  │   Agent CLI     │
+│  (!Mechanic)    │   SavedVariables  │                 │   Full Access   │                 │
+│ • Aggregation   │                   │ • Errors        │                 │ • Automate      │
+│ • Tests/Logs    │                   │ • Modular Tests │                 │ • Validate      │
+│ • Perf Metrics  │                   │ • Console       │                 │ • Release       │
+│ • Lib Registry  │                   │ • System Health │                 │ • Create        │
 └─────────────────┘                   └─────────────────┘                 └─────────────────┘
 ```
 
@@ -64,12 +55,13 @@ While you're in-game, Mechanic gives you a full development hub:
 
 ### 2. Desktop Dashboard (On Reload)
 
-Every `/reload` automatically syncs your game state to a beautiful desktop dashboard:
+Every `/reload` automatically syncs your game state to a beautiful desktop dashboard via the **Diagnostic Hub**:
 
-- **Errors** — Current session errors with smart grouping by addon/file
-- **Tests** — Pass/fail badges, duration, captured logs
-- **Console** — Full console buffer with timestamps and filtering
-- **Metrics** — Last reload time, environment info, performance data
+- **Errors** — Grouped by addon/file, powered by BugGrabber.
+- **Modular Tests** — Row-per-addon test results with hierarchical details.
+- **System Health** — Integrated performance metrics (buffers, memory, CPU).
+- **Console** — Full ecosystem console buffer with timestamps and filtering.
+- **Lib Registry** — Real-time tracking of loaded library versions.
 
 The dashboard updates in real-time via WebSocket. No manual refresh needed.
 
@@ -86,6 +78,17 @@ mech reload
 
 # Validate, lint, format, test — all in one command
 mech call addon.validate -i '{"addon": "MyAddon"}'
+
+# Execute Lua code in-game and get results (round-trip)
+mech call lua.queue -i '{"code": ["GetMoney()/10000"], "labels": ["gold"]}'
+# Then /reload in WoW, and read results:
+mech call lua.results
+
+# Search WoW APIs offline
+mech call api.search -i '{"query": "*Spell*", "limit": 10}'
+
+# Queue API tests to run in-game
+mech call api.queue -i '{"apis": ["C_Spell.GetSpellInfo"], "params": {"C_Spell.GetSpellInfo": {"spellID": 8690}}}'
 ```
 
 This means your AI coding assistant can:
@@ -94,9 +97,29 @@ This means your AI coding assistant can:
 - Execute the full release workflow
 - Create new addons from templates
 
+**Example workflow:** You tell your agent "I just reloaded, check for errors." The agent runs `mech addon.output`, sees a nil error in `UI.lua:47`, reads the file, identifies the issue, and proposes a fix — all without you copying stack traces or switching windows.
+
 > **Tip for AI-assisted development:** Add `!Mechanic/AGENTS.md` to your agent's context. It contains the full command reference, workflow patterns, and integration guides that help agents use Mechanic effectively.
 
 **You focus on the code. The agent handles the tooling.**
+
+### 4. Offline Sandbox Testing
+
+Test your addon's Core logic without WoW running. The sandbox generates 5000+ API stubs from Blizzard's APIDefs.
+
+```bash
+# Generate stubs once
+mech call sandbox.generate
+
+# Run tests in ~30ms (vs. 30s reload cycles)
+mech call sandbox.test -i '{"addon": "MyAddon"}'
+```
+
+- **Fast iteration** — 30ms test feedback vs. 30-second `/reload` cycles
+- **CI/CD ready** — Run tests on every commit without a game client
+- **Pure logic focus** — Test business logic in isolation from WoW runtime
+
+See the [Testing Guide](docs/integration/testing.md) for test file conventions and assertion reference.
 
 ---
 
@@ -116,7 +139,17 @@ mech
 
 The dashboard connects to your WoW client automatically. Just `/reload` in-game and watch the data flow.
 
-📖 **Want to integrate your addon fully?** See the [Addon Integration Guide](docs/addon-integration.md) for console logging, test setup, SavedVariables patterns, and more.
+---
+
+## What's Next?
+
+| Your Goal | Start Here |
+|-----------|------------|
+| Just exploring | Quick Start above |
+| Integrate my addon | [Addon Integration Guide](docs/addon-integration.md) |
+| AI-assisted workflow | [AGENTS.md](AGENTS.md) |
+| Offline testing | [Testing Guide](docs/integration/testing.md) |
+| Full command reference | [CLI Reference](docs/cli-reference.md) |
 
 ---
 
@@ -135,16 +168,33 @@ Beyond the live development loop, Mechanic includes a full suite of quality tool
 | `mech call addon.format` | Auto-format with StyLua |
 | `mech call addon.test` | Execute Busted unit tests |
 | `mech call addon.deprecations` | Scan for deprecated 12.0 APIs |
+| `mech call libs.check` | Check library status vs libs.json |
+| `mech call libs.init` | Create libs.json from installed libraries |
+| `mech call libs.sync` | Sync libraries based on libs.json |
+| `mech call lua.queue` | Queue Lua code for in-game execution |
+| `mech call lua.results` | Read results from last Lua queue |
+| `mech call api.search` | Search WoW APIs by pattern (offline) |
+| `mech call api.queue` | Queue API tests for in-game execution |
+| `mech call sandbox.exec` | Execute Lua in sandbox with API stubs |
+| `mech call tools.status` | Check dev tools installation status |
+| `mech call env.status` | Get environment configuration |
+| `mech call system.pick_file` | Open native file picker dialog |
 
 ### Release Automation
 
 ```bash
-# Full release in one command:
+# Full release in one command (release.all):
 # 1. Bumps version in .toc
 # 2. Adds CHANGELOG entry
 # 3. Commits changes
 # 4. Creates git tag
 mech release MyAddon 1.2.0 "Added new feature"
+
+# Or run individual steps:
+mech call version.bump --addon MyAddon --version 1.2.0
+mech call changelog.add --addon MyAddon --version 1.2.0 --message "Added new feature"
+mech call git.commit --addon MyAddon --message "Release v1.2.0"
+mech call git.tag --addon MyAddon --version 1.2.0
 ```
 
 ### Localization
@@ -181,11 +231,12 @@ Mechanic is built on [AFD (Agent-First Development)](https://github.com/Falkicon
 
 ### Data Flow
 
-1. **In-Game** → Mechanic addon writes to `MechanicDB` (SavedVariables)
-2. **On Reload** → WoW flushes SavedVariables to disk
-3. **Watcher** → Desktop detects file change, parses Lua tables
-4. **Dashboard** → WebSocket pushes update to browser
-5. **CLI** → Same data available via `mech addon.output`
+1. **Addons** → Register with `MechanicLib` to expose tests/metrics.
+2. **Diagnostic Hub** → `!Mechanic` aggregates all registered addon data.
+3. **On Reload** → WoW flushes `!Mechanic.lua` SavedVariables to disk.
+4. **Watcher** → Desktop detects file change, parses the consolidated Hub data.
+5. **Dashboard** → WebSocket pushes modular updates to browser.
+6. **CLI** → Same data available via `mech addon.output`.
 
 ---
 

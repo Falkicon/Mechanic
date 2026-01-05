@@ -293,7 +293,7 @@ def get_setup_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     installed = [r for r in results if r.get("installed")]
     missing = [r for r in results if not r.get("installed")]
     required_missing = [r for r in missing if r.get("required")]
-    
+
     return {
         "success": len(required_missing) == 0,
         "installed_count": len(installed),
@@ -302,3 +302,117 @@ def get_setup_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "platform": get_platform(),
         "tools": results
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LUAROCKS / BUSTED SETUP
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def find_luarocks_paths() -> Optional[Dict[str, Path]]:
+    """
+    Find LuaRocks installation and return relevant paths.
+
+    Returns dict with:
+        - luarocks_home: LuaRocks user directory
+        - share_path: Lua modules path
+        - lib_path: Native libraries path
+        - busted_bin: Path to busted script
+    """
+    import os
+
+    # Check common locations
+    home = Path.home()
+
+    candidates = [
+        # User install (most common on Windows)
+        home / "AppData" / "Roaming" / "luarocks",
+        # System install
+        Path("C:/Program Files/luarocks"),
+        Path("C:/Program Files (x86)/luarocks"),
+    ]
+
+    # Also check LUAROCKS_HOME env var
+    if "LUAROCKS_HOME" in os.environ:
+        candidates.insert(0, Path(os.environ["LUAROCKS_HOME"]))
+
+    for luarocks_home in candidates:
+        if not luarocks_home.exists():
+            continue
+
+        share_path = luarocks_home / "share" / "lua" / "5.1"
+        lib_path = luarocks_home / "lib" / "lua" / "5.1"
+
+        # Find busted in rocks directory
+        rocks_dir = luarocks_home / "lib" / "luarocks" / "rocks-5.1" / "busted"
+        if rocks_dir.exists():
+            # Get highest version
+            versions = list(rocks_dir.iterdir())
+            if versions:
+                latest = sorted(versions)[-1]
+                busted_bin = latest / "bin" / "busted"
+                if busted_bin.exists():
+                    return {
+                        "luarocks_home": luarocks_home,
+                        "share_path": share_path,
+                        "lib_path": lib_path,
+                        "busted_bin": busted_bin,
+                    }
+
+    return None
+
+
+def generate_busted_bat(output_path: Optional[Path] = None) -> Tuple[bool, str]:
+    """
+    Generate busted.bat with correct paths for this user's LuaRocks install.
+
+    Args:
+        output_path: Where to write busted.bat (default: BIN_DIR/busted.bat)
+
+    Returns:
+        Tuple of (success, message)
+    """
+    if get_platform() != "windows":
+        return False, "busted.bat generation is Windows-only"
+
+    # Find LuaRocks
+    paths = find_luarocks_paths()
+    if not paths:
+        return False, "LuaRocks not found. Install busted via: luarocks install busted"
+
+    # Find Lua in our bin/
+    lua_path = find_tool("lua")
+    if not lua_path:
+        return False, "lua.exe not found in bin/. Run 'mech setup' first."
+
+    # Build the bat file content
+    share_path = paths["share_path"]
+    lib_path = paths["lib_path"]
+    busted_bin = paths["busted_bin"]
+
+    # Escape backslashes for Lua string
+    share_lua = str(share_path).replace("\\", "\\\\")
+    lib_lua = str(lib_path).replace("\\", "\\\\")
+    busted_lua = str(busted_bin).replace("\\", "\\\\")
+
+    bat_content = f'''@echo off
+setlocal
+set "LUAROCKS_SYSCONFDIR=C:\\Program Files\\luarocks"
+"{lua_path}" -e "package.path=\\"{share_lua}\\\\?.lua;{share_lua}\\\\?\\\\init.lua;\\"..package.path;package.cpath=\\"{lib_lua}\\\\?.dll;\\"..package.cpath;local k,l,_=pcall(require,'luarocks.loader') _=k and l.add_context('busted','2.2.0-1')" "{busted_lua}" %*
+exit /b %ERRORLEVEL%
+'''
+
+    # Write file
+    target = output_path or (BIN_DIR / "busted.bat")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(bat_content, encoding="utf-8")
+
+    return True, f"Generated {target}"
+
+
+def setup_busted() -> Tuple[bool, str]:
+    """
+    Setup busted test runner by generating busted.bat.
+
+    This should be called after luarocks install busted.
+    """
+    return generate_busted_bat()

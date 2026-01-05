@@ -3,6 +3,11 @@ Centralized configuration for Mechanic Desktop.
 
 Handles WoW installation discovery, addon path resolution, and user configuration.
 All paths are determined dynamically - no hardcoded user-specific paths.
+
+Environment variables can be set via:
+1. System environment variables (highest priority)
+2. .env file in desktop/ directory
+3. ~/.mechanic/.env (user-level defaults)
 """
 
 import json
@@ -10,6 +15,19 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+
+from dotenv import load_dotenv
+
+# Load .env files in order of priority (later files don't override earlier values)
+# 1. User-level .env (lowest priority)
+_user_env = Path.home() / ".mechanic" / ".env"
+if _user_env.exists():
+    load_dotenv(_user_env, override=False)
+
+# 2. Desktop directory .env (higher priority)
+_desktop_env = Path(__file__).parent.parent.parent / ".env"
+if _desktop_env.exists():
+    load_dotenv(_desktop_env, override=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,8 +219,8 @@ class MechanicConfig:
         
         # Default: Look for _TemplateAddon in dev_path or common locations
         if self.dev_path:
-            # Check for !Mechanic/_TemplateAddon
-            mechanic_template = self.dev_path / "!Mechanic" / "_TemplateAddon"
+            # Check for Mechanic/_TemplateAddon
+            mechanic_template = self.dev_path / "Mechanic" / "_TemplateAddon"
             if mechanic_template.exists():
                 return mechanic_template
             
@@ -368,3 +386,37 @@ def discover_saved_variables() -> List[Path]:
                 continue
     
     return sorted(list(found_paths))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# API KEY HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_gemini_api_key() -> Optional[str]:
+    """
+    Get the Gemini API key from environment.
+
+    Returns:
+        The API key if set, None otherwise
+    """
+    return os.environ.get("GEMINI_API_KEY")
+
+
+def require_gemini_api_key() -> str:
+    """
+    Get the Gemini API key, raising an error if not configured.
+
+    Returns:
+        The API key
+
+    Raises:
+        ValueError: If GEMINI_API_KEY is not set
+    """
+    key = get_gemini_api_key()
+    if not key:
+        raise ValueError(
+            "GEMINI_API_KEY not found. "
+            "Set it in your environment or add it to desktop/.env file. "
+            "See .env.example for details."
+        )
+    return key

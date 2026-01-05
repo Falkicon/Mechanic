@@ -4,30 +4,88 @@ Register a custom tools panel that appears in Mechanic's Tools tab.
 
 ---
 
-## Basic Tools Panel
+## Tools vs Tests
 
-**Example:** See [FenUI_Explorer/Core.lua](../../../FenUI_Explorer/Core.lua)
+| Tab | Purpose | Content |
+|-----|---------|---------|
+| **Tools** | Interactive actions | Buttons that trigger slash commands, toggle settings |
+| **Tests** | Verification | Pass/fail checks for API compatibility, data integrity |
+
+Tools are **actions**. Tests are **assertions**.
+
+---
+
+## Button-Based Tools Panel
+
+**Example:** See [Flightsim/Config.lua](../../../Flightsim/Config.lua)
 
 ```lua
+--- Create a button helper
+local function CreateToolButton(parent, x, y, width, text, onClick)
+    local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    btn:SetSize(width, 24)
+    btn:SetText(text)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
 function MyAddon:CreateToolsPanel(container)
     -- Title
     local title = container:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 10, -10)
     title:SetText("MyAddon Tools")
-    
+
     -- Description
     local desc = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    desc:SetPoint("TOPLEFT", 10, -40)
+    desc:SetPoint("TOPLEFT", 10, -35)
     desc:SetText("Quick actions for MyAddon.")
-    
-    -- Action Button
-    local btn = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-    btn:SetPoint("TOPLEFT", 10, -80)
-    btn:SetSize(150, 24)
-    btn:SetText("Toggle Feature")
-    btn:SetScript("OnClick", function()
-        MyAddon:ToggleFeature()
+
+    -- Row 1: Position & Lock
+    local row1Label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row1Label:SetPoint("TOPLEFT", 10, -65)
+    row1Label:SetText("Position:")
+
+    CreateToolButton(container, 80, -60, 100, "Reset", function()
+        if MyAddonDB and MyAddonDB.profile then
+            MyAddonDB.profile.x = 0
+            MyAddonDB.profile.y = 0
+            -- Apply to frame...
+            print("|cff00ff00MyAddon:|r Position reset.")
+        end
     end)
+
+    CreateToolButton(container, 185, -60, 80, "Lock", function()
+        if MyAddonDB and MyAddonDB.profile then
+            MyAddonDB.profile.locked = true
+            print("|cff00ff00MyAddon:|r Locked.")
+        end
+    end)
+
+    CreateToolButton(container, 270, -60, 80, "Unlock", function()
+        if MyAddonDB and MyAddonDB.profile then
+            MyAddonDB.profile.locked = false
+            print("|cff00ff00MyAddon:|r Unlocked.")
+        end
+    end)
+
+    -- Row 2: Debug
+    local row2Label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row2Label:SetPoint("TOPLEFT", 10, -100)
+    row2Label:SetText("Debug:")
+
+    CreateToolButton(container, 80, -95, 100, "Toggle Debug", function()
+        if MyAddonDB and MyAddonDB.profile then
+            MyAddonDB.profile.debugMode = not MyAddonDB.profile.debugMode
+            MyAddon.debugMode = MyAddonDB.profile.debugMode
+            print("|cff00ff00MyAddon:|r Debug " .. (MyAddon.debugMode and "ON" or "OFF"))
+        end
+    end)
+
+    -- Footer
+    local footer = container:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer:SetPoint("BOTTOM", 0, 10)
+    footer:SetText("Use /myaddon for more options.")
 end
 ```
 
@@ -45,72 +103,43 @@ MechanicLib:Register(ADDON_NAME, {
 
 ---
 
-## Advanced Tools Panel (Compliance Lab)
+## Layout Guidelines
 
-**Example:** See [Flightsim/Config.lua](../../../Flightsim/Config.lua) for a "Midnight UI Compliance Lab" that tests various API patterns:
+### Spacing Constants
 
-```lua
-function MyAddon:CreateCompliancePanel(container)
-    local title = container:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -10)
-    title:SetText("Midnight UI Compliance Lab")
-    
-    local function CreateTestBar(y, label, color)
-        local bar = CreateFrame("StatusBar", nil, container)
-        bar:SetHeight(24)
-        bar:SetPoint("TOPLEFT", container, "TOPLEFT", 20, y)
-        bar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -20, y)
-        bar:SetStatusBarTexture("Interface/Buttons/WHITE8X8")
-        bar:SetStatusBarColor(unpack(color))
-        
-        local bg = bar:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.1, 0.1, 0.1, 1)
-        
-        local text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("CENTER")
-        text:SetText(label)
-        
-        return bar
-    end
-    
-    -- Test 1: Standard SetValue
-    pcall(function()
-        local bar = CreateTestBar(-50, "1. SetValue(1) [Control]", { 0, 1, 0 })
-        bar:SetMinMaxValues(0, 1)
-        bar:SetValue(1)
-    end)
-    
-    -- Test 2: Secret Passthrough
-    pcall(function()
-        local bar = CreateTestBar(-80, "2. SetValue(secret) [Speed]", { 0, 0.5, 1 })
-        bar:SetMinMaxValues(0, 1000)
-        local speed = GetUnitSpeed("player")
-        bar:SetValue(type(speed) == "number" and speed or 0)
-    end)
-    
-    -- Test 3: Boolean Proxy
-    pcall(function()
-        local bar = CreateTestBar(-110, "3. SetValue(Proxy) [Spell Usable]", { 1, 0.5, 0 })
-        local usable = C_Spell.IsSpellUsable(372608)
-        bar:SetMinMaxValues(0, 1)
-        bar:SetValue(usable and 1 or 0)
-    end)
-end
-```
+| Element | Value |
+|---------|-------|
+| Title Y offset | -10 |
+| Description Y offset | -35 |
+| First row Y offset | -65 |
+| Row spacing | 35px |
+| Button height | 24px |
+| Label X offset | 10 |
+| First button X offset | 80 |
+
+### Button Sizing
+
+| Button Type | Width |
+|-------------|-------|
+| Short action (Lock, Unlock) | 80px |
+| Standard action (Reset, Toggle) | 100px |
+| Wide action (Show Always) | 100-120px |
 
 ---
 
-## Panel Guidelines
+## Best Practices
 
-1. **Use standard WoW templates** — `UIPanelButtonTemplate`, `GameFontNormal`, etc.
-2. **Wrap in pcall** — Prevents tools panel errors from breaking Mechanic
-3. **Provide clear labels** — Users should understand each tool's purpose
-4. **Keep actions focused** — One button = one action
+| Practice | Reason |
+|----------|--------|
+| **Print feedback with colored prefix** | `\|cff00ff00AddonName:\|r` confirms action executed |
+| **Guard DB access** | Check `if MyAddonDB and MyAddonDB.profile then` |
+| **Reuse slash command logic** | Buttons should call same functions as `/addon` commands |
+| **Keep buttons in logical rows** | Position, Visibility, Debug, etc. |
 
 ---
 
 ## Related Guides
 
 - [MechanicLib Registration](./mechaniclib.md)
-- [Inspect Integration](./inspect.md)
+- [Tests Integration](./tests.md)
+- [Console Integration](./console.md)

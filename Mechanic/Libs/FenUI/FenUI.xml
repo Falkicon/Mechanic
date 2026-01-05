@@ -1,0 +1,51 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!-- FenUI Widget Library - Embeddable Loader -->
+    
+    <!-- Core (load order matters) -->
+    <Script file="Core\FenUI.lua"/>
+    <Script file="Utils\Utils.lua"/>
+    <Script file="Utils\Environment.lua"/>
+    <Script file="Utils\Formatting.lua"/>
+    <Script file="Utils\Tables.lua"/>
+    <Script file="Utils\SecretValues.lua"/>
+    <Script file="Utils\SafeAPI.lua"/>
+    <Script file="Utils\UI.lua"/>
+    <Script file="Utils\Colors.lua"/>
+    <Script file="Core\Tokens.lua"/>
+    <Script file="Core\Fonts.lua"/>
+    <Script file="Core\BlizzardBridge.lua"/>
+    <Script file="Core\Animation.lua"/>
+    <Script file="Core\ThemeManager.lua"/>
+    
+    <!-- Validation -->
+    <Script file="Validation\DependencyChecker.lua"/>
+    
+    <!-- Widgets (load order matters: Image -> Layout -> Panel/Containers) -->
+    <Script file="Widgets\Image.lua"/>
+    <Script file="Widgets\ImageButton.lua"/>
+    <Script file="Widgets\Group.lua"/>
+    <Script file="Widgets\Layout.lua"/>
+    <Script file="Widgets\Stack.lua"/>
+    <Script file="Widgets\SplitLayout.lua"/>
+    <Script file="Widgets\Panel.lua"/>
+    <Script file="Widgets\ScrollBar.lua"/>
+    <Script file="Widgets\Containers.lua"/>
+    <Script file="Widgets\Tabs.lua"/>
+    <Script file="Widgets\Buttons.lua"/>
+    <Script file="Widgets\Grid.lua"/>
+    <Script file="Widgets\Toolbar.lua"/>
+    <Script file="Widgets\MultiLineEditBox.lua"/>
+    <Script file="Widgets\StatusRow.lua"/>
+    <Script file="Widgets\EmptyState.lua"/>
+    <Script file="Widgets\SectionHeader.lua"/>
+    <Script file="Widgets\Section.lua"/>
+    <Script file="Widgets\InfoPanel.lua"/>
+    <Script file="Widgets\Tree.lua"/>
+    <Script file="Widgets\VirtualList.lua"/>
+    <Script file="Widgets\Input.lua"/>
+    <Script file="Widgets\Dropdown.lua"/>
+    <Script file="Widgets\SearchablePicker.lua"/>
+    
+    <!-- Settings Integration -->
+    <Script file="Settings\ThemePicker.lua"/>
+</Ui>

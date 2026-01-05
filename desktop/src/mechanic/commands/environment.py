@@ -555,7 +555,7 @@ def register_commands(server):
 
     # Folders to exclude when copying libraries
     IGNORE_PATTERNS = {'.git', '.coverage', '__pycache__', '.github', 'Tests', '.deprecation-report.md', 'PLANS'}
-    
+
     def _copy_library(src: Path, dst: Path) -> None:
         """Copy a library, excluding development-only folders."""
         def ignore_patterns(directory, files):
@@ -609,16 +609,16 @@ def register_commands(server):
         mode = libs_config.get("mode", "include")
         configured_libs = libs_config.get("libraries", {})
         notes = libs_config.get("notes", {})
-        
+
         # Find default source library path
         default_source = Path(input.source) if input.source else None
         if not default_source:
-            # Try common locations
+            # Try common locations (Libs is the canonical location)
             if config.dev_path:
                 possible_sources = [
-                    config.dev_path / "ADDON_DEV" / "Libs",
-                    config.dev_path / "_SharedLibs",
-                    config.dev_path / "Libs",
+                    config.dev_path / "Libs",  # Canonical location
+                    config.dev_path / "MechanicLocal" / "Libs",  # Legacy
+                    config.dev_path / "_SharedLibs",  # Alternative
                 ]
                 for p in possible_sources:
                     if p.exists():
@@ -627,7 +627,17 @@ def register_commands(server):
         
         actions = []
         copied = updated = skipped = removed = errors = 0
-        
+
+        # Debug: Track source resolution
+        debug_info = {
+            "default_source": str(default_source) if default_source else None,
+            "dev_path": str(config.dev_path) if config.dev_path else None,
+        }
+        # Write debug info to file for troubleshooting
+        import json
+        with open(config.data_dir / "libs_sync_debug.json", "w") as f:
+            json.dump(debug_info, f, indent=2)
+
         # Get currently installed
         installed = {item.name for item in libs_path.iterdir() if item.is_dir()}
         
@@ -637,18 +647,20 @@ def register_commands(server):
                 target_path = libs_path / lib_name
                 version = _get_lib_version_config(lib_config)
                 
-                # Skip local libs
-                if version == "local":
-                    actions.append(SyncAction(
-                        library=lib_name,
-                        action="skip",
-                        reason=notes.get(lib_name, "Marked as local")
-                    ))
-                    skipped += 1
-                    continue
-                
                 # Find source for this library
                 src_lib = _find_library_source(lib_name, lib_config, default_source, config.dev_path)
+
+                # Handle "local" libs - sync from shared Libs folder
+                if version == "local":
+                    if not src_lib:
+                        actions.append(SyncAction(
+                            library=lib_name,
+                            action="skip",
+                            reason=notes.get(lib_name, "Local library not found in shared Libs")
+                        ))
+                        skipped += 1
+                        continue
+                    # Continue with normal sync logic below (src_lib is set)
                 
                 # Check if already installed
                 if target_path.exists():
@@ -776,7 +788,8 @@ def register_commands(server):
                 updated=updated,
                 skipped=skipped,
                 removed=removed,
-                errors=errors
+                errors=errors,
+                _debug=debug_info
             ),
             reasoning=f"{'Preview: ' if input.dry_run else ''}{copied} copied, {updated} updated, {skipped} skipped, {removed} removed, {errors} errors",
             sources=[src],
