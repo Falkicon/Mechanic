@@ -1,0 +1,58 @@
+## Interface: 120001, 120000
+## Title: Mechanic
+## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
+## Author: Fen (Falkicon)
+## Version: 1.3.1
+## X-License: GPL-3.0
+## X-Category: Development Tools
+## X-Website: https://github.com/Falkicon/Mechanic
+## Dependencies: !Mechanic
+## OptionalDeps: !BugGrabber, FenCore
+
+# Keybindings - Bindings.xml is auto-loaded by WoW (not listed here)
+
+# Libraries (Ace3, FenUI, etc.)
+embeds.xml
+
+# Localization
+Locales\enUS.lua
+Locales\enGB.lua
+Locales\deDE.lua
+Locales\esES.lua
+Locales\esMX.lua
+Locales\frFR.lua
+Locales\itIT.lua
+Locales\koKR.lua
+Locales\ptBR.lua
+Locales\ptPT.lua
+Locales\ruRU.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
+
+# Shared UI Modules
+UI\Shared\SplitNavLayout.lua
+UI\Shared\FrameResolver.lua
+
+# Core
+Utils.lua
+Core.lua
+
+# Settings (Phase 3)
+Settings.lua
+
+# UI Modules
+UI\MainFrame.lua
+UI\Console.lua
+UI\Errors.lua
+UI\Tests.lua
+UI\Tools.lua
+UI\APIDefinitions.lua
+UI\APIDefinitions_Registry.lua
+UI\APIDefs\APIDefs.xml
+UI\API.lua
+UI\Inspect.lua
+UI\InspectTree.lua
+UI\InspectDetails.lua
+UI\InspectProperties.lua
+UI\InspectWatch.lua
+UI\Performance.lua

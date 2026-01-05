@@ -182,6 +182,8 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # git.commit - Stage and commit changes
+    # NOTE: Removed from MCP - subprocess git commands can stall in async context.
+    #       Use CLI directly: git add -A && git commit -m "message"
     # ═══════════════════════════════════════════════════════════════════════════
     
     class GitCommitInput(BaseModel):
@@ -195,12 +197,8 @@ def register_commands(server):
         message: str
         files_staged: int = 0
 
-    @server.command(
-        name="git.commit",
-        description="Stage all changes and commit in the addon's git repository",
-        input_schema=GitCommitInput,
-        output_schema=GitCommitResult,
-    )
+    # Removed @server.command decorator - git subprocess can hang in MCP context
+    # This function is still available internally for release.all (CLI only)
     async def git_commit(input: GitCommitInput, context: Any = None) -> CommandResult[GitCommitResult]:
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
@@ -294,6 +292,8 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # git.tag - Create a version tag
+    # NOTE: Removed from MCP - subprocess git commands can stall in async context.
+    #       Use CLI directly: git tag -a v1.2.3 -m "Release v1.2.3"
     # ═══════════════════════════════════════════════════════════════════════════
     
     class GitTagInput(BaseModel):
@@ -307,12 +307,7 @@ def register_commands(server):
         tag: str
         created: bool
 
-    @server.command(
-        name="git.tag",
-        description="Create a git tag for a version release",
-        input_schema=GitTagInput,
-        output_schema=GitTagResult,
-    )
+    # Removed @server.command decorator - git subprocess can hang in MCP context
     async def git_tag(input: GitTagInput, context: Any = None) -> CommandResult[GitTagResult]:
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
@@ -375,6 +370,8 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # release.all - Orchestrate full release flow
+    # NOTE: Removed from MCP - uses git commands that can stall.
+    #       Use CLI: mech release MyAddon 1.2.0 "message"
     # ═══════════════════════════════════════════════════════════════════════════
     
     class ReleaseAllInput(BaseModel):
@@ -390,12 +387,7 @@ def register_commands(server):
         steps_completed: List[str]
         commit_hash: Optional[str]
     
-    @server.command(
-        name="release.all",
-        description="Run full release: bump version, update changelog, commit, and tag",
-        input_schema=ReleaseAllInput,
-        output_schema=ReleaseAllResult,
-    )
+    # Removed @server.command decorator - calls git functions that can hang
     async def release_all(input: ReleaseAllInput, context: Any = None) -> CommandResult[ReleaseAllResult]:
         steps = []
         
