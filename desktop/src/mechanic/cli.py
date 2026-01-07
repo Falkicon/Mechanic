@@ -1,7 +1,7 @@
 """
-Mechanic Desktop CLI - AFD-compliant command-line interface.
+Mechanic Desktop CLI - Command-line interface for addon development.
 
-Follows AFD patterns:
+Follows structured command patterns:
 - `mechanic commands` to list available tools
 - `mechanic call <cmd> <json>` with positional JSON
 - `--json` and `--quiet` flags for output control
@@ -23,11 +23,11 @@ from .watcher import SVWatcher
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# OUTPUT HELPERS (AFD-style)
+# OUTPUT HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def print_result(result: Any, json_output: bool = False, quiet: bool = False) -> None:
-    """Print a CommandResult in AFD style."""
+    """Print a CommandResult in formatted style."""
     if json_output:
         click.echo(json.dumps(result.model_dump(), indent=2))
         return
@@ -88,7 +88,7 @@ def print_result(result: Any, json_output: bool = False, quiet: bool = False) ->
 
 
 def print_commands(commands: list, json_output: bool = False) -> None:
-    """Print command list in AFD style."""
+    """Print command list in formatted style."""
     if json_output:
         click.echo(json.dumps([
             {"name": c.name, "description": c.description}
@@ -173,16 +173,16 @@ def start_server(port, watch_paths, src_paths=None, auto_reload=False, reload_ke
 @click.version_option(package_name="mechanic-desktop", prog_name="mechanic")
 @click.pass_context
 def main(ctx, json_output, quiet, agent):
-    """Mechanic Desktop - AFD-powered companion for WoW addon development.
+    """Mechanic Desktop - Companion for WoW addon development.
     
     \b
     Quick Start:
-      mechanic commands              List available AFD commands
+      mechanic commands              List available commands
       mechanic call sv.discover      Discover SavedVariables
       mechanic dashboard             Start the web dashboard
     
     \b
-    AFD Patterns:
+    Command Patterns:
       mechanic call <cmd> '<json>'   Call command with JSON args
       mechanic --json call ...       Get raw JSON output
       mechanic --agent call ...      Agent-optimized output
@@ -199,7 +199,7 @@ def main(ctx, json_output, quiet, agent):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COMMANDS - AFD Core
+# COMMANDS - Core
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @main.command("commands")
@@ -207,7 +207,7 @@ def main(ctx, json_output, quiet, agent):
 @click.option("--detail", "-d", "cmd_name", help="Show detailed info for a command")
 @click.pass_context
 def list_commands(ctx, pattern, cmd_name):
-    """List available AFD commands.
+    """List available commands.
     
     \b
     Examples:
@@ -269,7 +269,7 @@ def list_commands(ctx, pattern, cmd_name):
 @click.argument("args", default="{}")
 @click.pass_context
 def call(ctx, command_name, args):
-    """Call an AFD command.
+    """Call a command.
     
     COMMAND_NAME is the command to call (e.g., sv.discover, libs.check).
     ARGS is a JSON string of arguments (default: {}).
@@ -313,7 +313,7 @@ def call(ctx, command_name, args):
 def shell(ctx):
     """Start an interactive command shell.
     
-    Provides a REPL for calling AFD commands interactively.
+    Provides a REPL for calling commands interactively.
     Type 'help' for commands, 'exit' to quit.
     """
     from .commands.core import get_server
@@ -341,7 +341,7 @@ def shell(ctx):
             if line == "help":
                 click.echo("""
 Commands:
-  commands           List available AFD commands
+  commands           List available commands
   call <cmd> [json]  Call a command with optional JSON args
   help               Show this help
   exit               Exit the shell
@@ -752,7 +752,7 @@ def setup_busted_cmd():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COMMANDS - MCP Server (AFD Phase 2)
+# COMMANDS - MCP Server
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @main.command()
@@ -762,7 +762,7 @@ def setup_busted_cmd():
 def mcp(ctx, transport, port):
     """Run Mechanic as an MCP server for AI agents.
 
-    This exposes all AFD commands as MCP tools with rich descriptions,
+    This exposes all commands as MCP tools with rich descriptions,
     parameter documentation, usage examples, and clean output formatting.
 
     \b

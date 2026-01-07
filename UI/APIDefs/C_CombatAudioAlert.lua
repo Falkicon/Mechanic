@@ -16,6 +16,20 @@ APIDefs["C_CombatAudioAlert.GetFormatSetting"] = {
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
+APIDefs["C_CombatAudioAlert.GetResourceSettingForCurrentSpec"] = {
+    key = "C_CombatAudioAlert.GetResourceSettingForCurrentSpec",
+    name = "GetResourceSettingForCurrentSpec",
+    category = "combat_midnight",
+    subcategory = "c_combataudioalert",
+    func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["GetResourceSettingForCurrentSpec"],
+    funcPath = "C_CombatAudioAlert.GetResourceSettingForCurrentSpec",
+    params = { { name = "setting", type = "CombatAudioAlertResourceSetting", default = nil } },
+    returns = { { name = "value", type = "number", canBeSecret = false } },
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
+}
+
 APIDefs["C_CombatAudioAlert.GetSpeakerSpeed"] = {
     key = "C_CombatAudioAlert.GetSpeakerSpeed",
     name = "GetSpeakerSpeed",
@@ -38,20 +52,6 @@ APIDefs["C_CombatAudioAlert.GetSpeakerVolume"] = {
     params = {  },
     returns = { { name = "volume", type = "number", canBeSecret = false } },
     midnightImpact = "NORMAL",
-}
-
-APIDefs["C_CombatAudioAlert.GetSpecSetting"] = {
-    key = "C_CombatAudioAlert.GetSpecSetting",
-    name = "GetSpecSetting",
-    category = "combat_midnight",
-    subcategory = "c_combataudioalert",
-    func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["GetSpecSetting"],
-    funcPath = "C_CombatAudioAlert.GetSpecSetting",
-    params = { { name = "setting", type = "CombatAudioAlertSpecSetting", default = nil } },
-    returns = { { name = "value", type = "number", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_CombatAudioAlert.GetThrottle"] = {
@@ -88,7 +88,21 @@ APIDefs["C_CombatAudioAlert.SetFormatSetting"] = {
     func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetFormatSetting"],
     funcPath = "C_CombatAudioAlert.SetFormatSetting",
     params = { { name = "unit", type = "CombatAudioAlertUnit", default = nil }, { name = "alertType", type = "CombatAudioAlertType", default = nil }, { name = "newVal", type = "number", default = nil } },
-    returns = { { name = "success", type = "bool", canBeSecret = false } },
+    returns = {  },
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
+}
+
+APIDefs["C_CombatAudioAlert.SetResourceSettingForCurrentSpec"] = {
+    key = "C_CombatAudioAlert.SetResourceSettingForCurrentSpec",
+    name = "SetResourceSettingForCurrentSpec",
+    category = "combat_midnight",
+    subcategory = "c_combataudioalert",
+    func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetResourceSettingForCurrentSpec"],
+    funcPath = "C_CombatAudioAlert.SetResourceSettingForCurrentSpec",
+    params = { { name = "setting", type = "CombatAudioAlertResourceSetting", default = nil }, { name = "newVal", type = "number", default = nil } },
+    returns = {  },
     midnightImpact = "RESTRICTED",
     protected = true,
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
@@ -102,7 +116,7 @@ APIDefs["C_CombatAudioAlert.SetSpeakerSpeed"] = {
     func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetSpeakerSpeed"],
     funcPath = "C_CombatAudioAlert.SetSpeakerSpeed",
     params = { { name = "newVal", type = "number", default = nil } },
-    returns = { { name = "success", type = "bool", canBeSecret = false } },
+    returns = {  },
     midnightImpact = "RESTRICTED",
     protected = true,
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
@@ -116,21 +130,7 @@ APIDefs["C_CombatAudioAlert.SetSpeakerVolume"] = {
     func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetSpeakerVolume"],
     funcPath = "C_CombatAudioAlert.SetSpeakerVolume",
     params = { { name = "newVal", type = "number", default = nil } },
-    returns = { { name = "success", type = "bool", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
-}
-
-APIDefs["C_CombatAudioAlert.SetSpecSetting"] = {
-    key = "C_CombatAudioAlert.SetSpecSetting",
-    name = "SetSpecSetting",
-    category = "combat_midnight",
-    subcategory = "c_combataudioalert",
-    func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetSpecSetting"],
-    funcPath = "C_CombatAudioAlert.SetSpecSetting",
-    params = { { name = "setting", type = "CombatAudioAlertSpecSetting", default = nil }, { name = "newVal", type = "number", default = nil } },
-    returns = { { name = "success", type = "bool", canBeSecret = false } },
+    returns = {  },
     midnightImpact = "RESTRICTED",
     protected = true,
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
@@ -144,7 +144,7 @@ APIDefs["C_CombatAudioAlert.SetThrottle"] = {
     func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SetThrottle"],
     funcPath = "C_CombatAudioAlert.SetThrottle",
     params = { { name = "throttleType", type = "CombatAudioAlertThrottle", default = nil }, { name = "newVal", type = "number", default = nil } },
-    returns = { { name = "success", type = "bool", canBeSecret = false } },
+    returns = {  },
     midnightImpact = "RESTRICTED",
     protected = true,
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
@@ -157,7 +157,7 @@ APIDefs["C_CombatAudioAlert.SpeakText"] = {
     subcategory = "c_combataudioalert",
     func = _G["C_CombatAudioAlert"] and _G["C_CombatAudioAlert"]["SpeakText"],
     funcPath = "C_CombatAudioAlert.SpeakText",
-    params = { { name = "text", type = "string", default = nil }, { name = "allowOverlap", type = "bool", default = true } },
+    params = { { name = "text", type = "string", default = nil } },
     returns = {  },
     midnightImpact = "RESTRICTED",
     protected = true,

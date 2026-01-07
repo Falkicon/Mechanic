@@ -117,7 +117,7 @@ APIDefs["C_EncounterTimeline.GetEventInfo"] = {
     returns = { { name = "info", type = "EncounterTimelineEventInfo", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,
-    midnightNote = "Secret behavior: SecretBasedOnTimelineEventSource, SecretArguments=NotAllowed",
+    midnightNote = "Secret behavior: SecretArguments=NotAllowed",
 }
 
 APIDefs["C_EncounterTimeline.GetEventList"] = {

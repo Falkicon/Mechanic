@@ -37,13 +37,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# AFD integration (install separately or use this extra)
-afd = [
-    "afd[server,testing]>=0.1.0",
-]
 # MCP server support (for mech mcp command)
 mcp = [
     "mcp>=1.0.0",
+    "fastmcp>=0.1.0",
 ]
 # Research commands (Gemini API)
 research = [
@@ -56,6 +53,7 @@ assets = [
 # All extras
 all = [
     "mcp>=1.0.0",
+    "fastmcp>=0.1.0",
     "google-genai>=0.8.0",
     "Pillow>=10.0.0",
 ]
@@ -76,5 +74,5 @@ mech = "mechanic.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["mechanic", "mechanic.commands"]
+packages = ["mechanic", "mechanic.commands", "afd", "afd.core", "afd.server", "afd.testing", "afd.transports"]
 

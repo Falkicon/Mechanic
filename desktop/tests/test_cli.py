@@ -1,7 +1,7 @@
 """
 CLI Tests for Mechanic Desktop.
 
-Tests verify all CLI commands and wrappers follow AFD compliance:
+Tests verify all CLI commands and wrappers:
 - Proper exit codes
 - JSON output format
 - Help text
@@ -29,8 +29,7 @@ def test_cli_help():
     assert 'call' in result.output
     assert 'shell' in result.output
     assert 'dashboard' in result.output
-    # Convenience wrappers
-    assert 'reload' in result.output
+    # Removed: 'reload' command no longer exists
     assert 'status' in result.output
     assert 'addon.output' in result.output
     # Global flags
@@ -216,35 +215,8 @@ def test_cli_status_json():
     assert 'wow_root' in data or 'dev_path' in data
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Reload Command (mech reload)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@patch('mechanic.cli.asyncio.run')
-def test_cli_reload(mock_run):
-    """Test reload command triggers execution."""
-    mock_result = MagicMock()
-    mock_result.success = True
-    mock_result.data = MagicMock()
-    mock_result.reasoning = "Reload triggered"
-    mock_run.return_value = mock_result
-
-    runner = CliRunner()
-    result = runner.invoke(main, ['reload'])
-
-    assert result.exit_code == 0
-    assert 'Triggering reload' in result.output or 'Success' in result.output
-
-
-def test_cli_reload_custom_key():
-    """Test reload with custom key."""
-    runner = CliRunner()
-    result = runner.invoke(main, ['reload', '--key', '9'])
-
-    # May fail if WoW not running, but shouldn't crash
-    assert result.exit_code == 0
-
-
+# Reload command was removed (not implemented in current CLI).
+# Users should use /reload in WoW directly.
 # ═══════════════════════════════════════════════════════════════════════════════
 # Stop Command (mech stop)
 # ═══════════════════════════════════════════════════════════════════════════════

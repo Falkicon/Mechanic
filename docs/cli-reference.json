@@ -1,5 +1,53 @@
 [
   {
+    "name": "addon.complexity",
+    "description": "Detect code complexity issues in a WoW addon (nesting, long functions, magic numbers)",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to analyze",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "categories",
+        "type": "string",
+        "required": false,
+        "description": "Specific categories to check (default: all)",
+        "default": null
+      },
+      {
+        "name": "max_nesting",
+        "type": "number",
+        "required": false,
+        "description": "Maximum allowed nesting depth",
+        "default": "5"
+      },
+      {
+        "name": "max_function_lines",
+        "type": "number",
+        "required": false,
+        "description": "Maximum lines per function",
+        "default": "100"
+      },
+      {
+        "name": "max_file_lines",
+        "type": "number",
+        "required": false,
+        "description": "Maximum lines per file",
+        "default": "500"
+      }
+    ]
+  },
+  {
     "name": "addon.create",
     "description": "Create a new WoW addon from a template",
     "parameters": [
@@ -62,7 +110,7 @@
   },
   {
     "name": "addon.deprecations",
-    "description": "Scan a WoW addon for deprecated API calls (Midnight prep)",
+    "description": "Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)",
     "parameters": [
       {
         "name": "addon",
@@ -84,6 +132,20 @@
         "required": false,
         "description": "Attempt to auto-fix deprecated calls",
         "default": "False"
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Filter by category (e.g., spells, items, containers)",
+        "default": null
+      },
+      {
+        "name": "min_severity",
+        "type": "string",
+        "required": false,
+        "description": "Minimum severity: info, warning, or error",
+        "default": "'warning'"
       }
     ]
   },
@@ -155,6 +217,40 @@
     ]
   },
   {
+    "name": "addon.security",
+    "description": "Detect security issues in a WoW addon (combat lockdown, secret values, taint)",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon to analyze",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      },
+      {
+        "name": "categories",
+        "type": "string",
+        "required": false,
+        "description": "Specific categories to check (default: all)",
+        "default": null
+      },
+      {
+        "name": "include_suspicious",
+        "type": "boolean",
+        "required": false,
+        "description": "Include lower-confidence findings",
+        "default": "True"
+      }
+    ]
+  },
+  {
     "name": "addon.sync",
     "description": "Create junction links from development addon to WoW client folders",
     "parameters": [
@@ -218,6 +314,33 @@
         "required": false,
         "description": "Override path to addon folder",
         "default": null
+      }
+    ]
+  },
+  {
+    "name": "api.download",
+    "description": "Download FrameXML from Townlong Yak and optionally refresh API definitions",
+    "parameters": [
+      {
+        "name": "build_id",
+        "type": "string",
+        "required": false,
+        "description": "Specific build ID to download (e.g., '64889'). If not provided, fetches latest.",
+        "default": null
+      },
+      {
+        "name": "output_path",
+        "type": "string",
+        "required": false,
+        "description": "Where to extract the download. Defaults to _dev_/framexml/{version}",
+        "default": null
+      },
+      {
+        "name": "refresh",
+        "type": "boolean",
+        "required": false,
+        "description": "Run api.refresh after download",
+        "default": "True"
       }
     ]
   },
@@ -329,7 +452,7 @@
         "name": "source_path",
         "type": "string",
         "required": true,
-        "description": "Path to wow-ui-source repository root",
+        "description": "Path to wow-ui-source repository root or Townlong Yak extract",
         "default": null
       }
     ]
@@ -604,67 +727,6 @@
     ]
   },
   {
-    "name": "git.commit",
-    "description": "Stage all changes and commit in the addon's git repository",
-    "parameters": [
-      {
-        "name": "addon",
-        "type": "string",
-        "required": true,
-        "description": "Name of the addon",
-        "default": null
-      },
-      {
-        "name": "message",
-        "type": "string",
-        "required": true,
-        "description": "Commit message",
-        "default": null
-      },
-      {
-        "name": "path",
-        "type": "string",
-        "required": false,
-        "description": "Override path to addon folder",
-        "default": null
-      }
-    ]
-  },
-  {
-    "name": "git.tag",
-    "description": "Create a git tag for a version release",
-    "parameters": [
-      {
-        "name": "addon",
-        "type": "string",
-        "required": true,
-        "description": "Name of the addon",
-        "default": null
-      },
-      {
-        "name": "version",
-        "type": "string",
-        "required": true,
-        "description": "Version to tag (e.g., '1.2.0')",
-        "default": null
-      },
-      {
-        "name": "message",
-        "type": "string",
-        "required": false,
-        "description": "Tag message (defaults to version)",
-        "default": null
-      },
-      {
-        "name": "path",
-        "type": "string",
-        "required": false,
-        "description": "Override path to addon folder",
-        "default": null
-      }
-    ]
-  },
-  {
     "name": "libs.check",
     "description": "Check addon library status against libs.json config",
     "parameters": [
@@ -907,47 +969,6 @@
         "required": false,
         "description": "Number of recent measurements to show",
         "default": "10"
-      }
-    ]
-  },
-  {
-    "name": "release.all",
-    "description": "Run full release: bump version, update changelog, commit, and tag",
-    "parameters": [
-      {
-        "name": "addon",
-        "type": "string",
-        "required": true,
-        "description": "Name of the addon",
-        "default": null
-      },
-      {
-        "name": "version",
-        "type": "string",
-        "required": true,
-        "description": "New version string",
-        "default": null
-      },
-      {
-        "name": "message",
-        "type": "string",
-        "required": true,
-        "description": "Changelog entry and release description",
-        "default": null
-      },
-      {
-        "name": "category",
-        "type": "string",
-        "required": false,
-        "description": "Changelog category",
-        "default": "'Changed'"
-      },
-      {
-        "name": "path",
-        "type": "string",
-        "required": false,
-        "description": "Override path",
-        "default": null
       }
     ]
   },

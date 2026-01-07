@@ -133,8 +133,9 @@ APIDefs["C_ActionBar.GetActionCharges"] = {
     funcPath = "C_ActionBar.GetActionCharges",
     params = { { name = "actionID", type = "luaIndex", default = nil } },
     returns = { { name = "chargeInfo", type = "ActionBarChargeInfo", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetActionCooldown"] = {
@@ -146,8 +147,9 @@ APIDefs["C_ActionBar.GetActionCooldown"] = {
     funcPath = "C_ActionBar.GetActionCooldown",
     params = { { name = "actionID", type = "luaIndex", default = nil } },
     returns = { { name = "cooldownInfo", type = "ActionBarCooldownInfo", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetActionCooldownDuration"] = {
@@ -173,8 +175,9 @@ APIDefs["C_ActionBar.GetActionCooldownRemaining"] = {
     funcPath = "C_ActionBar.GetActionCooldownRemaining",
     params = { { name = "actionID", type = "luaIndex", default = nil } },
     returns = { { name = "remainingSeconds", type = "number", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetActionCooldownRemainingPercent"] = {
@@ -187,7 +190,7 @@ APIDefs["C_ActionBar.GetActionCooldownRemainingPercent"] = {
     params = { { name = "actionID", type = "luaIndex", default = nil }, { name = "curve", type = "LuaCurveObjectBase", default = nil } },
     returns = { { name = "result", type = "LuaCurveEvaluatedResult", canBeSecret = false } },
     midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted, SecretWhenCurveSecret",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenCurveSecret",
 }
 
 APIDefs["C_ActionBar.GetActionDisplayCount"] = {
@@ -199,8 +202,9 @@ APIDefs["C_ActionBar.GetActionDisplayCount"] = {
     funcPath = "C_ActionBar.GetActionDisplayCount",
     params = { { name = "actionID", type = "luaIndex", default = nil }, { name = "maxDisplayCount", type = "number", default = 9999 }, { name = "replacementString", type = "cstring", default = "*" } },
     returns = { { name = "displayCount", type = "string", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetActionLossOfControlCooldown"] = {
@@ -212,8 +216,9 @@ APIDefs["C_ActionBar.GetActionLossOfControlCooldown"] = {
     funcPath = "C_ActionBar.GetActionLossOfControlCooldown",
     params = { { name = "actionID", type = "luaIndex", default = nil } },
     returns = { { name = "startTime", type = "number", canBeSecret = false }, { name = "duration", type = "number", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetActionLossOfControlCooldownDuration"] = {
@@ -267,8 +272,9 @@ APIDefs["C_ActionBar.GetActionUseCount"] = {
     funcPath = "C_ActionBar.GetActionUseCount",
     params = { { name = "actionID", type = "luaIndex", default = nil } },
     returns = { { name = "count", type = "number", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenActionCooldownRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ActionBar.GetBonusBarIndex"] = {

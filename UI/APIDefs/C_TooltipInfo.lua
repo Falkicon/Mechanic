@@ -1009,8 +1009,9 @@ APIDefs["C_TooltipInfo.GetUnitAura"] = {
     funcPath = "C_TooltipInfo.GetUnitAura",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnitAuraIndexRestricted, SecretArguments=AllowedWhenUntainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_TooltipInfo.GetUnitAuraByAuraInstanceID"] = {
@@ -1022,8 +1023,9 @@ APIDefs["C_TooltipInfo.GetUnitAuraByAuraInstanceID"] = {
     funcPath = "C_TooltipInfo.GetUnitAuraByAuraInstanceID",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenInCombat",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_TooltipInfo.GetUnitBuff"] = {
@@ -1035,8 +1037,9 @@ APIDefs["C_TooltipInfo.GetUnitBuff"] = {
     funcPath = "C_TooltipInfo.GetUnitBuff",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnitAuraIndexRestricted, SecretArguments=AllowedWhenUntainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_TooltipInfo.GetUnitBuffByAuraInstanceID"] = {
@@ -1048,8 +1051,9 @@ APIDefs["C_TooltipInfo.GetUnitBuffByAuraInstanceID"] = {
     funcPath = "C_TooltipInfo.GetUnitBuffByAuraInstanceID",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnpackedUnitAuraInstanceRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_TooltipInfo.GetUnitDebuff"] = {
@@ -1061,8 +1065,9 @@ APIDefs["C_TooltipInfo.GetUnitDebuff"] = {
     funcPath = "C_TooltipInfo.GetUnitDebuff",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnitAuraIndexRestricted, SecretArguments=AllowedWhenUntainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_TooltipInfo.GetUnitDebuffByAuraInstanceID"] = {
@@ -1074,8 +1079,9 @@ APIDefs["C_TooltipInfo.GetUnitDebuffByAuraInstanceID"] = {
     funcPath = "C_TooltipInfo.GetUnitDebuffByAuraInstanceID",
     params = { { name = "unitToken", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "data", type = "TooltipData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnpackedUnitAuraInstanceRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_TooltipInfo.GetUpgradeItem"] = {

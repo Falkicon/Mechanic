@@ -1,12 +1,12 @@
 # Mechanic Desktop
 
-Local companion tool for World of Warcraft addon development, built on the Agent-First Development (AFD) architecture.
+Local companion tool for World of Warcraft addon development with structured command architecture.
 
 ## Features
 
 - **Real-time Dashboard** - WebSocket-powered UI showing addon health, test results, and development metrics
 - **SavedVariables Watcher** - Monitors your WTF folder and broadcasts changes instantly
-- **AFD Command Registry** - 21+ commands for linting, testing, formatting, releasing, and more
+- **Command Registry** - 21+ commands for linting, testing, formatting, releasing, and more
 - **Hot Reload** - Trigger in-game `/reload` from the command line or dashboard
 - **Cross-Platform** - Windows (full support) and macOS (partial support)
 
@@ -41,14 +41,6 @@ The setup command will:
 ```bash
 # Start the dashboard
 mech dashboard
-```
-
-### Install with AFD Support
-
-If you're using the [AFD framework](https://github.com/Falkicon/afd) for advanced command features:
-
-```bash
-pip install -e ".[afd]"
 ```
 
 ## Configuration
@@ -194,7 +186,7 @@ desktop/
 │   ├── watcher.py          # File watcher
 │   ├── utils.py            # Utilities
 │   ├── setup.py            # Tool installer
-│   └── commands/           # AFD command modules
+│   └── commands/           # Command modules
 │       ├── core.py         # Core commands
 │       ├── development.py  # Dev tools
 │       ├── environment.py  # Addon management

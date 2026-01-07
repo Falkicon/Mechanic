@@ -33,7 +33,7 @@ Mechanic is a centralized in-game development hub that provides:
 
 ## Architecture Note
 
-Mechanic uses a **pragmatic traditional structure** rather than strict AFD layers:
+Mechanic uses a **pragmatic traditional structure** rather than strict layered separation:
 
 | Layer | Files | Notes |
 |-------|-------|-------|
@@ -41,7 +41,7 @@ Mechanic uses a **pragmatic traditional structure** rather than strict AFD layer
 | **Core** | `Core.lua` | Mixed logic + events + registration |
 | **View** | `UI/*.lua` | 14 tab modules using FenUI widgets |
 
-This is intentional - Mechanic is a dev tool where full AFD layer separation provides minimal testability benefit for significant refactoring effort.
+This is intentional - Mechanic is a dev tool where full layer separation provides minimal testability benefit for significant refactoring effort.
 
 ---
 

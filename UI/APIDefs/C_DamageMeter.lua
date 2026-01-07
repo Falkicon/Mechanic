@@ -23,8 +23,9 @@ APIDefs["C_DamageMeter.GetCombatSessionFromID"] = {
     funcPath = "C_DamageMeter.GetCombatSessionFromID",
     params = { { name = "sessionID", type = "number", default = nil }, { name = "type", type = "DamageMeterType", default = nil } },
     returns = { { name = "session", type = "DamageMeterCombatSession", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenInCombat",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_DamageMeter.GetCombatSessionFromType"] = {
@@ -36,8 +37,9 @@ APIDefs["C_DamageMeter.GetCombatSessionFromType"] = {
     funcPath = "C_DamageMeter.GetCombatSessionFromType",
     params = { { name = "sessionType", type = "DamageMeterSessionType", default = nil }, { name = "type", type = "DamageMeterType", default = nil } },
     returns = { { name = "session", type = "DamageMeterCombatSession", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenInCombat",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_DamageMeter.GetCombatSessionSourceFromID"] = {
@@ -49,8 +51,9 @@ APIDefs["C_DamageMeter.GetCombatSessionSourceFromID"] = {
     funcPath = "C_DamageMeter.GetCombatSessionSourceFromID",
     params = { { name = "sessionID", type = "number", default = nil }, { name = "type", type = "DamageMeterType", default = nil }, { name = "sourceGUID", type = "WOWGUID", default = nil } },
     returns = { { name = "sessionSource", type = "DamageMeterCombatSessionSource", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenInCombat",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_DamageMeter.GetCombatSessionSourceFromType"] = {
@@ -62,8 +65,9 @@ APIDefs["C_DamageMeter.GetCombatSessionSourceFromType"] = {
     funcPath = "C_DamageMeter.GetCombatSessionSourceFromType",
     params = { { name = "sessionType", type = "DamageMeterSessionType", default = nil }, { name = "type", type = "DamageMeterType", default = nil }, { name = "sourceGUID", type = "WOWGUID", default = nil } },
     returns = { { name = "sessionSource", type = "DamageMeterCombatSessionSource", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenInCombat",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_DamageMeter.IsDamageMeterAvailable"] = {

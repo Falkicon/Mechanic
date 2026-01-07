@@ -3,21 +3,33 @@ API Definition commands for WoW addon development.
 Parses Blizzard API documentation and generates APIDefs for Mechanic.
 
 Migrated from ADDON_DEV/Tools/APIPopulator to AFD commands.
+Enhanced with Townlong Yak integration and pure-Python Lua parser.
 """
 
+import io
 import json
 import os
+import re
 import subprocess
+import tempfile
+import zipfile
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
 from ..config import get_config
+
+
+# Townlong Yak constants
+TOWNLONG_YAK_BASE = "https://www.townlong-yak.com/framexml"
+TOWNLONG_YAK_BUILDS = f"{TOWNLONG_YAK_BASE}/builds"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -49,7 +61,7 @@ class APIGenerateOutput(BaseModel):
 
 
 class APIRefreshInput(BaseModel):
-    source_path: str = Field(..., description="Path to wow-ui-source repository root")
+    source_path: str = Field(..., description="Path to wow-ui-source repository root or Townlong Yak extract")
 
 
 class APIRefreshOutput(BaseModel):
@@ -57,6 +69,20 @@ class APIRefreshOutput(BaseModel):
     namespace_count: int = Field(..., description="Number of namespace files created")
     database_file: str = Field(..., description="Path to database file")
     apidefs_dir: str = Field(..., description="Path to APIDefs folder")
+
+
+class APIDownloadInput(BaseModel):
+    build_id: Optional[str] = Field(default=None, description="Specific build ID to download (e.g., '64889'). If not provided, fetches latest.")
+    output_path: Optional[str] = Field(default=None, description="Where to extract the download. Defaults to _dev_/framexml/{version}")
+    refresh: bool = Field(default=True, description="Run api.refresh after download")
+
+
+class APIDownloadOutput(BaseModel):
+    build_id: str = Field(..., description="Downloaded build ID")
+    version: str = Field(..., description="WoW version (e.g., '12.0.1.64889')")
+    output_path: str = Field(..., description="Path where files were extracted")
+    file_count: int = Field(..., description="Number of files extracted")
+    api_count: Optional[int] = Field(default=None, description="Number of APIs if refresh was run")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -102,6 +128,123 @@ NAMESPACE_CATEGORY_MAP = {
     "tradeskill": "profession", "crafting": "profession", "profession": "profession",
     "recipe": "profession",
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PURE-PYTHON LUA TABLE PARSER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _parse_lua_table_python(file_path: Path) -> Optional[Dict]:
+    """
+    Pure-Python parser for Blizzard API documentation Lua files.
+    Parses the structured Lua table format without requiring lua.exe.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+    result = {}
+
+    # Extract namespace
+    ns_match = re.search(r'Namespace\s*=\s*"([^"]+)"', content)
+    if ns_match:
+        result["Namespace"] = ns_match.group(1)
+
+    # Extract name
+    name_match = re.search(r'^\s*Name\s*=\s*"([^"]+)"', content, re.MULTILINE)
+    if name_match:
+        result["Name"] = name_match.group(1)
+
+    # Parse Functions block
+    functions = []
+    func_block_match = re.search(r'Functions\s*=\s*\{(.+?)\n\t\},', content, re.DOTALL)
+    if func_block_match:
+        func_block = func_block_match.group(1)
+        # Split into individual function definitions
+        func_pattern = re.compile(r'\{\s*Name\s*=\s*"([^"]+)"(.+?)^\t\t\}', re.MULTILINE | re.DOTALL)
+        for match in func_pattern.finditer(func_block):
+            func_name = match.group(1)
+            func_body = match.group(2)
+            func_data = {"Name": func_name}
+
+            # Extract secret flags
+            for secret_key in ["SecretArguments", "SecretReturns", "SecretWhenSpellCooldownRestricted",
+                               "SecretWhenSpellAuraRestricted", "SecretWhenCurveSecret"]:
+                secret_match = re.search(rf'{secret_key}\s*=\s*([^,\n]+)', func_body)
+                if secret_match:
+                    val = secret_match.group(1).strip()
+                    if val == "true":
+                        func_data[secret_key] = True
+                    elif val == "false":
+                        func_data[secret_key] = False
+                    elif val.startswith('"'):
+                        func_data[secret_key] = val.strip('"')
+                    else:
+                        func_data[secret_key] = val
+
+            # Extract HasRestrictions
+            if re.search(r'HasRestrictions\s*=\s*true', func_body):
+                func_data["HasRestrictions"] = True
+
+            # Extract MayReturnNothing
+            if re.search(r'MayReturnNothing\s*=\s*true', func_body):
+                func_data["MayReturnNothing"] = True
+
+            # Extract Documentation
+            doc_match = re.search(r'Documentation\s*=\s*\{\s*"([^"]+)"', func_body)
+            if doc_match:
+                func_data["Documentation"] = [doc_match.group(1)]
+
+            # Parse Arguments
+            args = []
+            args_match = re.search(r'Arguments\s*=\s*\{(.+?)\n\t\t\t\}', func_body, re.DOTALL)
+            if args_match:
+                args_block = args_match.group(1)
+                arg_pattern = re.compile(r'\{\s*Name\s*=\s*"([^"]+)"\s*,\s*Type\s*=\s*"([^"]+)"([^}]*)\}', re.DOTALL)
+                for arg_match in arg_pattern.finditer(args_block):
+                    arg = {
+                        "Name": arg_match.group(1),
+                        "Type": arg_match.group(2),
+                        "Nilable": "Nilable = true" in arg_match.group(3)
+                    }
+                    default_match = re.search(r'Default\s*=\s*([^,}]+)', arg_match.group(3))
+                    if default_match:
+                        default_val = default_match.group(1).strip()
+                        if default_val == "true":
+                            arg["Default"] = True
+                        elif default_val == "false":
+                            arg["Default"] = False
+                        elif default_val.isdigit():
+                            arg["Default"] = int(default_val)
+                        elif default_val.startswith('"'):
+                            arg["Default"] = default_val.strip('"')
+                    args.append(arg)
+            if args:
+                func_data["Arguments"] = args
+
+            # Parse Returns
+            returns = []
+            returns_match = re.search(r'Returns\s*=\s*\{(.+?)\n\t\t\t\}', func_body, re.DOTALL)
+            if returns_match:
+                returns_block = returns_match.group(1)
+                ret_pattern = re.compile(r'\{\s*Name\s*=\s*"([^"]+)"\s*,\s*Type\s*=\s*"([^"]+)"([^}]*)\}', re.DOTALL)
+                for ret_match in ret_pattern.finditer(returns_block):
+                    ret = {
+                        "Name": ret_match.group(1),
+                        "Type": ret_match.group(2),
+                        "Nilable": "Nilable = true" in ret_match.group(3)
+                    }
+                    returns.append(ret)
+            if returns:
+                func_data["Returns"] = returns
+
+            functions.append(func_data)
+
+    if functions:
+        result["Functions"] = functions
+
+    return result if functions else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -161,21 +304,28 @@ def _determine_category(namespace: str, impact: str) -> str:
     return "general"
 
 
-def _parse_blizzard_file(lua_exe: Path, dumper_script: Path, file_path: Path) -> Optional[Dict]:
-    """Parse a single Blizzard documentation file using lua_dumper.lua."""
-    try:
-        result = subprocess.run(
-            [str(lua_exe), str(dumper_script), str(file_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30
-        )
-        if result.stdout.strip():
-            return json.loads(result.stdout.strip())
-    except Exception:
-        pass
-    return None
+def _parse_blizzard_file(lua_exe: Optional[Path], dumper_script: Optional[Path], file_path: Path) -> Optional[Dict]:
+    """
+    Parse a single Blizzard documentation file.
+    Uses lua_dumper.lua if available, otherwise falls back to pure-Python parser.
+    """
+    # Try Lua-based parsing first if available
+    if lua_exe and dumper_script and dumper_script.exists():
+        try:
+            result = subprocess.run(
+                [str(lua_exe), str(dumper_script), str(file_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30
+            )
+            if result.stdout.strip():
+                return json.loads(result.stdout.strip())
+        except Exception:
+            pass
+
+    # Fall back to pure-Python parser
+    return _parse_lua_table_python(file_path)
 
 
 def _generate_lua_params(params: List[Dict], examples: List[Dict] = None) -> str:
@@ -210,25 +360,12 @@ async def _api_populate(input: APIPopulateInput, context: Any = None) -> Command
     """
     Parse Blizzard API documentation and generate api_database.json.
 
-    Requires a local copy of wow-ui-source from GitHub.
+    Supports wow-ui-source from GitHub or Townlong Yak FrameXML downloads.
+    Uses pure-Python parser with optional Lua-based parsing if lua.exe is available.
     """
-    # Find lua.exe
+    # Find lua.exe (optional, we have Python fallback)
     lua_exe = _get_lua_exe()
-    if not lua_exe:
-        return error(
-            code="LUA_NOT_FOUND",
-            message="lua.exe not found",
-            suggestion="Ensure lua.exe exists in ADDON_DEV/Tools/bin/ or is in PATH"
-        )
-
-    # Find lua_dumper.lua
-    dumper_script = _get_lua_dumper()
-    if not dumper_script.exists():
-        return error(
-            code="DUMPER_NOT_FOUND",
-            message=f"lua_dumper.lua not found at {dumper_script}",
-            suggestion="Ensure lua_dumper.lua exists in desktop/scripts/"
-        )
+    dumper_script = _get_lua_dumper() if lua_exe else None
 
     # Validate source path
     source_path = Path(input.source_path)
@@ -524,6 +661,105 @@ async def _api_refresh(input: APIRefreshInput, context: Any = None) -> CommandRe
     )
 
 
+async def _api_download(input: APIDownloadInput, context: Any = None) -> CommandResult[APIDownloadOutput]:
+    """
+    Download FrameXML from Townlong Yak and optionally refresh API definitions.
+
+    Downloads the complete FrameXML package for a specific build (or latest),
+    extracts it, and can automatically run api.refresh to update the API database.
+    """
+    config = get_config()
+
+    # Determine build ID
+    build_id = input.build_id
+    version = None
+
+    if not build_id:
+        # TODO: Scrape builds page for latest
+        # For now, require explicit build ID
+        return error(
+            code="BUILD_ID_REQUIRED",
+            message="build_id is required (auto-detection not yet implemented)",
+            suggestion="Check https://www.townlong-yak.com/framexml/builds for available builds"
+        )
+
+    # Construct download URL
+    download_url = f"{TOWNLONG_YAK_BASE}/{build_id}/get"
+
+    try:
+        # Download the ZIP file
+        response = requests.get(download_url, stream=True, timeout=120)
+        response.raise_for_status()
+
+        # Extract version from Content-Disposition header
+        content_disp = response.headers.get("Content-Disposition", "")
+        if "filename=" in content_disp:
+            # Extract filename like "12.0.1.64889.zip"
+            import re as re_module
+            filename_match = re_module.search(r'filename[*]?=(?:UTF-8\'\')?([^;]+)', content_disp)
+            if filename_match:
+                filename = filename_match.group(1).strip('"').strip()
+                version = filename.replace(".zip", "")
+
+        if not version:
+            version = f"build_{build_id}"
+
+    except requests.exceptions.RequestException as e:
+        return error(
+            code="DOWNLOAD_FAILED",
+            message=f"Failed to download from Townlong Yak: {str(e)}",
+            suggestion="Check build ID and network connection"
+        )
+
+    # Determine output path
+    if input.output_path:
+        output_path = Path(input.output_path)
+    elif config.dev_path:
+        output_path = config.dev_path / version
+    else:
+        output_path = Path(tempfile.gettempdir()) / f"framexml_{version}"
+
+    # Create output directory
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Extract ZIP
+    try:
+        zip_data = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_data, 'r') as zf:
+            zf.extractall(output_path)
+            file_count = len(zf.namelist())
+    except Exception as e:
+        return error(
+            code="EXTRACT_FAILED",
+            message=f"Failed to extract ZIP: {str(e)}",
+            suggestion="The download may be corrupted, try again"
+        )
+
+    api_count = None
+
+    # Optionally run refresh
+    if input.refresh:
+        refresh_result = await _api_refresh(
+            APIRefreshInput(source_path=str(output_path)),
+            context
+        )
+        if refresh_result.success:
+            api_count = refresh_result.data.api_count
+
+    return success(
+        data=APIDownloadOutput(
+            build_id=build_id,
+            version=version,
+            output_path=str(output_path),
+            file_count=file_count,
+            api_count=api_count
+        ),
+        reasoning=f"Downloaded {version} from Townlong Yak ({file_count} files)" +
+                  (f", refreshed {api_count} APIs" if api_count else ""),
+        sources=[create_source(type="url", id=download_url, title="Townlong Yak FrameXML")]
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # REGISTRATION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -551,3 +787,10 @@ def register_commands(server):
         input_schema=APIRefreshInput,
         output_schema=APIRefreshOutput,
     )(_api_refresh)
+
+    server.command(
+        name="api.download",
+        description="Download FrameXML from Townlong Yak and optionally refresh API definitions",
+        input_schema=APIDownloadInput,
+        output_schema=APIDownloadOutput,
+    )(_api_download)

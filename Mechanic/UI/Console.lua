@@ -575,7 +575,7 @@ function Mechanic:InitializeConsole()
 end
 
 --------------------------------------------------------------------------------
--- Console Persistence (AFD - for Mechanic Desktop)
+-- Console Persistence (for Mechanic Desktop)
 --------------------------------------------------------------------------------
 
 --- Persist console buffer to SavedVariables for desktop agent access.

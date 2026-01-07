@@ -77,7 +77,7 @@ local defaults = {
 		healthLog = {},
 		-- NEW: Test Results persistence for Mechanic Desktop
 		testResults = {},
-		-- NEW: Console persistence for Mechanic Desktop (AFD)
+		-- NEW: Console persistence for Mechanic Desktop
 		consoleBuffer = {},
 		consoleBufferMax = 100,
 		-- NEW: Chat history for debugging (last 50 messages)
@@ -396,11 +396,11 @@ function Mechanic:OnEnable()
 	end
 	if self.Console and self.Console.OnEnable then
 		self.Console:OnEnable()
-		-- Restore persisted console buffer from SavedVariables (AFD)
+		-- Restore persisted console buffer from SavedVariables
 		self.Console:RestoreBuffer()
 	end
 
-	-- Register for logout to persist console buffer (AFD)
+	-- Register for logout to persist console buffer
 	self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
 
 	-- NOTE: Chat capture removed - use MechanicLib:Log() for debugging
@@ -483,7 +483,7 @@ function Mechanic:SyncAllAddonData()
 	self.perf.blocks.hubSync = debugprofilestop() - syncStart
 end
 
---- Persist console buffer and library info before logout/reload for desktop agent access (AFD).
+--- Persist console buffer and library info before logout/reload for desktop agent access.
 function Mechanic:OnPlayerLogout()
 	-- 1. Sync all registered addons into the hub
 	self:SyncAllAddonData()

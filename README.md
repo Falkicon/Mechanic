@@ -7,7 +7,6 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
-[![AFD](https://img.shields.io/badge/Architecture-AFD-blueviolet)](https://github.com/Falkicon/afd)
 ![Commands](https://img.shields.io/badge/Commands-21-purple)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 
@@ -209,7 +208,7 @@ mech call git.tag --addon MyAddon --version 1.2.0
 
 ## Architecture
 
-Mechanic is built on [AFD (Agent-First Development)](https://github.com/Falkicon/afd) — a pattern where every feature is designed as a structured command that both humans and AI agents can use.
+Mechanic is built with a structured command architecture where every feature is designed as a command that both humans and AI agents can use.
 
 ```
 !Mechanic/
@@ -223,7 +222,7 @@ Mechanic is built on [AFD (Agent-First Development)](https://github.com/Falkicon
 │   │   ├── cli.py       # Click-based CLI
 │   │   ├── server.py    # FastAPI + WebSocket
 │   │   ├── watcher.py   # SavedVariables file watcher
-│   │   └── commands/    # 21 AFD commands
+│   │   └── commands/    # 21 commands
 │   └── dashboard/       # Vanilla HTML/CSS/JS UI
 │
 └── PLAN/                # Development roadmap

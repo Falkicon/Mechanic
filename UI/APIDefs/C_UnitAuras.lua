@@ -67,8 +67,9 @@ APIDefs["C_UnitAuras.DoesAuraHaveExpirationTime"] = {
     funcPath = "C_UnitAuras.DoesAuraHaveExpirationTime",
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil } },
     returns = { { name = "hasExpirationTime", type = "bool", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenUnitAuraInstanceRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraApplicationDisplayCount"] = {
@@ -80,8 +81,9 @@ APIDefs["C_UnitAuras.GetAuraApplicationDisplayCount"] = {
     funcPath = "C_UnitAuras.GetAuraApplicationDisplayCount",
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "minDisplayCount", type = "number", default = 2 }, { name = "maxDisplayCount", type = "number", default = nil } },
     returns = { { name = "count", type = "string", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenUnitAuraInstanceRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraBaseDuration"] = {
@@ -93,8 +95,9 @@ APIDefs["C_UnitAuras.GetAuraBaseDuration"] = {
     funcPath = "C_UnitAuras.GetAuraBaseDuration",
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "spellID", type = "number", default = nil } },
     returns = { { name = "newDuration", type = "number", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenUnitAuraInstanceRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDataByAuraInstanceID"] = {
@@ -106,8 +109,9 @@ APIDefs["C_UnitAuras.GetAuraDataByAuraInstanceID"] = {
     funcPath = "C_UnitAuras.GetAuraDataByAuraInstanceID",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDataByIndex"] = {
@@ -119,8 +123,9 @@ APIDefs["C_UnitAuras.GetAuraDataByIndex"] = {
     funcPath = "C_UnitAuras.GetAuraDataByIndex",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDataBySlot"] = {
@@ -132,8 +137,9 @@ APIDefs["C_UnitAuras.GetAuraDataBySlot"] = {
     funcPath = "C_UnitAuras.GetAuraDataBySlot",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "slot", type = "number", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDataBySpellName"] = {
@@ -145,8 +151,9 @@ APIDefs["C_UnitAuras.GetAuraDataBySpellName"] = {
     funcPath = "C_UnitAuras.GetAuraDataBySpellName",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "spellName", type = "cstring", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDispelTypeColor"] = {
@@ -159,7 +166,7 @@ APIDefs["C_UnitAuras.GetAuraDispelTypeColor"] = {
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "curve", type = "LuaColorCurveObject", default = nil } },
     returns = { { name = "dispelTypeColor", type = "colorRGBA", canBeSecret = false } },
     midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnitAuraInstanceRestricted, SecretArguments=AllowedWhenTainted, SecretWhenCurveSecret",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenCurveSecret",
 }
 
 APIDefs["C_UnitAuras.GetAuraDuration"] = {
@@ -185,8 +192,9 @@ APIDefs["C_UnitAuras.GetAuraDurationRemaining"] = {
     funcPath = "C_UnitAuras.GetAuraDurationRemaining",
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil } },
     returns = { { name = "durationRemaining", type = "DurationSeconds", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretWhenUnitAuraInstanceRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_UnitAuras.GetAuraDurationRemainingPercent"] = {
@@ -199,7 +207,7 @@ APIDefs["C_UnitAuras.GetAuraDurationRemainingPercent"] = {
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "curve", type = "LuaCurveObjectBase", default = nil } },
     returns = { { name = "result", type = "LuaCurveEvaluatedResult", canBeSecret = false } },
     midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenUnitAuraInstanceRestricted, SecretArguments=AllowedWhenTainted, SecretWhenCurveSecret",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenCurveSecret",
 }
 
 APIDefs["C_UnitAuras.GetAuraSlots"] = {
@@ -225,8 +233,9 @@ APIDefs["C_UnitAuras.GetBuffDataByIndex"] = {
     funcPath = "C_UnitAuras.GetBuffDataByIndex",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetCooldownAuraBySpellID"] = {
@@ -252,8 +261,9 @@ APIDefs["C_UnitAuras.GetDebuffDataByIndex"] = {
     funcPath = "C_UnitAuras.GetDebuffDataByIndex",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "index", type = "luaIndex", default = nil }, { name = "filter", type = "AuraFilters", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetPlayerAuraBySpellID"] = {
@@ -265,8 +275,9 @@ APIDefs["C_UnitAuras.GetPlayerAuraBySpellID"] = {
     funcPath = "C_UnitAuras.GetPlayerAuraBySpellID",
     params = { { name = "spellID", type = "number", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetRefreshExtendedDuration"] = {
@@ -278,8 +289,9 @@ APIDefs["C_UnitAuras.GetRefreshExtendedDuration"] = {
     funcPath = "C_UnitAuras.GetRefreshExtendedDuration",
     params = { { name = "auraInstanceUnit", type = "UnitToken", default = "player" }, { name = "auraInstanceID", type = "number", default = nil }, { name = "spellID", type = "number", default = nil } },
     returns = { { name = "newDuration", type = "number", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenUnitAuraInstanceRestricted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetUnitAuraBySpellID"] = {
@@ -291,8 +303,9 @@ APIDefs["C_UnitAuras.GetUnitAuraBySpellID"] = {
     funcPath = "C_UnitAuras.GetUnitAuraBySpellID",
     params = { { name = "unit", type = "UnitToken", default = "player" }, { name = "spellID", type = "number", default = nil } },
     returns = { { name = "aura", type = "AuraData", canBeSecret = false } },
-    midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenAuraDataRestricted, SecretArguments=AllowedWhenTainted",
+    midnightImpact = "RESTRICTED",
+    protected = true,
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }
 
 APIDefs["C_UnitAuras.GetUnitAuraInstanceIDs"] = {

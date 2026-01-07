@@ -2,7 +2,7 @@
 
 Design patterns for building testable, maintainable World of Warcraft addons.
 
-This guide applies **Agent-First Development (AFD)** principles to WoW addon architecture, enabling offline testing and AI-assisted development.
+This guide applies **command-first** principles to WoW addon architecture, enabling offline testing and AI-assisted development.
 
 ---
 
@@ -80,7 +80,7 @@ Traditional WoW addons are built UI-first:
 
 The layered architecture provides measurable benefits:
 
-| Metric | Traditional Addon | AFD Addon |
+| Metric | Traditional Addon | Layered Addon |
 |--------|-------------------|-----------|
 | Test feedback | ~30s (`/reload` cycle) | ~30ms (sandbox) |
 | CI/CD possible | No (requires game client) | Yes (runs in plain Lua) |
@@ -107,7 +107,7 @@ function MyAddon:OnButtonClick()
 end
 ```
 
-### AFD Pattern (Testable)
+### Layered Pattern (Testable)
 
 ```lua
 -- Core/Actions/wealth.lua
@@ -379,7 +379,7 @@ You don't need to rewrite your addon. Adopt incrementally:
 
 ## Summary
 
-| Traditional Addon | AFD Addon |
+| Traditional Addon | Layered Addon |
 |------------------|-----------|
 | Logic in frame scripts | Logic in pure Actions |
 | State in UI components | State flows through context |
@@ -387,7 +387,7 @@ You don't need to rewrite your addon. Adopt incrementally:
 | AI can't help | AI can run actions directly |
 | Changes are risky | Changes are safe |
 
-**AFD for Addons = Commands-first architecture adapted for Lua + WoW constraints.**
+**Command-first for Addons = Structured architecture adapted for Lua + WoW constraints.**
 
 ---
 

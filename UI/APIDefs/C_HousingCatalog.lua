@@ -82,18 +82,6 @@ APIDefs["C_HousingCatalog.GetBundleInfo"] = {
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
-APIDefs["C_HousingCatalog.GetCartSizeLimit"] = {
-    key = "C_HousingCatalog.GetCartSizeLimit",
-    name = "GetCartSizeLimit",
-    category = "general",
-    subcategory = "c_housingcatalog",
-    func = _G["C_HousingCatalog"] and _G["C_HousingCatalog"]["GetCartSizeLimit"],
-    funcPath = "C_HousingCatalog.GetCartSizeLimit",
-    params = {  },
-    returns = { { name = "cartSizeLimit", type = "number", canBeSecret = false } },
-    midnightImpact = "NORMAL",
-}
-
 APIDefs["C_HousingCatalog.GetCatalogCategoryInfo"] = {
     key = "C_HousingCatalog.GetCatalogCategoryInfo",
     name = "GetCatalogCategoryInfo",

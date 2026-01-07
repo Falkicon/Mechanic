@@ -143,7 +143,7 @@ APIDefs["C_CurrencyInfo.GetCoinText"] = {
     subcategory = "c_currencyinfo",
     func = _G["C_CurrencyInfo"] and _G["C_CurrencyInfo"]["GetCoinText"],
     funcPath = "C_CurrencyInfo.GetCoinText",
-    params = { { name = "amount", type = "WOWMONEY", default = nil }, { name = "separator", type = "cstring", default = ", " } },
+    params = { { name = "amount", type = "WOWMONEY", default = nil }, { name = "separator", type = "cstring", default = "" } },
     returns = { { name = "result", type = "cstring", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,

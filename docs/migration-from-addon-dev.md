@@ -6,11 +6,11 @@ This guide helps you migrate from the deprecated `addon-dev` CLI to the new `mec
 
 The `mech` CLI is the unified command interface for all WoW addon development tools:
 
-- **AFD-compliant**: Structured input/output with Pydantic schemas
+- **Structured commands**: Typed input/output with Pydantic schemas
 - **Consistent patterns**: All commands follow `mech call <namespace>.<action> '{json}'`
 - **Better error handling**: Actionable error messages with suggestions
 - **Agent-optimized**: `--agent` flag for AI-friendly compressed output
-- **Extensible**: Easy to add new commands following AFD patterns
+- **Extensible**: Easy to add new commands following structured patterns
 
 ## Command Mapping
 

@@ -415,17 +415,3 @@ APIDefs["C_CatalogShop.RefreshVirtualCurrencyBalance"] = {
     protected = true,
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
-
-APIDefs["C_CatalogShop.StartHousingVCPurchaseConfirmation"] = {
-    key = "C_CatalogShop.StartHousingVCPurchaseConfirmation",
-    name = "StartHousingVCPurchaseConfirmation",
-    category = "combat_midnight",
-    subcategory = "c_catalogshop",
-    func = _G["C_CatalogShop"] and _G["C_CatalogShop"]["StartHousingVCPurchaseConfirmation"],
-    funcPath = "C_CatalogShop.StartHousingVCPurchaseConfirmation",
-    params = { { name = "productID", type = "number", default = nil } },
-    returns = {  },
-    midnightImpact = "RESTRICTED",
-    protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
-}

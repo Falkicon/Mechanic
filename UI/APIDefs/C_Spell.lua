@@ -383,7 +383,7 @@ APIDefs["C_Spell.GetSpellMaxCumulativeAuraApplications"] = {
     params = { { name = "spellID", type = "number", default = nil } },
     returns = { { name = "cumulativeAura", type = "number", canBeSecret = false } },
     midnightImpact = "CONDITIONAL",
-    midnightNote = "Secret behavior: SecretWhenSpellAuraRestricted, SecretArguments=AllowedWhenTainted",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted, SecretWhenSpellAuraRestricted",
 }
 
 APIDefs["C_Spell.GetSpellName"] = {

@@ -27,7 +27,7 @@ Always prioritize calling MCP tools directly instead of using the shell.
 - **Lua 5.1**: Target WoW's Lua engine. Avoid `goto`, `bit32`, or 5.2+ features.
 - **Combat Lockdown**: Never modify protected frames or call protected APIs in combat. Use `InCombatLockdown()` guards.
 - **Secret Values**: Handle 12.0+ secret values using passthrough patterns. Never attempt to log or modify them directly.
-- **Agent-First**: All new features must be implemented as AFD commands before being added to any UI.
+- **Command-First**: All new features must be implemented as commands before being added to any UI.
 
 ## Skills & Capabilities
 

@@ -121,7 +121,7 @@ APIDefs["C_StringUtil.trim"] = {
     subcategory = "c_stringutil",
     func = _G["C_StringUtil"] and _G["C_StringUtil"]["trim"],
     funcPath = "C_StringUtil.trim",
-    params = { { name = "str", type = "stringView", default = nil }, { name = "characters", type = "stringView", default = " \\r\\n\\t" } },
+    params = { { name = "str", type = "stringView", default = nil }, { name = "characters", type = "stringView", default = " \\\\r\\\\n\\\\t" } },
     returns = { { name = "trimmed", type = "stringView", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,

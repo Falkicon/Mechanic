@@ -350,18 +350,6 @@ APIDefs["C_Housing.IsHousingMarketEnabled"] = {
     midnightImpact = "NORMAL",
 }
 
-APIDefs["C_Housing.IsHousingMarketShopEnabled"] = {
-    key = "C_Housing.IsHousingMarketShopEnabled",
-    name = "IsHousingMarketShopEnabled",
-    category = "general",
-    subcategory = "c_housing",
-    func = _G["C_Housing"] and _G["C_Housing"]["IsHousingMarketShopEnabled"],
-    funcPath = "C_Housing.IsHousingMarketShopEnabled",
-    params = {  },
-    returns = { { name = "isHousingMarketShopEnabled", type = "bool", canBeSecret = false } },
-    midnightImpact = "NORMAL",
-}
-
 APIDefs["C_Housing.IsHousingServiceEnabled"] = {
     key = "C_Housing.IsHousingServiceEnabled",
     name = "IsHousingServiceEnabled",

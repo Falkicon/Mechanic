@@ -16,7 +16,7 @@ So I built the tooling I wished existed — bringing patterns from professional 
 
 - **Community-focused:** Features that benefit the addon community are prioritized
 - **Open to ideas:** If you have a use case, open an issue — community feedback genuinely shapes the roadmap
-- **Quality over quantity:** PRs should align with the project's architecture (see AFD below)
+- **Quality over quantity:** PRs should align with the project's architecture (see below)
 - **Realistic timelines:** This is a passion project — I may not respond immediately, but I read everything
 
 > 💡 **[Sponsoring the project](https://github.com/sponsors/Falkicon) helps prioritize work.** If there's a feature you need, sponsorship is a great way to signal that — it's not a guarantee, but it definitely helps.
@@ -25,9 +25,9 @@ Let's build better tooling for the addon community together.
 
 ---
 
-## Core Principle: Agent-First Development (AFD)
+## Core Principle: Command-First Development
 
-Mechanic is built on **AFD (Agent-First Development)** — a pattern where every feature is designed as a structured command that both humans and AI agents can use.
+Mechanic is built with a **command-first architecture** — a pattern where every feature is designed as a structured command that both humans and AI agents can use.
 
 ### What This Means in Practice
 
@@ -85,7 +85,7 @@ def validate_endpoint():
 |-------|---------|------------|
 | **In-Game** | Data collection, live inspection, user interaction | Lua, AceAddon-3.0, FenUI |
 | **Desktop** | Data aggregation, command execution, dashboard | Python, FastAPI, WebSocket |
-| **CLI** | Agent access, automation, scripting | Click, AFD commands |
+| **CLI** | Agent access, automation, scripting | Click, commands |
 
 ### Data Flow
 
@@ -240,7 +240,7 @@ How did you verify this works?
 
 ## Checklist
 
-- [ ] Commands follow AFD patterns
+- [ ] Commands follow structured patterns
 - [ ] Tests added/updated
 - [ ] Documentation updated
 ```

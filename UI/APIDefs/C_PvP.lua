@@ -62,18 +62,6 @@ APIDefs["C_PvP.CanPlayerUseRatedPVPUI"] = {
     midnightImpact = "NORMAL",
 }
 
-APIDefs["C_PvP.CanPlayerUseTrainingGroundsUI"] = {
-    key = "C_PvP.CanPlayerUseTrainingGroundsUI",
-    name = "CanPlayerUseTrainingGroundsUI",
-    category = "general",
-    subcategory = "c_pvp",
-    func = _G["C_PvP"] and _G["C_PvP"]["CanPlayerUseTrainingGroundsUI"],
-    funcPath = "C_PvP.CanPlayerUseTrainingGroundsUI",
-    params = {  },
-    returns = { { name = "canUseTrainingGroundsUI", type = "bool", canBeSecret = false }, { name = "failureReason", type = "string", canBeSecret = false } },
-    midnightImpact = "NORMAL",
-}
-
 APIDefs["C_PvP.CanToggleWarMode"] = {
     key = "C_PvP.CanToggleWarMode",
     name = "CanToggleWarMode",

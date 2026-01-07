@@ -1,6 +1,6 @@
 # CLI Reference
 
-> Auto-generated from `mechanic-desktop` v0.1.0 on 2026-01-03
+> Auto-generated from `mechanic-desktop` v0.1.0 on 2026-01-07
 
 This document lists all available Mechanic CLI commands with their inputs and outputs.
 
@@ -24,8 +24,6 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `addon.test` | Run Busted unit tests on a WoW addon |
 | `addon.validate` | Validate a WoW addon's .toc file for common issues |
 | `changelog.add` | Add an entry to the addon's CHANGELOG.md |
-| `git.commit` | Stage all changes and commit in the addon's git repository |
-| `git.tag` | Create a git tag for a version release |
 | `version.bump` | Update the version in a WoW addon's .toc file |
 | `atlas.scan` | Scan wow-ui-source for atlas icons and generate searchable i... |
 | `atlas.search` | Search Blizzard UI atlas icons by name pattern (supports wil... |
@@ -37,6 +35,7 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `tools.status` | Check the status of development tools (luacheck, stylua, etc... |
 | `docs.generate` | Generate CLI reference documentation from registered command... |
 | `docs.stale` | Detect stale or broken documentation in a WoW addon |
+| `api.download` | Download FrameXML from Townlong Yak and optionally refresh A... |
 | `api.generate` | Generate APIDefs Lua files from api_database.json for Mechan... |
 | `api.info` | Get detailed information about a specific WoW API |
 | `api.list` | List APIs by namespace or category |
@@ -57,7 +56,6 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `perf.compare` | Compare current performance against baseline and detect regr... |
 | `perf.list` | List all addons with performance baselines |
 | `perf.report` | Generate a performance report showing history and trends |
-| `release.all` | Run full release: bump version, update changelog, commit, an... |
 | `research.query` | Search the web for addon development information using Gemin... |
 | `sandbox.exec` | Execute Lua code in sandbox environment with WoW API stubs |
 | `sandbox.generate` | Generate WoW API stubs from APIDefs database for sandbox tes... |
@@ -378,47 +376,6 @@ mech call changelog.add -i '{"addon": "<addon>", "version": "<version>", "messag
 
 ---
 
-### `git.commit`
-
-Stage all changes and commit in the addon's git repository
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon |
-| `message` | `string` | Yes | Commit message |
-| `path` | `string` | No (default: `None`) | Override path to addon folder |
-
-**Example:**
-
-```bash
-mech call git.commit -i '{"addon": "<addon>", "message": "<message>"}'
-```
-
----
-
-### `git.tag`
-
-Create a git tag for a version release
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon |
-| `version` | `string` | Yes | Version to tag (e.g., '1.2.0') |
-| `message` | `string` | No (default: `None`) | Tag message (defaults to version) |
-| `path` | `string` | No (default: `None`) | Override path to addon folder |
-
-**Example:**
-
-```bash
-mech call git.tag -i '{"addon": "<addon>", "version": "<version>"}'
-```
-
----
-
 ### `version.bump`
 
 Update the version in a WoW addon's .toc file
@@ -640,6 +597,26 @@ mech call docs.stale -i '{"addon": "<addon>"}'
 
 ## Other Commands
 
+### `api.download`
+
+Download FrameXML from Townlong Yak and optionally refresh API definitions
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `build_id` | `string` | No (default: `None`) | Specific build ID to download (e.g., '64889'). If not provided, fetches latest. |
+| `output_path` | `string` | No (default: `None`) | Where to extract the download. Defaults to _dev_/framexml/{version} |
+| `refresh` | `boolean` | No (default: `True`) | Run api.refresh after download |
+
+**Example:**
+
+```bash
+mech api.download
+```
+
+---
+
 ### `api.generate`
 
 Generate APIDefs Lua files from api_database.json for Mechanic
@@ -743,7 +720,7 @@ Full refresh: parse Blizzard docs and regenerate all APIDefs in one step
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `source_path` | `string` | Yes | Path to wow-ui-source repository root |
+| `source_path` | `string` | Yes | Path to wow-ui-source repository root or Townlong Yak extract |
 
 **Example:**
 
@@ -996,28 +973,6 @@ Generate a performance report showing history and trends
 
 ```bash
 mech call perf.report -i '{"addon": "<addon>"}'
-```
-
----
-
-### `release.all`
-
-Run full release: bump version, update changelog, commit, and tag
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon |
-| `version` | `string` | Yes | New version string |
-| `message` | `string` | Yes | Changelog entry and release description |
-| `category` | `string` | No (default: `'Changed'`) | Changelog category |
-| `path` | `string` | No (default: `None`) | Override path |
-
-**Example:**
-
-```bash
-mech call release.all -i '{"addon": "<addon>", "version": "<version>", "message": "<message>"}'
 ```
 
 ---

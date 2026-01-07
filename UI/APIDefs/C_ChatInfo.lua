@@ -137,7 +137,7 @@ APIDefs["C_ChatInfo.GetChatLineSenderGUID"] = {
     returns = { { name = "guid", type = "WOWGUID", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ChatInfo.GetChatLineSenderName"] = {
@@ -151,7 +151,7 @@ APIDefs["C_ChatInfo.GetChatLineSenderName"] = {
     returns = { { name = "name", type = "string", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ChatInfo.GetChatLineText"] = {
@@ -165,7 +165,7 @@ APIDefs["C_ChatInfo.GetChatLineText"] = {
     returns = { { name = "text", type = "string", canBeSecret = false } },
     midnightImpact = "RESTRICTED",
     protected = true,
-    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted, SecretInChatMessagingLockdown",
+    midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_ChatInfo.GetChatTypeName"] = {

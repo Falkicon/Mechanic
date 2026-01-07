@@ -8,7 +8,7 @@ Technical reference for AI agents working on the Mechanic project.
 
 ## MCP Server (Primary)
 
-Mechanic exposes all 53 AFD commands as MCP tools. **ALWAYS use MCP tools directly** - this is the fastest and most reliable way to interact with the ecosystem.
+Mechanic exposes all 53 commands as MCP tools. **ALWAYS use MCP tools directly** - this is the fastest and most reliable way to interact with the ecosystem.
 
 ### Key MCP Tools
 
@@ -70,7 +70,7 @@ Mechanic/                   ← Git repo root
 │       ├── cli.py          ← Click CLI entry point
 │       ├── server.py       ← FastAPI + WebSocket
 │       ├── watcher.py      ← SavedVariables file watcher
-│       └── commands/       ← AFD command modules
+│       └── commands/       ← Command modules
 │           ├── core.py       ← Base commands (sv.*, reload.*, etc.)
 │           ├── development.py ← addon.validate, addon.lint, etc.
 │           ├── release.py    ← version.bump, changelog.add, etc.
@@ -85,20 +85,19 @@ Mechanic/                   ← Git repo root
 
 ---
 
-## ⚠️ CRITICAL: AFD Development Standards
+## ⚠️ CRITICAL: Development Standards
 
-> **All new features MUST follow Agent-First Development (AFD) principles.**
-> Reference: https://github.com/Falkicon/afd
+> **All new features MUST follow structured command principles.**
 
 ### Core Principles
 
-1. **Commands First**: Every feature is an AFD command with typed input/output schemas.
+1. **Commands First**: Every feature is a command with typed input/output schemas.
 2. **Structured Results**: All commands return `CommandResult` with `success`, `data`, `error`.
 3. **Actionable Errors**: Errors include `code`, `message`, and `suggestion` for recovery.
 4. **Metadata for Trust**: Include `sources`, `reasoning`, and `confidence` where applicable.
 5. **Headless Backend**: UI is a pure consumer of commands via `/api/execute` bridge.
 
-### AFD Command Template
+### Command Template
 
 ```python
 from afd import CommandResult, success, error
@@ -129,7 +128,7 @@ async def my_command(input: MyInput, context: Any = None) -> CommandResult[MyOut
 
 ---
 
-## AFD Command Reference
+## Command Reference
 
 For the complete command reference with all 53 commands, see the **using-mechanic** skill:
 `.claude/skills/using-mechanic/references/afd-commands.md`
@@ -159,7 +158,7 @@ For the complete command reference with all 53 commands, see the **using-mechani
 
 ## Testing Requirements
 
-All AFD commands MUST have corresponding tests:
+All commands MUST have corresponding tests:
 
 ```python
 import pytest
@@ -185,7 +184,7 @@ Current test status: **9 tests passing**
    - Verify with `mech call addon.test`.
 
 2. **Adding a new feature**:
-   - Create AFD command in appropriate module (`development.py`, `release.py`, etc.)
+   - Create command in appropriate module (`development.py`, `release.py`, etc.)
    - Add tests in `desktop/tests/`
    - Run `pytest -v` to verify
    - Update `.claude/skills/using-mechanic/references/afd-commands.md` with the new command
@@ -202,7 +201,7 @@ Current test status: **9 tests passing**
 
 1. **Diagnostic Hub First**: `!Mechanic` is now the architect of all ecosystem data. When you need to understand the state of the entire project (tests, perf, logs), trigger or trust the **Diagnostic Hub**.
 2. **Addon work**: Navigate to `!Mechanic/` subfolder, reference its `AGENTS.md`.
-3. **Desktop work**: Navigate to `desktop/` subfolder, follow AFD patterns.
+3. **Desktop work**: Navigate to `desktop/` subfolder, follow command patterns.
 4. **Always test**: Run `pytest` after making changes to `desktop/`.
 5. **Reload Workflow**: After code changes, ask the user to `/reload` and wait for confirmation before calling `addon.output`. The timing between reload and SavedVariables sync is unpredictable.
 6. **Junction links**: Must point to `!Mechanic/!Mechanic`, not root.
@@ -217,3 +216,12 @@ If an agent encounters `TOOL_NOT_FOUND` errors:
 2. Check if it's a `.bat` file (Mechanic supports both `.exe` and `.bat`).
 3. For **Busted**: It requires C compilation. Run `desktop/scripts/setup_dev_env.bat`.
 4. Ensure `luarocks` is in the system PATH.
+
+### Wrong Language Displayed (Locale Overwrite Hazard)
+If users report seeing Chinese/Russian/etc. instead of English:
+1. **Cause**: Non-English locale files (e.g., `zhCN.lua`) are loaded unconditionally and overwrite English strings.
+2. **Fix**: Every non-English locale file MUST start with a locale guard:
+   ```lua
+   if GetLocale() ~= "zhCN" then return end
+   ```
+3. **Why**: The TOC loads all locale files in order. Without the guard, the last file loaded wins (often Chinese or Russian if sorted alphabetically).
