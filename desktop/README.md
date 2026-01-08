@@ -29,7 +29,15 @@ pip install -e .
 
 # Run setup (auto-discovers paths + downloads tools)
 mech setup
+
+# Start the dashboard (auto-discovers SavedVariables)
+mech dashboard
+
+# Or specify a SavedVariables path explicitly
+mech dashboard -w "C:\Path\To\WTF\Account\NAME\SavedVariables"
 ```
+
+> **Note**: The `-w` flag is on the `dashboard` subcommand, not the top-level `mech` command.
 
 The setup command will:
 1. Auto-detect your WoW installation and `_dev_` folder
@@ -37,11 +45,6 @@ The setup command will:
 3. Save configuration to `~/.mechanic/config.json`
 4. Download required tools (luacheck, stylua)
 5. Generate `busted.bat` if LuaRocks is installed
-
-```bash
-# Start the dashboard
-mech dashboard
-```
 
 ## Configuration
 
@@ -92,22 +95,25 @@ mech dashboard --auto-reload --src "C:\Path\To\Addon"
 ### Commands
 
 ```bash
+# List all available commands
+mech commands
+
 # Validate addon TOC file
-mech call addon.validate -i '{"addon": "MyAddon"}'
+mech call addon.validate '{"addon": "MyAddon"}'
 
 # Lint with Luacheck
-mech call addon.lint -i '{"addon": "MyAddon"}'
+mech call addon.lint '{"addon": "MyAddon"}'
 
 # Format with StyLua
-mech call addon.format -i '{"addon": "MyAddon"}'
+mech call addon.format '{"addon": "MyAddon"}'
 
 # Run tests
-mech call addon.test -i '{"addon": "MyAddon"}'
+mech call addon.test '{"addon": "MyAddon"}'
 
 # Scan for deprecated APIs
-mech call addon.deprecations -i '{"addon": "MyAddon"}'
+mech call addon.deprecations '{"addon": "MyAddon"}'
 
-# Full release workflow
+# Full release workflow (bumps version, updates changelog, commits, tags)
 mech release MyAddon 1.2.0 "Added new feature"
 ```
 
@@ -130,14 +136,14 @@ mech setup --skip-config
 mech setup-busted
 ```
 
-### Hot Reload
+### MCP Server (for AI Agents)
 
 ```bash
-# Trigger /reload in WoW
-mech reload
+# Run as MCP server for AI agent integration
+mech mcp
 
-# Custom key sequence
-mech reload --key "9"
+# MCP over SSE transport
+mech mcp --transport sse
 ```
 
 ## Available Commands
@@ -151,17 +157,17 @@ mech reload --key "9"
 | `addon.deprecations` | Scan for deprecated APIs |
 | `addon.create` | Create addon from template |
 | `addon.sync` | Create junction links to WoW clients |
+| `addon.output` | Get errors, tests, console for agents |
 | `version.bump` | Update version in TOC |
 | `changelog.add` | Add changelog entry |
-| `git.commit` | Stage and commit changes |
-| `git.tag` | Create version tag |
-| `release.all` | Full release workflow |
 | `locale.validate` | Check locale coverage |
 | `locale.extract` | Extract localizable strings |
 | `atlas.search` | Search Blizzard UI Atlas |
 | `libs.check` | Check library sync status |
 | `sv.parse` | Parse SavedVariables file |
 | `sv.discover` | Find SavedVariables folders |
+| `api.search` | Search WoW API database |
+| `api.info` | Get API details |
 | `tools.status` | Check tool installation |
 | `sandbox.generate` | Generate WoW API stubs |
 | `sandbox.exec` | Execute Lua in sandbox |
