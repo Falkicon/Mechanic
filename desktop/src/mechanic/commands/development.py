@@ -524,16 +524,41 @@ def register_commands(server):
                 confidence=1.0,
             )
 
-        # Find busted tool (check bin/ first, then PATH)
-        from ..setup import find_tool
+        # Find busted tool (prefer system busted for reliability)
+        import shutil
 
-        busted_path = find_tool("busted")
+        busted_path = shutil.which("busted")  # Always use system busted if available
+        if not busted_path:
+            from ..setup import find_tool
+
+            busted_path = find_tool("busted")
 
         # Build command
         cmd = [str(busted_path) if busted_path else "busted", "--output", "json"]
         if input.coverage:
             cmd.extend(["--coverage"])
-        cmd.append(str(addon_path))
+
+        # Check for .busted config file - if present, don't pass path (respects config ROOT)
+        busted_config = addon_path / ".busted"
+        if busted_config.exists():
+            # .busted config found - run without path argument to respect ROOT directive
+            test_path = None
+        else:
+            # No .busted config - look for common test directories
+            test_candidates = [
+                addon_path / "Tests",
+                addon_path / "tests",
+                addon_path / "spec",
+                addon_path / "test",
+            ]
+            test_path = next(
+                (p for p in test_candidates if p.exists() and p.is_dir()), addon_path
+            )
+
+        # Only append path if we determined one (not using .busted config)
+        if test_path:
+            cmd.append(str(test_path))
+
 
         try:
             result = subprocess.run(
