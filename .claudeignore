@@ -1,0 +1,42 @@
+# Sensitive files - exclude from AI analysis
+.env
+desktop/.env
+**/.env
+
+# Local data and cache
+desktop/data/
+~/.mechanic/
+
+# Generated test stubs (large, auto-generated)
+sandbox/generated/
+
+# Python build artifacts
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage/
+htmlcov/
+
+# Temporary files
+*.tmp
+*.log
+*_output.txt
