@@ -64,7 +64,7 @@ Analysis performed via MCP `addon.security` tool on 257 files.
 - Sandboxed within the WoW addon environment
 - Intended for developer use only
 
-**Recommendation**: Document that this is a development tool and should not be enabled in production releases if distributed to end users.
+**Status**: DOCUMENTED - Security note added to `!Mechanic/Bootstrap.lua:115-128` explaining the intentional use case and security boundaries.
 
 #### 2.1.2 Combat Lockdown Violations (19 issues)
 
@@ -151,9 +151,9 @@ Since this is an open source project:
 
 ### High Risk Issues: 0
 
-### Medium Risk Issues: 2
+### Medium Risk Issues: 1
 
-1. **Loadstring in Bootstrap.lua** - Intentional but should be documented as dev-only feature
+1. ~~**Loadstring in Bootstrap.lua**~~ - RESOLVED: Documented as dev-only feature in source
 2. **Local `.env` with API key** - Properly gitignored but user should be aware
 
 ### Low Risk Issues: 1
@@ -174,8 +174,8 @@ Since this is an open source project:
 2. Verify no commits contain the actual API key
 
 ### Short-term Improvements
-1. Add `.claudeignore` to exclude sensitive directories from AI analysis
-2. Document that `loadstring` feature is for development only
+1. ~~Add `.claudeignore` to exclude sensitive directories from AI analysis~~ - DONE
+2. ~~Document that `loadstring` feature is for development only~~ - DONE
 
 ### Long-term Enhancements
 1. Consider pre-commit hooks for secret scanning (e.g., `detect-secrets`, `git-secrets`)

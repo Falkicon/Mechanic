@@ -112,6 +112,21 @@ end)
 --------------------------------------------------------------------------------
 -- Lua Eval Queue Processing
 --------------------------------------------------------------------------------
+--
+-- SECURITY NOTE: This feature uses loadstring() to execute arbitrary Lua code.
+-- This is an INTENTIONAL DEVELOPMENT TOOL for addon developers to:
+--   - Test API calls in-game via the Mechanic CLI (lua.queue command)
+--   - Inspect runtime values during development
+--   - Debug addon behavior without modifying source files
+--
+-- The code queue is populated ONLY by the local Mechanic desktop tool via
+-- SavedVariables, not by any network or external source. The feature is
+-- sandboxed within WoW's addon environment which already restricts dangerous
+-- operations (file I/O, network access, etc.).
+--
+-- If distributing Mechanic to end users, consider disabling this feature
+-- by removing or commenting out this function.
+--------------------------------------------------------------------------------
 
 function Mechanic:ProcessLuaEvalQueue()
     local queue = _G.MECHANIC_LUA_QUEUE
