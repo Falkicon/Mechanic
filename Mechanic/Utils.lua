@@ -47,13 +47,13 @@ Utils.Colors = setmetatable({}, {
 --------------------------------------------------------------------------------
 
 function Utils:GetClientType()
-	return F and F:GetClientType() or "Retail"
+	return (F and F.GetClientType) and F:GetClientType() or "Retail"
 end
 function Utils:GetVersionString()
-	return F and F:GetVersionString() or "Unknown"
+	return (F and F.GetVersionString) and F:GetVersionString() or (GetBuildInfo and select(1, GetBuildInfo()) or "Unknown")
 end
 function Utils:GetInterfaceString()
-	return F and F:GetInterfaceString() or "Unknown"
+	return (F and F.GetInterfaceString) and F:GetInterfaceString() or (select(4, GetBuildInfo()) or "Unknown")
 end
 
 --- Robustly opens the settings panel for an addon.
@@ -245,8 +245,16 @@ function Utils:GetEnvironmentHeader(profile)
 		local spec = C_SpecializationInfo.GetSpecialization()
 		local specName = "None"
 		if spec then
-			local specInfo = C_SpecializationInfo.GetSpecializationInfo(spec)
-			specName = specInfo and specInfo.name or "None"
+			-- GetSpecializationInfo returns specId in Midnight (12.0+)
+			local specId = C_SpecializationInfo.GetSpecializationInfo(spec)
+			if specId and type(specId) == "number" then
+				-- Use GetSpecializationInfoForSpecID to get the name
+				local name = select(2, GetSpecializationInfoForSpecID(specId))
+				specName = name or "Unknown"
+			elseif specId and type(specId) == "table" then
+				-- Legacy: returns table with name field
+				specName = specId.name or "None"
+			end
 		end
 		table.insert(
 			lines,
