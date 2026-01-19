@@ -192,7 +192,12 @@ class TokenScanner:
         # Member access
         "member_access": re.compile(r"\.(\w+)"),
         # WoW-specific
-        "event_register": re.compile(r':RegisterEvent\s*\(\s*["\'](\w+)["\']'),
+        # Ace3 RegisterEvent patterns:
+        #   self:RegisterEvent("EVENT") -> handler is EVENT
+        #   self:RegisterEvent("EVENT", "Handler") -> handler is Handler
+        "event_register": re.compile(
+            r':RegisterEvent\s*\(\s*["\'](\w+)["\'](?:\s*,\s*["\'](\w+)["\'])?'
+        ),
         "event_unregister": re.compile(r':UnregisterEvent\s*\(\s*["\'](\w+)["\']'),
         "locale_access": re.compile(r'L\[(["\'])([^"\']+)\1\]'),
         "locale_def": re.compile(r'L\[(["\'])([^"\']+)\1\]\s*='),
@@ -418,20 +423,33 @@ class TokenScanner:
 
         return accesses
 
-    def scan_events(self, content: str, file_path: str) -> List[EventRegistration]:
-        """Extract event registrations from Lua code."""
+    def scan_events(self, content: str, file_path: str) -> Tuple[List[EventRegistration], Set[str]]:
+        """Extract event registrations from Lua code.
+        
+        Returns:
+            Tuple of (event registrations, handler method names)
+            Handler names are the methods that will be called by Ace3.
+        """
         events = []
+        handlers = set()
         lines = content.splitlines()
 
         for line_num, line in enumerate(lines, 1):
             for match in self.PATTERNS["event_register"].finditer(line):
+                event_name = match.group(1)
+                # group(2) is the explicit handler, or None if implicit
+                handler = match.group(2) if match.lastindex >= 2 and match.group(2) else event_name
                 events.append(
                     EventRegistration(
-                        event=match.group(1), file=file_path, line=line_num
+                        event=event_name, 
+                        file=file_path, 
+                        line=line_num,
+                        handler=handler
                     )
                 )
+                handlers.add(handler)
 
-        return events
+        return events, handlers
 
     def scan_locales(self, content: str) -> Tuple[Set[str], Set[str]]:
         """Extract locale key definitions and usages."""
@@ -538,9 +556,11 @@ class LuaAnalyzer:
         accesses = self.scanner.scan_member_accesses(content)
         self.symbols.member_accesses.update(accesses)
 
-        # Scan events
-        events = self.scanner.scan_events(content, file_str)
+        # Scan events and their handlers
+        events, event_handlers = self.scanner.scan_events(content, file_str)
         self.symbols.registered_events.extend(events)
+        # Add event handlers to function_calls so they're treated as "used"
+        self.symbols.function_calls.update(event_handlers)
 
         # Scan locales
         defs, usages = self.scanner.scan_locales(content)

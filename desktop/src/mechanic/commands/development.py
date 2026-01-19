@@ -762,8 +762,12 @@ def register_commands(server):
                 lines = content.splitlines()
 
                 for line_num, line in enumerate(lines, 1):
-                    # Skip comments
+                    # Skip full-line comments
                     if line.strip().startswith("--"):
+                        continue
+
+                    # Skip lines with @scan-ignore annotation
+                    if "@scan-ignore:" in line or "@scan-ignore " in line:
                         continue
 
                     for old_api, info in DEPRECATED_APIS.items():
@@ -777,8 +781,9 @@ def register_commands(server):
                             continue
 
                         # Check for API call (word boundary + parenthesis)
+                        # Use negative lookbehind to avoid matching C_Namespace.OldApi patterns
                         if old_api in line:
-                            pattern = rf"\b{re.escape(old_api)}\s*\("
+                            pattern = rf"(?<![A-Za-z0-9_.]){re.escape(old_api)}\s*\("
                             if re.search(pattern, line):
                                 cat = info.get("category", "general")
                                 sev = info.get("severity", "warning")
