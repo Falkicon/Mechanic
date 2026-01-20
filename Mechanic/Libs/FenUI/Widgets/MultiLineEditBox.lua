@@ -37,6 +37,14 @@ function MultiLineEditBoxMixin:Init(config)
 	self.editBox:SetWidth(self.scrollFrame:GetWidth())
 	self.editBox:SetAutoFocus(false)
 
+	-- Hide the original scrollChild created by CreateScrollPanel to prevent
+	-- it from intercepting mouse events (text selection) meant for the EditBox
+	local originalScrollChild = self.scrollPanel.scrollChild
+	if originalScrollChild and originalScrollChild ~= self.editBox then
+		originalScrollChild:Hide()
+		originalScrollChild:EnableMouse(false)
+	end
+
 	self.scrollFrame:SetScrollChild(self.editBox)
 
 	-- Update ScrollPanel child reference
