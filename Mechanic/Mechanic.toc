@@ -1,4 +1,4 @@
-## Interface: 120001, 120000
+## Interface: 120005, 120001
 ## Title: Mechanic
 ## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
 ## Author: Fen (Falkicon)
