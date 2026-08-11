@@ -5,13 +5,10 @@ must follow, enabling easy swapping between FastMCP, custom implementations,
 and mock transports for testing.
 """
 
-from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Dict,
     List,
     Optional,

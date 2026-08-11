@@ -24,9 +24,8 @@ from afd.core import (
     CommandRegistry,
     CommandResult,
     create_command_registry,
-    success,
 )
-from afd.transports import MockTransport, TransportConfig
+from afd.transports import MockTransport
 
 
 T = TypeVar("T")
@@ -241,7 +240,7 @@ def temporary_command(
         ...     result = await registry.execute("test.cmd", {})
         ...     assert result.success
     """
-    from afd.core import CommandDefinition, CommandParameter
+    from afd.core import CommandDefinition
 
     # Create a minimal definition
     definition = CommandDefinition(

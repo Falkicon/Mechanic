@@ -2,12 +2,21 @@
 
 All notable changes to Mechanic Desktop will be documented in this file.
 
-For the !Mechanic WoW addon changelog, see [!Mechanic/CHANGELOG.md](./!Mechanic/CHANGELOG.md).
+For the in-game addon changelog, see [Mechanic/CHANGELOG.md](./Mechanic/CHANGELOG.md).
 
 ## [Unreleased]
 
 ### Fixed
 - **MCP tool names**: Use dashes instead of dots in MCP tool names (`addon-lint` vs `addon.lint`) for Cursor agent compatibility. Cursor's agent tool injection doesn't handle dots in tool names.
+- **Async command execution**: Run external tools, Git, API downloads, file picking, and stale-doc Git analysis without blocking the command server.
+- **Dashboard safety**: Escape addon output and command data before rendering, and remove calls to nonexistent reload/removal commands.
+- **File picker safety**: Pass picker labels through environment variables instead of interpolating them into PowerShell source.
+- **API archive safety**: Reject ZIP members that would escape the configured extraction directory.
+- **Release commands**: Restore `git.commit`, `git.tag`, and `release.all` with scoped staging and actionable Git failures.
+
+### Changed
+- Python and Lua linting now cover the complete tracked source and fail CI on violations.
+- The desktop server version now comes from the package version.
 
 ## [0.4.0] - 2026-01-01
 

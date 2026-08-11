@@ -29,10 +29,8 @@ from typing import (
     Optional,
     Protocol,
     TypeVar,
-    Union,
 )
 
-from pydantic import BaseModel
 
 from afd.core.result import CommandResult
 

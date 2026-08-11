@@ -264,6 +264,43 @@ function Console:OnSourceSelected(key)
 	self:Refresh()
 end
 
+function Console:SetBufferSize(newSize)
+	newSize = math.max(1, math.floor(tonumber(newSize) or 1000))
+	local oldSize = Mechanic.db.profile.bufferSize or 1000
+	if newSize == oldSize then
+		return
+	end
+
+	local entries = {}
+	if self.count > 0 then
+		local start = self.head - self.count
+		if start < 1 then
+			start = start + oldSize
+		end
+		for i = 0, self.count - 1 do
+			local idx = ((start + i - 1) % oldSize) + 1
+			if self.buffer[idx] then
+				table.insert(entries, self.buffer[idx])
+			end
+		end
+	end
+
+	wipe(self.buffer)
+	self.head = 1
+	self.count = 0
+	local first = math.max(1, #entries - newSize + 1)
+	for i = first, #entries do
+		self.buffer[self.head] = entries[i]
+		self.head = (self.head % newSize) + 1
+		self.count = self.count + 1
+	end
+
+	Mechanic.db.profile.bufferSize = newSize
+	self.navDirty = true
+	self:RefreshSourceList()
+	self:Refresh()
+end
+
 function Console:OnLog(source, message, category)
 	if self.paused then
 		return
@@ -276,7 +313,7 @@ function Console:OnLog(source, message, category)
 		source = source,
 		message = message,
 		category = category or "",
-		time = GetTime(),
+		time = time(),
 	}
 
 	self.head = (self.head % maxLimit) + 1

@@ -26,12 +26,9 @@ Example:
     >>> server.run()
 """
 
-import sys
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import (
     Any,
-    Awaitable,
     Callable,
     Dict,
     List,
@@ -39,7 +36,6 @@ from typing import (
     Protocol,
     Type,
     TypeVar,
-    Union,
     runtime_checkable,
 )
 
@@ -273,7 +269,7 @@ class MCPServer:
             return
 
         import json
-        from pydantic import BaseModel, ConfigDict, create_model
+        from pydantic import ConfigDict, create_model
         from typing import Any
         from mcp.server.fastmcp import Context
         from afd.server.decorators import _accepts_context

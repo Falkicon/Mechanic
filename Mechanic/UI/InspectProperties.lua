@@ -226,7 +226,7 @@ function Properties:TrackChange(key, value)
 		return
 	end
 
-	local isOriginal = false
+	local isOriginal
 	if type(value) == "table" and type(self.originalValues[key]) == "table" then
 		isOriginal = (math.abs((value.r or 0) - (self.originalValues[key].r or 0)) < 0.01)
 			and (math.abs((value.g or 0) - (self.originalValues[key].g or 0)) < 0.01)

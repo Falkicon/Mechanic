@@ -5,13 +5,12 @@ Handles locale validation and string extraction.
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source, create_warning, WarningSeverity
-from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 import re
 
 # Use centralized config
-from ..config import find_addon_path, get_config
+from ..config import find_addon_path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

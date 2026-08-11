@@ -1,15 +1,15 @@
 from afd import CommandResult, success, error
 from afd.server import create_server
-from afd.core.metadata import create_source, create_warning, WarningSeverity
+from afd.core.metadata import create_source
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
-import time
+from typing import Dict, Any, List
+from .. import __version__
 import os
 import asyncio
 
 # Create the AFD server instance
-server = create_server(name="mechanic-desktop", version="0.1.0")
+server = create_server(name="mechanic-desktop", version=__version__)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SCHEMAS

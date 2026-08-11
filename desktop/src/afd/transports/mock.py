@@ -19,13 +19,12 @@ Example:
     >>> result = await transport.call_tool("ping", {})
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from afd.transports.base import (
     ToolInfo,
     ToolNotFoundError,
-    Transport,
     TransportConfig,
     TransportState,
 )

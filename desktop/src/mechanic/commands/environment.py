@@ -4,10 +4,12 @@ Handles addon creation, junction syncing, and library management.
 """
 
 from afd import CommandResult, success, error
-from afd.core.metadata import create_source, create_warning, WarningSeverity
+from afd.core.metadata import create_source
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
+import asyncio
+import os
 import subprocess
 import shutil
 
@@ -238,7 +240,8 @@ def register_commands(server):
             try:
                 if subprocess.sys.platform == "win32":
                     # Use mklink /J for junction
-                    result = subprocess.run(
+                    result = await asyncio.to_thread(
+                        subprocess.run,
                         [
                             "cmd",
                             "/c",
@@ -981,24 +984,29 @@ def register_commands(server):
         input: PickFileInput, context: Any = None
     ) -> CommandResult[PickFileResult]:
         # PowerShell script to open file dialog
-        ps_script = f"""
+        ps_script = """
         Add-Type -AssemblyName System.Windows.Forms
         $FileBrowser = New-Object System.Windows.Forms.OpenFileDialog
-        $FileBrowser.Title = '{input.title}'
-        $FileBrowser.Filter = '{input.filter}'
+        $FileBrowser.Title = $env:MECHANIC_PICKER_TITLE
+        $FileBrowser.Filter = $env:MECHANIC_PICKER_FILTER
         $FileBrowser.InitialDirectory = [System.Environment]::GetFolderPath('MyDocuments')
         
-        if ($FileBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
+        if ($FileBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             Write-Output $FileBrowser.FileName
-        }}
+        }
         """
 
         try:
-            result = subprocess.run(
-                ["powershell", "-Command", ps_script],
+            picker_env = os.environ.copy()
+            picker_env["MECHANIC_PICKER_TITLE"] = input.title
+            picker_env["MECHANIC_PICKER_FILTER"] = input.filter
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["powershell", "-NoProfile", "-Command", ps_script],
                 capture_output=True,
                 text=True,
                 timeout=60,  # Give user time to pick
+                env=picker_env,
             )
 
             file_path = result.stdout.strip()

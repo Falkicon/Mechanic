@@ -54,12 +54,11 @@ jobs:
 
       - name: Check formatting
         working-directory: desktop
-        run: ruff format --check src/
+        run: ruff format --check src/ tests/
 
       - name: Check linting
         working-directory: desktop
-        run: ruff check src/
-        continue-on-error: true  # Warning only for now
+        run: ruff check src/ tests/
 
   lint-lua:
     name: Lint (Lua)
@@ -75,5 +74,4 @@ jobs:
           sudo luarocks install luacheck
 
       - name: Run Luacheck
-        run: luacheck "!Mechanic/" --config .luacheckrc
-        continue-on-error: true  # Warning only until config is tuned
+        run: luacheck "!Mechanic/" "Mechanic/" --config .luacheckrc

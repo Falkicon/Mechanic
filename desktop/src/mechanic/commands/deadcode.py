@@ -14,6 +14,8 @@ Comprehensive analysis to find:
 - Commented-out code blocks
 """
 
+import asyncio
+
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pathlib import Path
@@ -29,8 +31,6 @@ from ..lua_analyzer import (
     LuaAnalyzer,
     TokenScanner,
     Confidence,
-    FunctionDef,
-    VariableDef,
     WOW_SAFE_PATTERNS,
 )
 from .development import parse_toc_file
@@ -134,9 +134,6 @@ def parse_xml_includes(xml_path: Path, addon_path: Path) -> Set[Path]:
     try:
         tree = ET.parse(xml_path)
         root = tree.getroot()
-
-        # Handle namespace
-        ns = {"ui": "http://www.blizzard.com/wow/ui/"}
 
         # Find Script tags
         for script in root.iter():
@@ -501,7 +498,7 @@ def find_unreachable_code(
                                 file=str(rel_path),
                                 line=line_num,
                                 name=f"Line {line_num}",
-                                message=f"Code after return statement is unreachable",
+                                message="Code after return statement is unreachable",
                                 suggestion="Remove unreachable code",
                             )
                         )
@@ -686,8 +683,6 @@ def analyze_addon(
 
     # Get files to analyze
     all_lua_files = list(get_all_lua_files(addon_path, addon_name))
-    loaded_files = get_loaded_files(addon_path, addon_name)
-
     # Create analyzer and scan all files
     analyzer = LuaAnalyzer(addon_name)
     files_content: Dict[Path, str] = {}
@@ -787,7 +782,7 @@ def register_commands(server):
                 suggestion="Check the addon name or provide an explicit path with the 'path' parameter",
             )
 
-        result = analyze_addon(addon_path, input.addon, input)
+        result = await asyncio.to_thread(analyze_addon, addon_path, input.addon, input)
 
         src = create_source(
             type="analysis",

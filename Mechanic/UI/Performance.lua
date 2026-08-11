@@ -478,7 +478,7 @@ function PerformanceModule:Refresh()
 	self.blocks.uiRefresh = debugprofilestop() - refreshStart
 end
 
-function PerformanceModule:UpdateAddonList()
+function PerformanceModule:CollectAddonData()
 	local addonMemory = {}
 	local totalMemory = 0
 	local numAddons = C_AddOns.GetNumAddOns()
@@ -495,7 +495,8 @@ function PerformanceModule:UpdateAddonList()
 
 	local addonCPU = {}
 	local totalCPU = 0
-	if GetCVarBool("scriptProfile") then
+	local cpuEnabled = GetCVarBool("scriptProfile")
+	if cpuEnabled then
 		UpdateAddOnCPUUsage()
 		for i = 1, numAddons do
 			if C_AddOns.IsAddOnLoaded(i) then
@@ -518,8 +519,10 @@ function PerformanceModule:UpdateAddonList()
 			cpuPercent = totalCPU > 0 and (cpu / totalCPU) * 100 or 0,
 		})
 	end
+	return data, cpuEnabled
+end
 
-	-- Sort data
+function PerformanceModule:SortAddonData(data)
 	table.sort(data, function(a, b)
 		local valA = a[self.sortColumn]
 		local valB = b[self.sortColumn]
@@ -528,22 +531,21 @@ function PerformanceModule:UpdateAddonList()
 			return false
 		end
 
-		local aGreater
 		if type(valA) == "string" then
+			valA = tostring(valA or "")
 			valB = tostring(valB or "")
-			aGreater = valA > valB
 		else
 			valA = tonumber(valA) or 0
 			valB = tonumber(valB) or 0
-			aGreater = valA > valB
 		end
 
-		if self.sortDesc then
-			return aGreater
-		else
-			return not aGreater
-		end
+		return self.sortDesc and valA > valB or valA < valB
 	end)
+end
+
+function PerformanceModule:UpdateAddonList()
+	local data = self:CollectAddonData()
+	self:SortAddonData(data)
 
 	for _, col in ipairs(COLUMNS) do
 		local headerLabel = self.headerRow and self.headerRow.labels and self.headerRow.labels[col.key]
@@ -803,71 +805,8 @@ function PerformanceModule:GetCopyText(includeHeader)
 	end
 
 	-- Default global export
-	local addonMemory = {}
-	local totalMemory = 0
-	local numAddons = C_AddOns.GetNumAddOns()
-	UpdateAddOnMemoryUsage()
-	for i = 1, numAddons do
-		if C_AddOns.IsAddOnLoaded(i) then
-			local name = C_AddOns.GetAddOnInfo(i)
-			local mem = GetAddOnMemoryUsage(i)
-			addonMemory[name] = mem
-			totalMemory = totalMemory + mem
-		end
-	end
-
-	local addonCPU = {}
-	local totalCPU = 0
-	local cpuEnabled = GetCVarBool("scriptProfile")
-	if cpuEnabled then
-		UpdateAddOnCPUUsage()
-		for i = 1, numAddons do
-			if C_AddOns.IsAddOnLoaded(i) then
-				local name = C_AddOns.GetAddOnInfo(i)
-				local cpu = GetAddOnCPUUsage(i)
-				addonCPU[name] = cpu
-				totalCPU = totalCPU + cpu
-			end
-		end
-	end
-
-	local data = {}
-	for addonName, mem in pairs(addonMemory) do
-		local cpu = addonCPU[addonName] or 0
-		table.insert(data, {
-			name = addonName,
-			memory = mem,
-			memoryPercent = totalMemory > 0 and (mem / totalMemory) * 100 or 0,
-			cpu = cpu,
-			cpuPercent = totalCPU > 0 and (cpu / totalCPU) * 100 or 0,
-		})
-	end
-
-	-- Sort data using current UI sort
-	table.sort(data, function(a, b)
-		local valA = a[self.sortColumn]
-		local valB = b[self.sortColumn]
-
-		if valA == valB then
-			return false
-		end
-
-		local aGreater
-		if type(valA) == "string" then
-			valB = tostring(valB or "")
-			aGreater = valA > valB
-		else
-			valA = tonumber(valA) or 0
-			valB = tonumber(valB) or 0
-			aGreater = valA > valB
-		end
-
-		if self.sortDesc then
-			return aGreater
-		else
-			return not aGreater
-		end
-	end)
+	local data, cpuEnabled = self:CollectAddonData()
+	self:SortAddonData(data)
 
 	if cpuEnabled then
 		table.insert(

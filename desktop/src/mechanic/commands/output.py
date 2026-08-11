@@ -8,7 +8,7 @@ Philosophy:
 - Fast: Should complete in <100ms
 """
 
-from afd import CommandResult, success, error
+from afd import CommandResult, success
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
@@ -611,7 +611,6 @@ def register_commands(server):
         from ..server import storage
         from ..config import discover_saved_variables
         from ..parsers import parse_savedvariables
-        from pathlib import Path
 
         # Extract agent_mode from input
         agent_mode = input.agent_mode if hasattr(input, "agent_mode") else False
@@ -701,7 +700,7 @@ def register_commands(server):
                     # Hub-aware parsing: merge libraries from hub
                     hub_libs = parse_hub_libraries_from_mechanic_db(profile_data)
                     for hl in hub_libs:
-                        if not any(l["name"] == hl["name"] for l in libraries):
+                        if not any(lib["name"] == hl["name"] for lib in libraries):
                             libraries.append(hl)
 
                     sv_tests = parse_tests_from_mechanic_db(profile_data)
@@ -932,11 +931,11 @@ def register_commands(server):
 
                         # Signature
                         if t.get("signature"):
-                            lines.append(f"```")
+                            lines.append("```")
                             lines.append(
                                 f"{t.get('funcPath', t['key'])}{t['signature']}"
                             )
-                            lines.append(f"```")
+                            lines.append("```")
 
                         # Parameters used
                         if t.get("params_used"):

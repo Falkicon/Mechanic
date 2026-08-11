@@ -9,6 +9,8 @@ Detects maintainability issues:
 - Duplicate code (near-identical code blocks)
 """
 
+import asyncio
+
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pathlib import Path
@@ -155,12 +157,6 @@ def analyze_nesting_depth(content: str) -> List[Tuple[int, int, int]]:
     decrease_patterns = [
         r"^\s*end\b",
         r"^\s*until\b",
-    ]
-
-    # elseif doesn't change depth, else doesn't change depth
-    neutral_patterns = [
-        r"\belseif\b",
-        r"\belse\b",
     ]
 
     for line_num, line in enumerate(lines, 1):
@@ -593,7 +589,7 @@ def register_commands(server):
                 suggestion="Check the addon name or provide an explicit path",
             )
 
-        result = analyze_addon(addon_path, input.addon, input)
+        result = await asyncio.to_thread(analyze_addon, addon_path, input.addon, input)
 
         src = create_source(
             type="analysis",

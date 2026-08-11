@@ -67,6 +67,7 @@ local defaults = {
 		},
 		-- NEW: API test data (Phase 7)
 		apiTests = {},
+		apiNotes = {},
 		-- NOTE: apiTestQueue is NOT in defaults - it's read directly from SavedVariables
 		-- to avoid AceDB overwriting the CLI-injected queue with empty defaults
 		-- NEW: Inspect & Watch data (Phase 8)
@@ -96,8 +97,14 @@ function Mechanic:OnInitialize()
 	-- Initialize database (shares MechanicDB with bootstrap)
 	self.db = LibStub("AceDB-3.0"):New("MechanicDB", defaults, true)
 
-	-- Clear API test results from previous session (only keep current session's tests)
+	-- Migrate notes from the legacy test-result table before clearing session data.
 	if self.db.profile.apiTests then
+		self.db.profile.apiNotes = self.db.profile.apiNotes or {}
+		for apiKey, result in pairs(self.db.profile.apiTests) do
+			if result.notes and self.db.profile.apiNotes[apiKey] == nil then
+				self.db.profile.apiNotes[apiKey] = result.notes
+			end
+		end
 		self.db.profile.apiTests = {}
 	end
 

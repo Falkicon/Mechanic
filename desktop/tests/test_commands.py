@@ -8,17 +8,25 @@ Tests verify all 39 commands follow structured patterns:
 """
 
 import pytest
-import asyncio
+import io
 import tempfile
 import os
-from pathlib import Path
+import zipfile
+from types import SimpleNamespace
 from mechanic.commands.core import get_server
-from afd.testing.assertions import assert_success, assert_error, assert_has_reasoning, assert_has_sources
+from mechanic.commands.apidefs import _extract_response_zip
+from afd.testing.assertions import (
+    assert_success,
+    assert_error,
+    assert_has_reasoning,
+    assert_has_sources,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SavedVariables Commands (sv.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_sv_discover():
@@ -28,7 +36,7 @@ async def test_sv_discover():
 
     if result.success:
         data = assert_success(result)
-        assert hasattr(data, 'paths')
+        assert hasattr(data, "paths")
         assert isinstance(data.paths, list)
         assert_has_sources(result)
     else:
@@ -52,7 +60,7 @@ async def test_sv_parse_valid_file():
     server = get_server()
 
     # Create a temporary valid SavedVariables file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as f:
         f.write('TestDB = { version = 1, data = "test" }')
         temp_path = f.name
 
@@ -60,7 +68,7 @@ async def test_sv_parse_valid_file():
         result = await server.execute("sv.parse", {"file_path": temp_path})
         data = assert_success(result)
         # sv.parse returns SavedVariables with addons attribute
-        assert hasattr(data, 'addons')
+        assert hasattr(data, "addons")
     finally:
         os.unlink(temp_path)
 
@@ -68,6 +76,7 @@ async def test_sv_parse_valid_file():
 # ═══════════════════════════════════════════════════════════════════════════════
 # Addon Commands (addon.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_addon_output():
@@ -78,10 +87,10 @@ async def test_addon_output():
     data = assert_success(result)
 
     # Verify schema
-    assert hasattr(data, 'output')
-    assert hasattr(data, 'error_count')
-    assert hasattr(data, 'test_count')
-    assert hasattr(data, 'console_count')
+    assert hasattr(data, "output")
+    assert hasattr(data, "error_count")
+    assert hasattr(data, "test_count")
+    assert hasattr(data, "console_count")
 
     # Verify compliance
     assert_has_reasoning(result)
@@ -101,7 +110,7 @@ async def test_addon_output_agent_mode():
     result = await server.execute("addon.output", {"agent_mode": True})
 
     data = assert_success(result)
-    assert hasattr(data, 'output')
+    assert hasattr(data, "output")
     # Agent mode should still produce valid output
     assert "## Addon Output" in data.output
 
@@ -131,7 +140,9 @@ async def test_addon_lint_missing_addon():
 async def test_addon_format_missing_addon():
     """Test addon.format handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("addon.format", {"addon": "NonExistentAddon12345", "check": True})
+    result = await server.execute(
+        "addon.format", {"addon": "NonExistentAddon12345", "check": True}
+    )
 
     assert not result.success
     assert result.error is not None
@@ -151,7 +162,9 @@ async def test_addon_test_missing_addon():
 async def test_addon_deprecations_missing_addon():
     """Test addon.deprecations handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("addon.deprecations", {"addon": "NonExistentAddon12345"})
+    result = await server.execute(
+        "addon.deprecations", {"addon": "NonExistentAddon12345"}
+    )
 
     assert not result.success
     assert result.error is not None
@@ -180,6 +193,7 @@ async def test_addon_sync_missing_addon():
 # ═══════════════════════════════════════════════════════════════════════════════
 # Library Commands (libs.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_libs_check_missing_addon():
@@ -215,6 +229,7 @@ async def test_libs_sync_missing_addon():
 # API Reference Commands (api.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_api_search():
     """Test api.search finds WoW APIs."""
@@ -222,7 +237,7 @@ async def test_api_search():
     result = await server.execute("api.search", {"query": "UnitHealth"})
 
     data = assert_success(result)
-    assert hasattr(data, 'results') or hasattr(data, 'apis') or hasattr(data, 'matches')
+    assert hasattr(data, "results") or hasattr(data, "apis") or hasattr(data, "matches")
     assert_has_reasoning(result)
 
 
@@ -233,7 +248,7 @@ async def test_api_search_no_results():
     result = await server.execute("api.search", {"query": "xyznonexistent12345"})
 
     # Should succeed with empty results, not error
-    data = assert_success(result)
+    assert_success(result)
 
 
 @pytest.mark.asyncio
@@ -243,7 +258,7 @@ async def test_api_info():
     result = await server.execute("api.info", {"api": "UnitHealth"})
 
     if result.success:
-        data = assert_success(result)
+        assert_success(result)
         assert_has_reasoning(result)
     else:
         # API might not be in database
@@ -256,7 +271,7 @@ async def test_api_list():
     server = get_server()
     result = await server.execute("api.list", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -267,7 +282,7 @@ async def test_api_list_by_namespace():
     result = await server.execute("api.list", {"namespace": "C_Spell"})
 
     if result.success:
-        data = assert_success(result)
+        assert_success(result)
         assert_has_reasoning(result)
 
 
@@ -278,7 +293,7 @@ async def test_api_queue():
     result = await server.execute("api.queue", {"apis": ["UnitHealth", "UnitName"]})
 
     if result.success:
-        data = assert_success(result)
+        assert_success(result)
         assert_has_reasoning(result)
 
 
@@ -288,7 +303,7 @@ async def test_api_stats():
     server = get_server()
     result = await server.execute("api.stats", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -296,16 +311,15 @@ async def test_api_stats():
 # Lua Eval Commands (lua.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_lua_queue():
     """Test lua.queue accepts Lua code for evaluation."""
     server = get_server()
     # lua.queue expects a list of code strings
-    result = await server.execute("lua.queue", {
-        "code": ["return 1 + 1"]
-    })
+    result = await server.execute("lua.queue", {"code": ["return 1 + 1"]})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -315,7 +329,7 @@ async def test_lua_results():
     server = get_server()
     result = await server.execute("lua.results", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -323,13 +337,14 @@ async def test_lua_results():
 # Sandbox Commands (sandbox.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_sandbox_status():
     """Test sandbox.status returns sandbox state."""
     server = get_server()
     result = await server.execute("sandbox.status", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -361,7 +376,7 @@ async def test_sandbox_test():
     result = await server.execute("sandbox.test", {"addon": "!Mechanic"})
 
     if result.success:
-        data = assert_success(result)
+        assert_success(result)
         assert_has_reasoning(result)
     else:
         # May fail if addon not found or no tests
@@ -371,6 +386,7 @@ async def test_sandbox_test():
 # ═══════════════════════════════════════════════════════════════════════════════
 # Locale Commands (locale.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_locale_validate_missing_addon():
@@ -396,6 +412,7 @@ async def test_locale_extract_missing_addon():
 # Atlas Commands (atlas.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_atlas_search():
     """Test atlas.search finds UI atlas icons."""
@@ -404,7 +421,7 @@ async def test_atlas_search():
 
     # May fail if atlas index doesn't exist (expected in test env)
     if result.success:
-        data = assert_success(result)
+        assert_success(result)
         assert_has_reasoning(result)
     else:
         assert_error(result, "INDEX_NOT_FOUND")
@@ -414,14 +431,14 @@ async def test_atlas_search():
 # Release Pipeline Commands (version.*, changelog.*, git.*, release.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_version_bump_missing_addon():
     """Test version.bump handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("version.bump", {
-        "addon": "NonExistentAddon12345",
-        "version": "1.0.0"
-    })
+    result = await server.execute(
+        "version.bump", {"addon": "NonExistentAddon12345", "version": "1.0.0"}
+    )
 
     assert not result.success
     assert result.error is not None
@@ -431,11 +448,14 @@ async def test_version_bump_missing_addon():
 async def test_changelog_add_missing_addon():
     """Test changelog.add handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("changelog.add", {
-        "addon": "NonExistentAddon12345",
-        "version": "1.0.0",
-        "changes": ["Test change"]
-    })
+    result = await server.execute(
+        "changelog.add",
+        {
+            "addon": "NonExistentAddon12345",
+            "version": "1.0.0",
+            "changes": ["Test change"],
+        },
+    )
 
     assert not result.success
     assert result.error is not None
@@ -445,10 +465,9 @@ async def test_changelog_add_missing_addon():
 async def test_git_commit_missing_addon():
     """Test git.commit handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("git.commit", {
-        "addon": "NonExistentAddon12345",
-        "message": "Test commit"
-    })
+    result = await server.execute(
+        "git.commit", {"addon": "NonExistentAddon12345", "message": "Test commit"}
+    )
 
     assert not result.success
     assert result.error is not None
@@ -458,10 +477,9 @@ async def test_git_commit_missing_addon():
 async def test_git_tag_missing_addon():
     """Test git.tag handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("git.tag", {
-        "addon": "NonExistentAddon12345",
-        "version": "1.0.0"
-    })
+    result = await server.execute(
+        "git.tag", {"addon": "NonExistentAddon12345", "version": "1.0.0"}
+    )
 
     assert not result.success
     assert result.error is not None
@@ -471,11 +489,14 @@ async def test_git_tag_missing_addon():
 async def test_release_all_missing_addon():
     """Test release.all handles missing addon gracefully."""
     server = get_server()
-    result = await server.execute("release.all", {
-        "addon": "NonExistentAddon12345",
-        "version": "1.0.0",
-        "message": "Test release"
-    })
+    result = await server.execute(
+        "release.all",
+        {
+            "addon": "NonExistentAddon12345",
+            "version": "1.0.0",
+            "message": "Test release",
+        },
+    )
 
     assert not result.success
     assert result.error is not None
@@ -485,28 +506,36 @@ async def test_release_all_missing_addon():
 # Documentation Commands (docs.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
-async def test_docs_generate():
+async def test_docs_generate(tmp_path):
     """Test docs.generate creates documentation."""
     server = get_server()
-    result = await server.execute("docs.generate", {"format": "markdown"})
+    result = await server.execute(
+        "docs.generate",
+        {"format": "markdown", "output_path": str(tmp_path / "cli-reference.md")},
+    )
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
 @pytest.mark.asyncio
-async def test_docs_generate_json():
+async def test_docs_generate_json(tmp_path):
     """Test docs.generate with JSON format."""
     server = get_server()
-    result = await server.execute("docs.generate", {"format": "json"})
+    result = await server.execute(
+        "docs.generate",
+        {"format": "json", "output_path": str(tmp_path / "cli-reference.json")},
+    )
 
-    data = assert_success(result)
+    assert_success(result)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Environment Commands (env.*, tools.*, system.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_env_status():
@@ -514,7 +543,7 @@ async def test_env_status():
     server = get_server()
     result = await server.execute("env.status", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -524,7 +553,7 @@ async def test_tools_status():
     server = get_server()
     result = await server.execute("tools.status", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
@@ -543,19 +572,21 @@ async def test_system_pick_file():
 # Dashboard Commands (dashboard.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_dashboard_metrics():
     """Test dashboard.metrics returns reload and test history."""
     server = get_server()
     result = await server.execute("dashboard.metrics", {})
 
-    data = assert_success(result)
+    assert_success(result)
     assert_has_reasoning(result)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Server Commands (server.*)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.asyncio
 async def test_server_shutdown():
@@ -579,6 +610,7 @@ async def test_server_shutdown():
 # Research Commands (research.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_research_query_missing_api_key():
     """Test research.query handles missing API key gracefully."""
@@ -598,6 +630,7 @@ async def test_research_query_missing_api_key():
 # Asset Commands (assets.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_assets_list():
     """Test assets.list returns asset info."""
@@ -607,8 +640,8 @@ async def test_assets_list():
     # May succeed with empty results or fail if addon not found
     if result.success:
         data = assert_success(result)
-        assert hasattr(data, 'source_count')
-        assert hasattr(data, 'target_count')
+        assert hasattr(data, "source_count")
+        assert hasattr(data, "target_count")
 
 
 @pytest.mark.asyncio
@@ -625,6 +658,7 @@ async def test_assets_sync_missing_addon():
 # Performance Commands (perf.*)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_perf_list():
     """Test perf.list returns list of addons with baselines."""
@@ -632,8 +666,8 @@ async def test_perf_list():
     result = await server.execute("perf.list", {})
 
     data = assert_success(result)
-    assert hasattr(data, 'addons')
-    assert hasattr(data, 'count')
+    assert hasattr(data, "addons")
+    assert hasattr(data, "count")
     assert isinstance(data.addons, list)
 
 
@@ -641,12 +675,10 @@ async def test_perf_list():
 async def test_perf_baseline():
     """Test perf.baseline records a measurement."""
     server = get_server()
-    result = await server.execute("perf.baseline", {
-        "addon": "TestAddon",
-        "version": "1.0.0",
-        "memory_kb": 100.5,
-        "cpu_ms": 1.5
-    })
+    result = await server.execute(
+        "perf.baseline",
+        {"addon": "TestAddon", "version": "1.0.0", "memory_kb": 100.5, "cpu_ms": 1.5},
+    )
 
     data = assert_success(result)
     assert data.addon == "TestAddon"
@@ -658,11 +690,10 @@ async def test_perf_baseline():
 async def test_perf_compare_no_baseline():
     """Test perf.compare handles missing baseline gracefully."""
     server = get_server()
-    result = await server.execute("perf.compare", {
-        "addon": "NonExistentAddon12345",
-        "memory_kb": 100.0,
-        "cpu_ms": 1.0
-    })
+    result = await server.execute(
+        "perf.compare",
+        {"addon": "NonExistentAddon12345", "memory_kb": 100.0, "cpu_ms": 1.0},
+    )
 
     # Should succeed with "no baseline" message
     data = assert_success(result)
@@ -683,11 +714,14 @@ async def test_perf_report_no_history():
 # API Definition Commands (api.populate, api.generate, api.refresh)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_api_generate_missing_database():
     """Test api.generate handles missing database gracefully."""
     server = get_server()
-    result = await server.execute("api.generate", {"database_path": "/nonexistent/path.json"})
+    result = await server.execute(
+        "api.generate", {"database_path": "/nonexistent/path.json"}
+    )
 
     assert_error(result, "DATABASE_NOT_FOUND")
 
@@ -696,20 +730,41 @@ async def test_api_generate_missing_database():
 async def test_api_populate_missing_source():
     """Test api.populate handles missing source path gracefully."""
     server = get_server()
-    result = await server.execute("api.populate", {"source_path": "/nonexistent/wow-ui-source"})
+    result = await server.execute(
+        "api.populate", {"source_path": "/nonexistent/wow-ui-source"}
+    )
 
     assert_error(result, "SOURCE_NOT_FOUND")
+
+
+def test_api_zip_extraction_rejects_path_traversal(tmp_path):
+    """Downloaded API archives cannot write outside their output directory."""
+    archive_data = io.BytesIO()
+    with zipfile.ZipFile(archive_data, "w") as archive:
+        archive.writestr("../escape.txt", "blocked")
+
+    output_path = tmp_path / "output"
+    output_path.mkdir()
+    response = SimpleNamespace(content=archive_data.getvalue())
+
+    with pytest.raises(ValueError, match="escapes output directory"):
+        _extract_response_zip(response, output_path)
+
+    assert not (tmp_path / "escape.txt").exists()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Atlas Commands (atlas.scan, atlas.search)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.asyncio
 async def test_atlas_scan_missing_source():
     """Test atlas.scan handles missing source path gracefully."""
     server = get_server()
-    result = await server.execute("atlas.scan", {"source_path": "/nonexistent/wow-ui-source"})
+    result = await server.execute(
+        "atlas.scan", {"source_path": "/nonexistent/wow-ui-source"}
+    )
 
     assert_error(result, "SOURCE_NOT_FOUND")
 
@@ -733,29 +788,56 @@ def test_all_commands_registered():
 
     expected_commands = [
         # sv.*
-        "sv.parse", "sv.discover",
+        "sv.parse",
+        "sv.discover",
         # addon.*
-        "addon.output", "addon.validate", "addon.lint", "addon.format",
-        "addon.test", "addon.deprecations", "addon.create", "addon.sync",
+        "addon.output",
+        "addon.validate",
+        "addon.lint",
+        "addon.format",
+        "addon.test",
+        "addon.deprecations",
+        "addon.create",
+        "addon.sync",
         # libs.*
-        "libs.check", "libs.init", "libs.sync",
+        "libs.check",
+        "libs.init",
+        "libs.sync",
         # api.*
-        "api.search", "api.info", "api.list", "api.queue", "api.stats",
-        "api.populate", "api.generate", "api.refresh",
+        "api.search",
+        "api.info",
+        "api.list",
+        "api.queue",
+        "api.stats",
+        "api.populate",
+        "api.generate",
+        "api.refresh",
         # lua.*
-        "lua.queue", "lua.results",
+        "lua.queue",
+        "lua.results",
         # sandbox.*
-        "sandbox.generate", "sandbox.status", "sandbox.exec", "sandbox.test",
+        "sandbox.generate",
+        "sandbox.status",
+        "sandbox.exec",
+        "sandbox.test",
         # locale.*
-        "locale.validate", "locale.extract",
+        "locale.validate",
+        "locale.extract",
         # atlas.*
-        "atlas.scan", "atlas.search",
-        # release pipeline (git.commit, git.tag, release.all removed - subprocess hangs in MCP)
-        "version.bump", "changelog.add",
+        "atlas.scan",
+        "atlas.search",
+        # release pipeline
+        "version.bump",
+        "changelog.add",
+        "git.commit",
+        "git.tag",
+        "release.all",
         # docs.*
         "docs.generate",
         # environment
-        "env.status", "tools.status", "system.pick_file",
+        "env.status",
+        "tools.status",
+        "system.pick_file",
         # dashboard
         "dashboard.metrics",
         # server
@@ -763,9 +845,13 @@ def test_all_commands_registered():
         # research.*
         "research.query",
         # assets.*
-        "assets.sync", "assets.list",
+        "assets.sync",
+        "assets.list",
         # perf.*
-        "perf.baseline", "perf.compare", "perf.list", "perf.report",
+        "perf.baseline",
+        "perf.compare",
+        "perf.list",
+        "perf.report",
     ]
 
     for cmd in expected_commands:

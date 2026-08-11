@@ -12,13 +12,12 @@ Example:
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from afd.transports.base import (
     ToolInfo,
     ToolNotFoundError,
-    Transport,
     TransportConfig,
     TransportState,
 )
@@ -97,7 +96,7 @@ class FastMCPTransport:
             self._mcp = FastMCP(self._server_name)
             self._state = TransportState.CONNECTED
 
-        except Exception as e:
+        except Exception:
             self._state = TransportState.ERROR
             raise
 

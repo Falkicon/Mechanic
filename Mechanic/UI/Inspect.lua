@@ -7,7 +7,6 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
-local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 local InspectModule = {}
 Mechanic.Inspect = InspectModule
 
@@ -161,8 +160,6 @@ end
 --------------------------------------------------------------------------------
 
 function InspectModule:TogglePickMode()
-	local self = InspectModule
-
 	-- Prevent re-entry from button click after GLOBAL_MOUSE_DOWN exit
 	if self.pickExitTime and (GetTime() - self.pickExitTime) < 0.2 then
 		return
@@ -282,8 +279,6 @@ function InspectModule:HideHighlight()
 end
 
 function InspectModule:StartPicking()
-	local self = InspectModule
-
 	-- 1. Instruction Bar (mouse-disabled, just visual feedback)
 	if not self.pickBar then
 		local bar = CreateFrame("Frame", "MechanicPickBar", UIParent)
@@ -420,8 +415,6 @@ function InspectModule:StartPicking()
 end
 
 function InspectModule:StopPicking()
-	local self = InspectModule
-
 	-- Unregister GLOBAL_MOUSE_DOWN event
 	if self.pickEventFrame then
 		self.pickEventFrame:UnregisterAllEvents()

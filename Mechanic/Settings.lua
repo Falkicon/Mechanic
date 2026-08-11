@@ -37,7 +37,11 @@ function Mechanic:SetupOptions()
 							return self.db.profile.bufferSize
 						end,
 						set = function(_, v)
-							self.db.profile.bufferSize = v
+							if self.Console and self.Console.SetBufferSize then
+								self.Console:SetBufferSize(v)
+							else
+								self.db.profile.bufferSize = v
+							end
 						end,
 					},
 					showTimestamps = {

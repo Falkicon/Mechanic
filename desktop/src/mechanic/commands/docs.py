@@ -4,7 +4,7 @@ Documentation generation commands.
 Generates CLI reference documentation from registered AFD commands.
 """
 
-from afd import CommandResult, success, error
+from afd import CommandResult, success
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional

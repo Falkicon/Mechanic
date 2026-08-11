@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from .server import app
 from .watcher import SVWatcher
@@ -722,7 +722,7 @@ def release(ctx, addon, version, message, skip_tag):
     if all_success:
         click.secho(f"\n[SUCCESS] Released {addon} v{version}!", fg="green", bold=True)
     else:
-        click.secho(f"\n[!] Release incomplete", fg="yellow")
+        click.secho("\n[!] Release incomplete", fg="yellow")
         sys.exit(1)
 
 
@@ -768,7 +768,6 @@ def setup(ctx, verify, force, skip_config):
         click.echo("")
 
         # If paths not found, prompt for them
-        need_save = False
         new_config = {}
 
         if not wow_root:
@@ -781,7 +780,6 @@ def setup(ctx, verify, force, skip_config):
                 p = Path(user_path)
                 if p.exists():
                     new_config["wow_root"] = str(p)
-                    need_save = True
                 else:
                     click.secho(f"  [!] Path not found: {user_path}", fg="yellow")
 
@@ -795,7 +793,6 @@ def setup(ctx, verify, force, skip_config):
                 p = Path(user_path)
                 if p.exists():
                     new_config["dev_path"] = str(p)
-                    need_save = True
                 else:
                     click.secho(f"  [!] Path not found: {user_path}", fg="yellow")
 
@@ -849,7 +846,7 @@ def setup(ctx, verify, force, skip_config):
 
         success, message = setup_busted()
         if success:
-            click.secho(f"    [OK] busted.bat generated", fg="green")
+            click.secho("    [OK] busted.bat generated", fg="green")
         else:
             click.secho(f"    [!] busted: {message}", fg="yellow")
 
@@ -937,6 +934,8 @@ def mcp(ctx, transport, port):
     # Check if FastMCP is available
     try:
         from mcp.server.fastmcp import FastMCP
+
+        _ = FastMCP
     except ImportError:
         click.secho("[X] FastMCP not installed", fg="red")
         click.echo("    Install with: pip install mcp")
@@ -950,8 +949,8 @@ def mcp(ctx, transport, port):
         cmd_count = len(server.list_commands())
         click.echo(f"Mechanic MCP Server starting on port {port}...")
         click.echo(f"  Tools: {cmd_count}")
-        click.echo(f"  Transport: SSE")
-        click.echo(f"  Features: Rich descriptions, parameter hints, examples")
+        click.echo("  Transport: SSE")
+        click.echo("  Features: Rich descriptions, parameter hints, examples")
 
     # Run the MCP server
     if transport == "sse":

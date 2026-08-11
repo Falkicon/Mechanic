@@ -6,9 +6,9 @@ Migrated from ADDON_DEV/Tools/APIPopulator to AFD commands.
 Enhanced with Townlong Yak integration and pure-Python Lua parser.
 """
 
+import asyncio
 import io
 import json
-import os
 import re
 import subprocess
 import tempfile
@@ -16,7 +16,7 @@ import zipfile
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -407,6 +407,28 @@ def _parse_blizzard_file(
     return _parse_lua_table_python(file_path)
 
 
+def _extract_response_zip(response: requests.Response, output_path: Path) -> int:
+    """Read and extract a downloaded ZIP while containing every member."""
+    try:
+        output_root = output_path.resolve()
+        with zipfile.ZipFile(io.BytesIO(response.content), "r") as archive:
+            for member in archive.infolist():
+                member_path = (output_root / member.filename).resolve()
+                if (
+                    member_path != output_root
+                    and output_root not in member_path.parents
+                ):
+                    raise ValueError(
+                        f"Archive member escapes output directory: {member.filename}"
+                    )
+            archive.extractall(output_root)
+            return len(archive.infolist())
+    finally:
+        close = getattr(response, "close", None)
+        if close:
+            close()
+
+
 def _generate_lua_params(params: List[Dict], examples: List[Dict] = None) -> str:
     """Generate Lua table string for parameters."""
     lua_params = []
@@ -507,7 +529,9 @@ async def _api_populate(
     files = [f for f in doc_dir.iterdir() if f.name.endswith("Documentation.lua")]
 
     for file_path in files:
-        data = _parse_blizzard_file(lua_exe, dumper_script, file_path)
+        data = await asyncio.to_thread(
+            _parse_blizzard_file, lua_exe, dumper_script, file_path
+        )
         if not data or "Functions" not in data:
             continue
 
@@ -528,7 +552,7 @@ async def _api_populate(
             secret_flags = {k: v for k, v in func.items() if k.startswith("Secret")}
 
             impact = "NORMAL"
-            if func.get("SecretReturns") == True:
+            if func.get("SecretReturns") is True:
                 impact = "HIGH"
             elif any(k.startswith("SecretWhen") for k in secret_flags):
                 impact = "CONDITIONAL"
@@ -670,7 +694,7 @@ async def _api_generate(
             if flags:
                 note_parts = []
                 for k, v in flags.items():
-                    if v == True:
+                    if v is True:
                         note_parts.append(k)
                     else:
                         note_parts.append(f"{k}={v}")
@@ -696,7 +720,7 @@ async def _api_generate(
             )
             lua_entry += f'    midnightImpact = "{data["midnightImpact"]}",\n'
             if data["midnightImpact"] == "RESTRICTED":
-                lua_entry += f"    protected = true,\n"
+                lua_entry += "    protected = true,\n"
             if note:
                 lua_entry += f"    midnightNote = {json.dumps(note)},\n"
             lua_entry += "}\n"
@@ -716,22 +740,6 @@ async def _api_generate(
 
     xml_path.write_text("\n".join(xml_output), encoding="utf-8")
     generated_files.append("APIDefs.xml")
-
-    # Generate registry (one level up from APIDefs)
-    registry_path = output_dir.parent / "APIDefinitions_Registry.lua"
-    reg_output = [
-        "-- Generated API Registry Index",
-        "local _, ns = ...",
-        "ns.APIRegistry = {",
-    ]
-    for key, data in sorted(apis.items()):
-        ns = data["namespace"] or "Global"
-        reg_output.append(
-            f'    ["{key}"] = {{ ns = "{ns}", cat = "{data["category"]}", impact = "{data["midnightImpact"]}", name = "{data["name"]}" }},'
-        )
-    reg_output.append("}")
-
-    registry_path.write_text("\n".join(reg_output), encoding="utf-8")
 
     return success(
         data=APIGenerateOutput(
@@ -805,7 +813,9 @@ async def _api_download(
 
     try:
         # Download the ZIP file
-        response = requests.get(download_url, stream=True, timeout=120)
+        response = await asyncio.to_thread(
+            requests.get, download_url, stream=True, timeout=120
+        )
         response.raise_for_status()
 
         # Extract version from Content-Disposition header
@@ -844,10 +854,9 @@ async def _api_download(
 
     # Extract ZIP
     try:
-        zip_data = io.BytesIO(response.content)
-        with zipfile.ZipFile(zip_data, "r") as zf:
-            zf.extractall(output_path)
-            file_count = len(zf.namelist())
+        file_count = await asyncio.to_thread(
+            _extract_response_zip, response, output_path
+        )
     except Exception as e:
         return error(
             code="EXTRACT_FAILED",

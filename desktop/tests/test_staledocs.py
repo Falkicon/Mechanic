@@ -6,25 +6,26 @@ Tests the docs_analyzer module and staledocs command.
 
 import pytest
 from pathlib import Path
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import tempfile
-import os
 
-from mechanic.docs_analyzer import (
-    DocConfidence, DocIssue, DocMetrics, GitInfo,
-    GitAnalyzer, MarkdownAnalyzer, CodeBlockAnalyzer
-)
+from mechanic.docs_analyzer import GitAnalyzer, MarkdownAnalyzer, CodeBlockAnalyzer
 from mechanic.commands.staledocs import (
-    StaleDocsInput, StaleDocIssue, StaleDocsResult,
-    find_markdown_files, get_addon_version, get_existing_functions,
-    get_existing_files, analyze_docs
+    StaleDocsInput,
+    StaleDocIssue,
+    StaleDocsResult,
+    find_markdown_files,
+    get_addon_version,
+    get_existing_functions,
+    get_existing_files,
+    analyze_docs,
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FIXTURES
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.fixture
 def temp_addon():
@@ -113,6 +114,7 @@ Addon:OldFunction()
 # MARKDOWN ANALYZER TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestMarkdownAnalyzer:
     """Tests for MarkdownAnalyzer."""
 
@@ -181,7 +183,9 @@ class TestMarkdownAnalyzer:
         existing_functions = {"Initialize", "DoSomething"}
         existing_files = {"Core.lua", "TestAddon.toc"}
 
-        issues = analyzer.find_dead_references(metrics, existing_functions, existing_files)
+        issues = analyzer.find_dead_references(
+            metrics, existing_functions, existing_files
+        )
 
         # Should not flag Addon:Initialize since Initialize exists
         issue_names = [i.name for i in issues]
@@ -205,6 +209,7 @@ class TestMarkdownAnalyzer:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CODE BLOCK ANALYZER TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestCodeBlockAnalyzer:
     """Tests for CodeBlockAnalyzer."""
@@ -248,6 +253,7 @@ local n = tonumber("5")
 # GIT ANALYZER TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestGitAnalyzer:
     """Tests for GitAnalyzer."""
 
@@ -255,27 +261,29 @@ class TestGitAnalyzer:
         """Test behavior when not in a git repo."""
         analyzer = GitAnalyzer(temp_addon)
 
-        assert analyzer._is_git_repo == False
+        assert not analyzer._is_git_repo
         assert analyzer.get_file_last_modified(temp_addon / "Core.lua") is None
         assert analyzer.get_recent_code_commits() == []
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_git_repo_detection(self, mock_run, temp_addon):
         """Test git repo detection."""
         mock_run.return_value = Mock(returncode=0, stdout=".git\n")
 
         analyzer = GitAnalyzer(temp_addon)
 
-        assert analyzer._is_git_repo == True
+        assert analyzer._is_git_repo
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_get_file_last_modified(self, mock_run, temp_addon):
         """Test getting file last modified info."""
         # First call for git rev-parse, second for git log
         mock_run.side_effect = [
             Mock(returncode=0, stdout=".git\n"),  # rev-parse
-            Mock(returncode=0, stdout="abc12345|2024-01-15 10:30:00 -0500|Test commit"),  # log
-            Mock(returncode=0, stdout="5\n")  # rev-list count
+            Mock(
+                returncode=0, stdout="abc12345|2024-01-15 10:30:00 -0500|Test commit"
+            ),  # log
+            Mock(returncode=0, stdout="5\n"),  # rev-list count
         ]
 
         analyzer = GitAnalyzer(temp_addon)
@@ -290,6 +298,7 @@ class TestGitAnalyzer:
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTION TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestHelperFunctions:
     """Tests for helper functions."""
@@ -326,6 +335,7 @@ class TestHelperFunctions:
 # ═══════════════════════════════════════════════════════════════════════════════
 # FULL ANALYSIS TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestFullAnalysis:
     """Tests for the full analysis function."""
@@ -380,6 +390,7 @@ class TestFullAnalysis:
 # CONFIDENCE LEVEL TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestConfidenceLevels:
     """Tests for confidence level assignment."""
 
@@ -417,6 +428,7 @@ This was added in version 0.5.0.
 # PYDANTIC SCHEMA TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSchemas:
     """Tests for Pydantic schemas."""
 
@@ -426,7 +438,7 @@ class TestSchemas:
 
         assert input_data.addon == "Test"
         assert input_data.path is None
-        assert input_data.include_suspicious == True
+        assert input_data.include_suspicious
         assert input_data.commits_threshold == 10
 
     def test_stale_doc_issue_creation(self):
@@ -438,7 +450,7 @@ class TestSchemas:
             line=10,
             name="broken.md",
             message="Link to 'broken.md' points to non-existent file",
-            suggestion="Update or remove the link"
+            suggestion="Update or remove the link",
         )
 
         assert issue.category == "dead_link"
@@ -452,9 +464,9 @@ class TestSchemas:
             docs_analyzed=5,
             issues=[],
             analysis_time_ms=123.45,
-            git_available=True
+            git_available=True,
         )
 
         assert result.addon == "TestAddon"
         assert result.docs_analyzed == 5
-        assert result.git_available == True
+        assert result.git_available

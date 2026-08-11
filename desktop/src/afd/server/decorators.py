@@ -28,16 +28,12 @@ from dataclasses import dataclass, field
 from functools import wraps
 from typing import (
     Any,
-    Awaitable,
     Callable,
     Dict,
-    Generic,
     List,
     Optional,
     Type,
     TypeVar,
-    Union,
-    get_type_hints,
 )
 
 from pydantic import BaseModel

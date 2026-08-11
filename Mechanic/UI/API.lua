@@ -25,8 +25,11 @@ APIModule.hideRestricted = true -- Hide all protected/restricted APIs (default: 
 
 -- Import definitions
 local API_DEFINITIONS = ns.APIDefinitions
-local API_REGISTRY = ns.APIRegistry
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
+
+local function GetAPINamespace(apiKey)
+	return apiKey and apiKey:match("^(.+)%.") or "Global"
+end
 
 --------------------------------------------------------------------------------
 -- Common Parameter Examples (auto-applied based on param name patterns)
@@ -315,7 +318,7 @@ function APIModule:BuildLayout(parent)
 
 	-- Impact filter dropdown
 	local impactItems = {
-		{ value = nil, text = "All Impacts" },
+		{ value = "ALL", text = "All Impacts" },
 		{ value = "HIGH", text = "|cffff4444High|r" },
 		{ value = "CONDITIONAL", text = "|cffffaa00Conditional|r" },
 		{ value = "RESTRICTED", text = "|cffff8800Restricted|r" },
@@ -326,33 +329,31 @@ function APIModule:BuildLayout(parent)
 		items = impactItems,
 		defaultText = "All Impacts",
 		onSelect = function(value)
-			APIModule.impactFilter = value
+			APIModule.impactFilter = value ~= "ALL" and value or nil
 			APIModule:ApplyFilters()
 		end,
 	})
 	impactDropdown:SetPoint("LEFT", 0, 0)
 	self.impactDropdown = impactDropdown
 
-	-- Namespace filter (searchable picker)
-	local nsPicker = FenUI:CreateSearchablePicker(filterRow, {
+	-- Namespace filter
+	local namespaceDropdown = FenUI:CreateDropdown(filterRow, {
 		width = 120,
 		height = 22,
-		popupWidth = 240,
-		popupHeight = 320,
 		defaultText = "All Namespaces",
 		items = {},
-		onSelect = function(value, item)
-			APIModule.namespaceFilter = value
+		onSelect = function(value)
+			APIModule.namespaceFilter = value ~= "ALL" and value or nil
 			APIModule:ApplyFilters()
 		end,
 	})
-	nsPicker:SetPoint("LEFT", impactDropdown, "RIGHT", 4, 0)
-	self.nsPicker = nsPicker
+	namespaceDropdown:SetPoint("LEFT", impactDropdown, "RIGHT", 4, 0)
+	self.namespaceDropdown = namespaceDropdown
 
 	-- Safe Only toggle button
 	local safeToggle = CreateFrame("Button", nil, filterRow)
 	safeToggle:SetSize(56, 22)
-	safeToggle:SetPoint("LEFT", nsPicker, "RIGHT", 4, 0)
+	safeToggle:SetPoint("LEFT", namespaceDropdown, "RIGHT", 4, 0)
 
 	-- Background
 	local toggleBg = safeToggle:CreateTexture(nil, "BACKGROUND")
@@ -490,7 +491,7 @@ function APIModule:BuildLayout(parent)
 end
 
 function APIModule:BuildNamespaceList()
-	local items = { { key = "all", text = "All Namespaces", value = nil } }
+	local items = { { text = "All Namespaces", value = "ALL" } }
 	for _, nsKey in ipairs(ns.APINamespaces or {}) do
 		local cat = ns.APICategoryLookup[nsKey]
 		local displayText = nsKey
@@ -502,31 +503,29 @@ function APIModule:BuildNamespaceList()
 		end
 		table.insert(items, { key = nsKey, text = displayText, value = nsKey })
 	end
-	-- Update the SearchablePicker with items
-	if self.nsPicker and self.nsPicker.SetItems then
-		self.nsPicker:SetItems(items)
+	if self.namespaceDropdown and self.namespaceDropdown.SetItems then
+		self.namespaceDropdown:SetItems(items)
 	end
 end
 
 --------------------------------------------------------------------------------
--- Navigation Building (from Registry)
+-- Navigation Building
 --------------------------------------------------------------------------------
 
 function APIModule:BuildAllNavItems()
 	local items = {}
 	local namespaceAPIs = {} -- Group by namespace
 
-	-- Group APIs by namespace from registry
-	for apiKey, entry in pairs(API_REGISTRY) do
-		local nsKey = entry.ns or "Global"
+	for apiKey, definition in pairs(API_DEFINITIONS) do
+		local nsKey = GetAPINamespace(apiKey)
 		if not namespaceAPIs[nsKey] then
 			namespaceAPIs[nsKey] = {}
 		end
 		table.insert(namespaceAPIs[nsKey], {
 			key = apiKey,
-			name = entry.name,
+			name = definition.name or apiKey,
 			namespace = nsKey,
-			impact = entry.impact or "RESTRICTED",
+			impact = definition.midnightImpact or "NORMAL",
 		})
 	end
 
@@ -588,32 +587,21 @@ function APIModule:ApplyFilters()
 			else
 				pendingHeader = nil
 			end
-		elseif item.isAPI then
-			-- Check namespace filter
-			if nsFilter and item.namespace ~= nsFilter then
-				-- Skip
-			else
-				-- Check "Safe Only" filter (hide restricted/protected APIs)
-				if hideRestricted and item.impact and item.impact ~= "NORMAL" then
-					-- Skip protected APIs when "Safe Only" is checked
-				else
-					-- Check impact filter
-					local passImpact = not impactFilter or item.impact == impactFilter
+		elseif item.isAPI
+			and (not nsFilter or item.namespace == nsFilter)
+			and (not hideRestricted or not item.impact or item.impact == "NORMAL") then
+			local passImpact = not impactFilter or item.impact == impactFilter
+			local passSearch = searchLower == ""
+				or (item.text and item.text:lower():find(searchLower, 1, true))
+				or (item.key and item.key:lower():find(searchLower, 1, true))
 
-					-- Check search filter
-					local passSearch = searchLower == "" or
-						(item.text and item.text:lower():find(searchLower, 1, true)) or
-						(item.key and item.key:lower():find(searchLower, 1, true))
-
-						if passImpact and passSearch then
-						-- Add pending header if this is first visible item in namespace
-						if pendingHeader then
-							table.insert(filtered, pendingHeader)
-							pendingHeader = nil
-						end
-						table.insert(filtered, item)
-					end
+			if passImpact and passSearch then
+				-- Add pending header if this is first visible item in namespace
+				if pendingHeader then
+					table.insert(filtered, pendingHeader)
+					pendingHeader = nil
 				end
+				table.insert(filtered, item)
 			end
 		end
 	end
@@ -901,10 +889,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 			size = 24,
 			tooltip = L["Run Namespace"] or "Run all APIs in this namespace",
 			onClick = function()
-				-- Get namespace from registry (has ns field) rather than definitions
-				local registryEntry = API_REGISTRY[apiDef.key]
-				local nsToRun = registryEntry and registryEntry.ns or apiDef.category
-				self:RunNamespace(nsToRun)
+				self:RunNamespace(GetAPINamespace(apiDef.key))
 			end,
 		})
 	end)
@@ -1002,9 +987,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	apiNotesBox:Show()
 
 	-- Load saved notes
-	local savedNotes = Mechanic.db.profile.apiTests
-			and Mechanic.db.profile.apiTests[apiDef.key]
-			and Mechanic.db.profile.apiTests[apiDef.key].notes
+	local savedNotes = Mechanic.db.profile.apiNotes and Mechanic.db.profile.apiNotes[apiDef.key]
 		or ""
 	apiNotesBox:SetText(savedNotes)
 
@@ -1116,6 +1099,19 @@ end
 -- API Execution
 --------------------------------------------------------------------------------
 
+local function ConvertParamValue(paramDef, value)
+	if value == nil then
+		return nil
+	end
+	if paramDef.type == "number" or paramDef.type == "luaIndex" then
+		return tonumber(value)
+	end
+	if (paramDef.type == "boolean" or paramDef.type == "bool") and type(value) == "string" then
+		return value == "true" or value == "1"
+	end
+	return value
+end
+
 function APIModule:RunAPI(apiDef)
 	-- For protected APIs, save the metadata without executing
 	if apiDef.protected then
@@ -1156,13 +1152,7 @@ function APIModule:RunAPI(apiDef)
 	for _, paramDef in ipairs(apiDef.params) do
 		local input = self.paramInputs[paramDef.name]
 		local rawValue = input and input:GetText() or ""
-		local value = rawValue ~= "" and rawValue or paramDef.default
-
-		if paramDef.type == "number" or paramDef.type == "luaIndex" then
-			value = tonumber(value)
-		elseif paramDef.type == "boolean" then
-			value = value == "true" or value == "1"
-		end
+		local value = ConvertParamValue(paramDef, rawValue ~= "" and rawValue or paramDef.default)
 		
 		-- Check for required params that are nil/empty (no default provided)
 		if value == nil and paramDef.default == nil then
@@ -1283,10 +1273,7 @@ function APIModule:RunNamespace(namespace)
 	local protectedCount = 0
 	local results = {}
 	for apiKey, apiDef in pairs(API_DEFINITIONS) do
-		-- Get ns from registry (definitions don't have it)
-		local registryEntry = API_REGISTRY[apiKey]
-		local apiNs = registryEntry and registryEntry.ns
-		-- Match on registry ns field
+		local apiNs = GetAPINamespace(apiKey)
 		if apiNs == namespace then
 			totalInNamespace = totalInNamespace + 1
 			if apiDef.protected then
@@ -1346,12 +1333,7 @@ function APIModule:RunAPISilent(apiDef)
 	-- Use defaults for parameters
 	local params = {}
 	for _, paramDef in ipairs(apiDef.params) do
-		local value = paramDef.default
-		if paramDef.type == "number" then
-			value = tonumber(value)
-		elseif paramDef.type == "boolean" then
-			value = value == "true" or value == "1"
-		end
+		local value = ConvertParamValue(paramDef, paramDef.default)
 		table.insert(params, value)
 	end
 	
@@ -1434,16 +1416,7 @@ function APIModule:ExecuteAPITest(apiDef, inputParams)
 			value = paramDef.default
 		end
 		
-		-- Type conversion
-		if value ~= nil then
-			if paramDef.type == "number" or paramDef.type == "luaIndex" then
-				value = tonumber(value)
-			elseif paramDef.type == "boolean" then
-				if type(value) == "string" then
-					value = value == "true" or value == "1"
-				end
-			end
-		end
+		value = ConvertParamValue(paramDef, value)
 		
 		-- Check for required params that are nil (no default, no input)
 		if value == nil and paramDef.default == nil then
@@ -1549,9 +1522,7 @@ function APIModule:CopyAPIReport(apiDef)
 		table.insert(lines, "Not yet tested.")
 	end
 
-	local notes = Mechanic.db.profile.apiTests
-		and Mechanic.db.profile.apiTests[apiDef.key]
-		and Mechanic.db.profile.apiTests[apiDef.key].notes
+	local notes = Mechanic.db.profile.apiNotes and Mechanic.db.profile.apiNotes[apiDef.key]
 	if notes and notes ~= "" then
 		table.insert(lines, "")
 		table.insert(lines, "Notes:")
@@ -1754,9 +1725,8 @@ function APIModule:SaveAPIResult(apiKey, resultData)
 end
 
 function APIModule:SaveNotes(apiKey, notes)
-	Mechanic.db.profile.apiTests = Mechanic.db.profile.apiTests or {}
-	Mechanic.db.profile.apiTests[apiKey] = Mechanic.db.profile.apiTests[apiKey] or {}
-	Mechanic.db.profile.apiTests[apiKey].notes = notes
+	Mechanic.db.profile.apiNotes = Mechanic.db.profile.apiNotes or {}
+	Mechanic.db.profile.apiNotes[apiKey] = notes
 end
 
 --- Get all API test results for CLI/agent export
@@ -1775,8 +1745,8 @@ function APIModule:GetAPIResults()
 		tests = {},
 	}
 	
-	-- Count total APIs from registry
-	for _ in pairs(API_REGISTRY) do
+	-- Count total APIs from definitions
+	for _ in pairs(API_DEFINITIONS) do
 		results.totalAPIs = results.totalAPIs + 1
 	end
 	
@@ -1791,9 +1761,7 @@ function APIModule:GetAPIResults()
 				results.summary[status] = results.summary[status] + 1
 			end
 			
-			-- Get namespace from registry
-			local registryEntry = API_REGISTRY[apiKey]
-			local namespace = registryEntry and registryEntry.ns or "Unknown"
+			local namespace = GetAPINamespace(apiKey)
 			
 			results.tests[apiKey] = {
 				namespace = namespace,

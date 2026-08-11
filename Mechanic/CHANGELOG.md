@@ -1,6 +1,20 @@
 # Changelog
 
-All notable changes to !Mechanic will be documented in this file.
+All notable changes to the Mechanic in-game addons will be documented in this file.
+
+## [1.4.2 / 1.3.3] - 2026-08-10
+
+### Fixed
+- Restored BugGrabber event registration on current clients.
+- Replaced the unavailable API namespace picker with the supported FenUI dropdown so the API tab builds correctly.
+- Console timestamps now persist wall-clock time, and changing buffer capacity preserves the newest entries safely.
+- API notes now persist independently from session-scoped test results.
+- API parameter conversion handles both `bool` and `boolean` definitions consistently.
+- API namespace statistics distinguish normal and restricted APIs.
+
+### Changed
+- Removed the generated 711 KB API registry; navigation and statistics now derive directly from the canonical definitions.
+- Consolidated duplicate performance collection, sorting, API conversion, and module lifecycle code.
 
 ## [1.3.1] - 2026-01-04
 

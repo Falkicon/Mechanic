@@ -1,6 +1,6 @@
 # CLI Reference
 
-> Auto-generated from `mechanic-desktop` v0.1.0 on 2026-01-07
+> Auto-generated from `mechanic-desktop` v0.2.1 on 2026-08-10
 
 This document lists all available Mechanic CLI commands with their inputs and outputs.
 
@@ -24,6 +24,8 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `addon.test` | Run Busted unit tests on a WoW addon |
 | `addon.validate` | Validate a WoW addon's .toc file for common issues |
 | `changelog.add` | Add an entry to the addon's CHANGELOG.md |
+| `git.commit` | Stage all addon changes and create a git commit |
+| `git.tag` | Create an annotated git tag for an addon release |
 | `version.bump` | Update the version in a WoW addon's .toc file |
 | `atlas.scan` | Scan wow-ui-source for atlas icons and generate searchable i... |
 | `atlas.search` | Search Blizzard UI atlas icons by name pattern (supports wil... |
@@ -56,6 +58,7 @@ This document lists all available Mechanic CLI commands with their inputs and ou
 | `perf.compare` | Compare current performance against baseline and detect regr... |
 | `perf.list` | List all addons with performance baselines |
 | `perf.report` | Generate a performance report showing history and trends |
+| `release.all` | Run version bump, changelog, commit, and tag as one release ... |
 | `research.query` | Search the web for addon development information using Gemin... |
 | `sandbox.exec` | Execute Lua code in sandbox environment with WoW API stubs |
 | `sandbox.generate` | Generate WoW API stubs from APIDefs database for sandbox tes... |
@@ -372,6 +375,47 @@ Add an entry to the addon's CHANGELOG.md
 
 ```bash
 mech call changelog.add -i '{"addon": "<addon>", "version": "<version>", "message": "<message>"}'
+```
+
+---
+
+### `git.commit`
+
+Stage all addon changes and create a git commit
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon |
+| `message` | `string` | Yes | Commit message |
+| `path` | `string` | No (default: `None`) | Override path to addon folder |
+
+**Example:**
+
+```bash
+mech call git.commit -i '{"addon": "<addon>", "message": "<message>"}'
+```
+
+---
+
+### `git.tag`
+
+Create an annotated git tag for an addon release
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon |
+| `version` | `string` | Yes | Version to tag (e.g., '1.2.0') |
+| `message` | `string` | No (default: `None`) | Tag message (defaults to version) |
+| `path` | `string` | No (default: `None`) | Override path to addon folder |
+
+**Example:**
+
+```bash
+mech call git.tag -i '{"addon": "<addon>", "version": "<version>"}'
 ```
 
 ---
@@ -973,6 +1017,28 @@ Generate a performance report showing history and trends
 
 ```bash
 mech call perf.report -i '{"addon": "<addon>"}'
+```
+
+---
+
+### `release.all`
+
+Run version bump, changelog, commit, and tag as one release workflow
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon |
+| `version` | `string` | Yes | New version string |
+| `message` | `string` | Yes | Changelog entry and release description |
+| `category` | `string` | No (default: `'Changed'`) | Changelog category |
+| `path` | `string` | No (default: `None`) | Override path |
+
+**Example:**
+
+```bash
+mech call release.all -i '{"addon": "<addon>", "version": "<version>", "message": "<message>"}'
 ```
 
 ---

@@ -727,6 +727,67 @@
     ]
   },
   {
+    "name": "git.commit",
+    "description": "Stage all addon changes and create a git commit",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": true,
+        "description": "Commit message",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
+    "name": "git.tag",
+    "description": "Create an annotated git tag for an addon release",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "Version to tag (e.g., '1.2.0')",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": false,
+        "description": "Tag message (defaults to version)",
+        "default": null
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path to addon folder",
+        "default": null
+      }
+    ]
+  },
+  {
     "name": "libs.check",
     "description": "Check addon library status against libs.json config",
     "parameters": [
@@ -969,6 +1030,47 @@
         "required": false,
         "description": "Number of recent measurements to show",
         "default": "10"
+      }
+    ]
+  },
+  {
+    "name": "release.all",
+    "description": "Run version bump, changelog, commit, and tag as one release workflow",
+    "parameters": [
+      {
+        "name": "addon",
+        "type": "string",
+        "required": true,
+        "description": "Name of the addon",
+        "default": null
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": true,
+        "description": "New version string",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "string",
+        "required": true,
+        "description": "Changelog entry and release description",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": false,
+        "description": "Changelog category",
+        "default": "'Changed'"
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "required": false,
+        "description": "Override path",
+        "default": null
       }
     ]
   },

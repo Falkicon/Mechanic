@@ -77,3 +77,6 @@ mech = "mechanic.cli:main"
 package-dir = {"" = "src"}
 packages = ["mechanic", "mechanic.commands", "afd", "afd.core", "afd.server", "afd.testing", "afd.transports"]
 
+[tool.ruff]
+extend-exclude = ["src/_afd_OLD"]
+

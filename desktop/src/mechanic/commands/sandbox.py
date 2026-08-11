@@ -6,6 +6,7 @@ Provides offline testing of addon logic:
 - sandbox.exec: Execute Lua code in sandbox with stubs
 """
 
+import asyncio
 import re
 import subprocess
 from pathlib import Path
@@ -202,14 +203,6 @@ def generate_stub_code(api: Dict[str, Any]) -> str:
     impact = api.get("midnightImpact", "NORMAL")
     returns = api.get("returns", [])
 
-    # Split namespace and function name
-    parts = key.split(".")
-    if len(parts) == 2:
-        namespace, func_name = parts
-    else:
-        namespace = None
-        func_name = key
-
     # Generate stub based on protection status
     if protected or impact == "RESTRICTED":
         # Error stub for protected APIs
@@ -392,7 +385,6 @@ def register_commands(server):
             )
 
         # Get file stats
-        import os
         from datetime import datetime
 
         stat = stubs_path.stat()
@@ -497,7 +489,8 @@ end
 
         # Execute Lua
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 [str(lua_path), "-e", full_script],
                 capture_output=True,
                 text=True,
@@ -641,7 +634,8 @@ end
         start_time = time.perf_counter()
 
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 [str(lua_path), "-e", full_script],
                 capture_output=True,
                 text=True,

@@ -5,9 +5,9 @@ Handles version bumping, changelog updates, and git operations.
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
-from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
+import asyncio
 import re
 import subprocess
 from datetime import datetime
@@ -186,8 +186,6 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # git.commit - Stage and commit changes
-    # NOTE: Removed from MCP - subprocess git commands can stall in async context.
-    #       Use CLI directly: git add -A && git commit -m "message"
     # ═══════════════════════════════════════════════════════════════════════════
 
     class GitCommitInput(BaseModel):
@@ -201,8 +199,12 @@ def register_commands(server):
         message: str
         files_staged: int = 0
 
-    # Removed @server.command decorator - git subprocess can hang in MCP context
-    # This function is still available internally for release.all (CLI only)
+    @server.command(
+        name="git.commit",
+        description="Stage all addon changes and create a git commit",
+        input_schema=GitCommitInput,
+        output_schema=GitCommitResult,
+    )
     async def git_commit(
         input: GitCommitInput, context: Any = None
     ) -> CommandResult[GitCommitResult]:
@@ -216,26 +218,41 @@ def register_commands(server):
 
         try:
             # Stage all changes
-            stage_result = subprocess.run(
-                ["git", "add", "-A"],
+            stage_result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "add", "-A", "--", "."],
                 cwd=str(addon_path),
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
+            if stage_result.returncode != 0:
+                return error(
+                    code="GIT_STAGE_FAILED",
+                    message=stage_result.stderr.strip() or "Failed to stage changes",
+                    suggestion="Resolve the git error and retry the commit",
+                )
 
             # Get staged file count
-            status = subprocess.run(
-                ["git", "diff", "--cached", "--name-only"],
+            status = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "diff", "--cached", "--name-only", "--", "."],
                 cwd=str(addon_path),
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
+            if status.returncode != 0:
+                return error(
+                    code="GIT_STATUS_FAILED",
+                    message=status.stderr.strip() or "Failed to inspect staged changes",
+                    suggestion="Verify the addon path is inside a git repository",
+                )
             files_staged = len([f for f in status.stdout.splitlines() if f.strip()])
 
             # Commit
-            commit_result = subprocess.run(
+            commit_result = await asyncio.to_thread(
+                subprocess.run,
                 ["git", "commit", "-m", input.message],
                 cwd=str(addon_path),
                 capture_output=True,
@@ -244,7 +261,8 @@ def register_commands(server):
             )
 
             # Get commit hash
-            hash_result = subprocess.run(
+            hash_result = await asyncio.to_thread(
+                subprocess.run,
                 ["git", "rev-parse", "--short", "HEAD"],
                 cwd=str(addon_path),
                 capture_output=True,
@@ -268,16 +286,22 @@ def register_commands(server):
                 suggestion="Check for large files or network issues",
             )
 
-        if (
-            commit_result.returncode != 0
-            and "nothing to commit" in commit_result.stdout.lower()
-        ):
+        commit_output = (commit_result.stdout + commit_result.stderr).lower()
+        if commit_result.returncode != 0 and "nothing to commit" in commit_output:
             return success(
                 data=GitCommitResult(
                     addon=input.addon, message=input.message, files_staged=0
                 ),
                 reasoning="No changes to commit",
                 confidence=1.0,
+            )
+        if commit_result.returncode != 0:
+            return error(
+                code="GIT_COMMIT_FAILED",
+                message=commit_result.stderr.strip()
+                or commit_result.stdout.strip()
+                or "Git commit failed",
+                suggestion="Resolve the git error and retry the commit",
             )
 
         src = create_source(
@@ -301,8 +325,6 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # git.tag - Create a version tag
-    # NOTE: Removed from MCP - subprocess git commands can stall in async context.
-    #       Use CLI directly: git tag -a v1.2.3 -m "Release v1.2.3"
     # ═══════════════════════════════════════════════════════════════════════════
 
     class GitTagInput(BaseModel):
@@ -318,7 +340,12 @@ def register_commands(server):
         tag: str
         created: bool
 
-    # Removed @server.command decorator - git subprocess can hang in MCP context
+    @server.command(
+        name="git.tag",
+        description="Create an annotated git tag for an addon release",
+        input_schema=GitTagInput,
+        output_schema=GitTagResult,
+    )
     async def git_tag(
         input: GitTagInput, context: Any = None
     ) -> CommandResult[GitTagResult]:
@@ -336,7 +363,8 @@ def register_commands(server):
         tag_message = input.message or f"Release {tag_name}"
 
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["git", "tag", "-a", tag_name, "-m", tag_message],
                 cwd=str(addon_path),
                 capture_output=True,
@@ -385,8 +413,6 @@ def register_commands(server):
 
     # ═══════════════════════════════════════════════════════════════════════════
     # release.all - Orchestrate full release flow
-    # NOTE: Removed from MCP - uses git commands that can stall.
-    #       Use CLI: mech release MyAddon 1.2.0 "message"
     # ═══════════════════════════════════════════════════════════════════════════
 
     class ReleaseAllInput(BaseModel):
@@ -402,7 +428,12 @@ def register_commands(server):
         steps_completed: List[str]
         commit_hash: Optional[str]
 
-    # Removed @server.command decorator - calls git functions that can hang
+    @server.command(
+        name="release.all",
+        description="Run version bump, changelog, commit, and tag as one release workflow",
+        input_schema=ReleaseAllInput,
+        output_schema=ReleaseAllResult,
+    )
     async def release_all(
         input: ReleaseAllInput, context: Any = None
     ) -> CommandResult[ReleaseAllResult]:

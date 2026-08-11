@@ -65,7 +65,7 @@ Mechanic/                   ← Git repo root
 │   ├── pyproject.toml
 │   ├── dashboard/          ← Web UI (vanilla HTML/JS)
 │   ├── data/               ← SQLite database
-│   ├── tests/              ← Pytest test suite (9 tests)
+│   ├── tests/              ← Pytest test suite (154 tests)
 │   └── src/mechanic/
 │       ├── cli.py          ← Click CLI entry point
 │       ├── server.py       ← FastAPI + WebSocket
@@ -173,7 +173,7 @@ async def test_my_command_success():
 
 Run tests: `pytest -v` from `desktop/`
 
-Current test status: **9 tests passing**
+Current test status: **154 tests passing**
 
 ---
 

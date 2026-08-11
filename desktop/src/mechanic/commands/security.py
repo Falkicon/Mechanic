@@ -9,11 +9,13 @@ Detects common security and safety issues:
 - Addon communication issues (unvalidated message parsing)
 """
 
+import asyncio
+
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import re
 import time
@@ -596,7 +598,7 @@ def register_commands(server):
                 suggestion="Check the addon name or provide an explicit path",
             )
 
-        result = analyze_addon(addon_path, input.addon, input)
+        result = await asyncio.to_thread(analyze_addon, addon_path, input.addon, input)
 
         src = create_source(
             type="analysis",

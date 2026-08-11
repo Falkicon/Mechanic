@@ -655,7 +655,7 @@ Example: {}""",
     if verbose:
         import sys
 
-        print(f"\nMechanic MCP Server", file=sys.stderr)
+        print("\nMechanic MCP Server", file=sys.stderr)
         print(
             f"Tools: {len(commands) + 1} total across {len(by_category)} categories",
             file=sys.stderr,

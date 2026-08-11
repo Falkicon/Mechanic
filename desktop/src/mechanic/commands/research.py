@@ -60,6 +60,7 @@ def _check_genai_available():
     try:
         from google import genai
 
+        _ = genai
         return True
     except ImportError:
         return False

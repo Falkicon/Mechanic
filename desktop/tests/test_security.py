@@ -5,14 +5,16 @@ Unit tests for security pattern analysis.
 import pytest
 from pathlib import Path
 import tempfile
-import os
 
 from mechanic.commands.security import (
-    find_combat_violations, find_secret_leaks, find_taint_risks,
-    find_unsafe_eval, find_addon_comm_issues, SecurityCategory,
-    PROTECTED_APIS, SECRET_VALUE_APIS
+    find_combat_violations,
+    find_secret_leaks,
+    find_taint_risks,
+    find_unsafe_eval,
+    SecurityCategory,
+    PROTECTED_APIS,
+    SECRET_VALUE_APIS,
 )
-from mechanic.lua_analyzer import Confidence
 
 
 class TestCombatViolations:

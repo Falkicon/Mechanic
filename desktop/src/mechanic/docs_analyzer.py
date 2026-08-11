@@ -11,10 +11,10 @@ in addon projects. It analyzes markdown files for:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Set, List, Optional, Tuple
+from typing import Set, List, Optional, Tuple
 from pathlib import Path
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import subprocess
 
@@ -334,7 +334,7 @@ class MarkdownAnalyzer:
                         file=str(rel_path),
                         name=link,
                         message=f"Link to '{link}' points to non-existent file",
-                        suggestion=f"Update or remove the link",
+                        suggestion="Update or remove the link",
                     )
                 )
 
@@ -352,7 +352,7 @@ class MarkdownAnalyzer:
 
         for ref in metrics.references:
             # Check if it's a file reference
-            if "." in ref and not ":" in ref:
+            if "." in ref and ":" not in ref:
                 # File reference (e.g., Core.lua)
                 if ref not in existing_files:
                     issues.append(

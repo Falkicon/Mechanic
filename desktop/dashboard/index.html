@@ -954,6 +954,16 @@
         // { "MyAddon": "C:/Path/To/MyAddon" }
         let knownAddons = JSON.parse(localStorage.getItem('mechanic.addons') || '{}');
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[char]);
+        }
+
         // Update addon dropdown from known addons (discovered + user-added)
         function updateAddonList() {
             const allAddons = Object.keys(knownAddons).sort();
@@ -969,7 +979,12 @@
             }
             
             overlay.classList.add('hidden');
-            addonSelect.innerHTML = allAddons.map(a => `<option value="${a}">${a}</option>`).join('');
+            addonSelect.replaceChildren(...allAddons.map(addon => {
+                const option = document.createElement('option');
+                option.value = addon;
+                option.textContent = addon;
+                return option;
+            }));
             
             if (selectedAddon && allAddons.includes(selectedAddon)) {
                 addonSelect.value = selectedAddon;
@@ -1071,10 +1086,13 @@
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <div class="toast-title">${type === 'success' ? '✅' : '❌'} ${title}</div>
-                <div class="toast-message">${message}</div>
-            `;
+            const toastTitle = document.createElement('div');
+            toastTitle.className = 'toast-title';
+            toastTitle.textContent = `${type === 'success' ? '✅' : '❌'} ${title}`;
+            const toastMessage = document.createElement('div');
+            toastMessage.className = 'toast-message';
+            toastMessage.textContent = message;
+            toast.append(toastTitle, toastMessage);
             container.appendChild(toast);
             
             setTimeout(() => {
@@ -1163,7 +1181,7 @@
             
             if (!result.success) {
                 document.getElementById('lib-table-body').innerHTML = 
-                    `<tr><td colspan="4" style="text-align: center; color: var(--error); padding: 2rem;">${result.error?.message || 'Failed to check libraries'}</td></tr>`;
+                    `<tr><td colspan="4" style="text-align: center; color: var(--error); padding: 2rem;">${escapeHtml(result.error?.message || 'Failed to check libraries')}</td></tr>`;
                 return;
             }
             
@@ -1173,7 +1191,7 @@
             const banner = document.getElementById('lib-config-banner');
             if (data.has_config) {
                 banner.className = 'lib-config-status found';
-                banner.innerHTML = `<span>✅</span><span><code>libs.json</code> found with ${data.configured_count || 0} libraries configured (mode: ${data.mode || 'include'})</span>`;
+                banner.innerHTML = `<span>✅</span><span><code>libs.json</code> found with ${Number(data.configured_count) || 0} libraries configured (mode: ${escapeHtml(data.mode || 'include')})</span>`;
             } else {
                 banner.className = 'lib-config-status missing';
                 banner.innerHTML = `<span>⚠️</span><span>No <code>libs.json</code> found. <a href="#" id="btn-lib-init" style="color: var(--primary)">Initialize config</a> to manage libraries.</span>`;
@@ -1210,10 +1228,10 @@
                 const statusText = isLocal ? 'local' : lib.status;
                 
                 return `<tr>
-                    <td><span class="lib-name">${lib.name || lib.library}</span></td>
-                    <td><span class="lib-version">${lib.configured_version || '—'}</span></td>
-                    <td><span class="lib-version">${lib.installed_version || '—'}</span></td>
-                    <td><span class="lib-badge ${badgeClass}">${statusText}</span></td>
+                    <td><span class="lib-name">${escapeHtml(lib.name || lib.library)}</span></td>
+                    <td><span class="lib-version">${escapeHtml(lib.configured_version || '—')}</span></td>
+                    <td><span class="lib-version">${escapeHtml(lib.installed_version || '—')}</span></td>
+                    <td><span class="lib-badge ${badgeClass}">${escapeHtml(statusText)}</span></td>
                 </tr>`;
             }).join('');
         }
@@ -1275,7 +1293,7 @@
                 // Flavors
                 const flavors = data.flavors || [];
                 document.getElementById('settings-flavors').innerHTML = flavors.length > 0 
-                    ? flavors.map(f => `<span class="flavor-badge ${f.exists ? 'active' : 'inactive'}">${f.exists ? '✓' : '✗'} ${f.name}</span>`).join('')
+                    ? flavors.map(f => `<span class="flavor-badge ${f.exists ? 'active' : 'inactive'}">${f.exists ? '✓' : '✗'} ${escapeHtml(f.name)}</span>`).join('')
                     : '<span class="flavor-badge inactive">No clients detected</span>';
                 
                 // Data directory
@@ -1312,13 +1330,13 @@
             const addonListEl = document.getElementById('settings-addon-list');
             const addonNames = Object.keys(knownAddons);
             if (addonNames.length > 0) {
-                addonListEl.innerHTML = addonNames.map(name => `
-                    <div class="addon-list-item" data-addon="${name}">
+                addonListEl.innerHTML = addonNames.map((name, index) => `
+                    <div class="addon-list-item" data-addon-index="${index}">
                         <div>
-                            <div class="addon-name">${name}</div>
-                            <div class="addon-path" title="${knownAddons[name]}">${knownAddons[name]}</div>
+                            <div class="addon-name">${escapeHtml(name)}</div>
+                            <div class="addon-path" title="${escapeHtml(knownAddons[name])}">${escapeHtml(knownAddons[name])}</div>
                         </div>
-                        <button class="btn-remove" onclick="removeAddon('${name}')" title="Remove addon">🗑️</button>
+                        <button class="btn-remove" data-addon-index="${index}" onclick="removeAddonByIndex(this.dataset.addonIndex)" title="Remove addon">🗑️</button>
                     </div>
                 `).join('');
             } else {
@@ -1327,18 +1345,23 @@
         }
         
         // Remove addon function
-        async function removeAddon(addonName) {
+        function removeAddonByIndex(index) {
+            const addonName = Object.keys(knownAddons)[Number(index)];
+            if (addonName) removeAddon(addonName);
+        }
+
+        function removeAddon(addonName) {
             if (!confirm(`Remove "${addonName}" from registered addons?`)) return;
-            
-            const result = await executeCommand('addon.remove', { addon: addonName });
-            if (result.success) {
-                delete knownAddons[addonName];
-                populateAddonSelector();
-                refreshSettings();
-                showToast('Addon Removed', `${addonName} has been removed`, 'success');
-            } else {
-                showToast('Error', result.error?.message || 'Failed to remove addon', 'error');
+
+            delete knownAddons[addonName];
+            localStorage.setItem('mechanic.addons', JSON.stringify(knownAddons));
+            if (selectedAddon === addonName) {
+                selectedAddon = '';
+                localStorage.removeItem('mechanic.selectedAddon');
             }
+            updateAddonList();
+            refreshSettings();
+            showToast('Addon Removed', `${addonName} has been removed`, 'success');
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -1398,7 +1421,7 @@
             const sourceList = document.getElementById('source-list');
             if (result.sources && result.sources.length > 0) {
                 sourceList.innerHTML = result.sources.map(s => 
-                    `<li class="source-item"><span>📄</span> ${s.title || s.location || s.id}</li>`
+                    `<li class="source-item"><span>📄</span> ${escapeHtml(s.title || s.location || s.id)}</li>`
                 ).join('');
             } else {
                 sourceList.innerHTML = '<li class="source-item" style="color: var(--text-dim);">No sources</li>';
@@ -1520,7 +1543,8 @@
 
         // Header buttons
         document.getElementById('btn-create-nav').onclick = () => navigateToCommand('addon.create');
-        document.getElementById('btn-reload').onclick = () => executeCommand('reload.trigger', {});  // Uses default CTRL+SHIFT+R
+        const showReloadInstructions = () => showToast('Reload WoW', 'Run /reload in WoW, then wait for Mechanic to sync the results.', 'success');
+        document.getElementById('btn-reload').onclick = showReloadInstructions;
         document.getElementById('btn-stop').onclick = () => {
             if (confirm('Stop the Mechanic server?')) executeCommand('server.shutdown');
         };
@@ -1645,7 +1669,7 @@
                 renderSandboxResults(result.data);
                 showToast('Tests Complete', `${result.data.passed_count} passed, ${result.data.failed_count} failed`, result.data.passed ? 'success' : 'error');
             } else {
-                resultsEl.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--error);">${result.error?.message || 'Failed to run tests'}</div>`;
+                resultsEl.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--error);">${escapeHtml(result.error?.message || 'Failed to run tests')}</div>`;
                 showToast('Test Failed', result.error?.message || 'Unknown error', 'error');
             }
             
@@ -1690,7 +1714,7 @@
                     <div class="test-group" style="margin-bottom: 0.75rem;">
                         <div class="test-group-header" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); margin-bottom: 0.25rem;">
                             <span class="test-status-bullet ${groupStatus}"></span>
-                            <span style="font-weight: 600; color: var(--text);">${groupName}</span>
+                            <span style="font-weight: 600; color: var(--text);">${escapeHtml(groupName)}</span>
                             <span style="color: var(--text-dim); font-size: 0.8rem; margin-left: auto;">${groupPassed}/${groupTotal}</span>
                         </div>
                         <div class="test-group-items" style="padding-left: 1.25rem;">
@@ -1698,13 +1722,13 @@
 
                 tests.forEach(test => {
                     const durationStr = test.duration ? `<span style="color: var(--text-dim); font-size: 0.75rem; margin-left: auto;">${test.duration.toFixed(1)}ms</span>` : '';
-                    const errorStr = !test.passed && test.error ? `<div style="color: var(--error); font-size: 0.75rem; padding: 0.25rem 0 0.25rem 1.25rem; opacity: 0.9;">${test.error}</div>` : '';
+                    const errorStr = !test.passed && test.error ? `<div style="color: var(--error); font-size: 0.75rem; padding: 0.25rem 0 0.25rem 1.25rem; opacity: 0.9;">${escapeHtml(test.error)}</div>` : '';
 
                     testList += `
                         <div class="test-row no-click" style="padding: 0.25rem 0;">
                             <div class="test-info" style="display: flex; align-items: center; gap: 0.5rem;">
                                 <div class="test-status-bullet ${test.passed ? 'pass' : 'fail'}"></div>
-                                <div class="test-name" style="color: ${test.passed ? 'var(--text-dim)' : 'var(--text)'};">${test.shortName}</div>
+                                <div class="test-name" style="color: ${test.passed ? 'var(--text-dim)' : 'var(--text)'};">${escapeHtml(test.shortName)}</div>
                                 ${durationStr}
                             </div>
                             ${errorStr}
@@ -1716,8 +1740,8 @@
             }
 
             // Build metadata section
-            const sourceFiles = data.source_files?.length ? data.source_files.join(', ') : 'None';
-            const specFiles = data.spec_files?.length ? data.spec_files.map(f => f.split('/').pop()).join(', ') : 'None';
+            const sourceFiles = data.source_files?.length ? escapeHtml(data.source_files.join(', ')) : 'None';
+            const specFiles = data.spec_files?.length ? escapeHtml(data.spec_files.map(f => f.split('/').pop()).join(', ')) : 'None';
 
             const metadata = `
                 <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-dark); border-radius: 4px; font-size: 0.8rem; color: var(--text-dim);">
@@ -1745,7 +1769,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
             switch(e.key.toLowerCase()) {
-                case 'r': executeCommand('reload.trigger', {}); break;  // Uses default CTRL+SHIFT+R
+                case 'r': showReloadInstructions(); break;
                 case 'v': navigateToCommand('addon.validate'); break;
                 case ':': e.preventDefault(); consoleCmd.focus(); break;
             }
@@ -1818,9 +1842,10 @@
             const highlights = ['FenUI', 'MechanicLib', 'AceAddon-3.0'];
             
             container.innerHTML = libraries.map(lib => {
-                const isHighlight = highlights.some(h => lib.name.includes(h));
+                const name = String(lib.name || 'Unknown');
+                const isHighlight = highlights.some(h => name.includes(h));
                 const cls = isHighlight ? 'lib-badge-small highlight' : 'lib-badge-small';
-                return `<div class="${cls}" title="${lib.name}">${lib.name} ${lib.version}</div>`;
+                return `<div class="${cls}" title="${escapeHtml(name)}">${escapeHtml(name)} ${escapeHtml(lib.version)}</div>`;
             }).join('');
         }
         
@@ -1864,19 +1889,21 @@
             const sortedAddons = Object.keys(byAddon).sort();
             
             let html = '';
-            for (const addon of sortedAddons) {
+            for (let addonIndex = 0; addonIndex < sortedAddons.length; addonIndex++) {
+                const addon = sortedAddons[addonIndex];
+                const addonId = `addon-${addonIndex}`;
                 const addonErrors = byAddon[addon];
                 const count = addonErrors.reduce((sum, e) => sum + (e.counter || 1), 0);
                 
                 html += `
                     <div class="error-addon">
-                        <div class="error-addon-header" onclick="toggleAddonErrors('${addon}')">
-                            <div class="error-addon-name" id="addon-name-${addon}">
-                                <span class="chevron">▶</span> ${addon}
+                        <div class="error-addon-header" onclick="toggleAddonErrors('${addonId}')">
+                            <div class="error-addon-name" id="addon-name-${addonId}">
+                                <span class="chevron">▶</span> ${escapeHtml(addon)}
                             </div>
                             <span class="error-addon-count">${count}</span>
                         </div>
-                        <div id="addon-errors-${addon}" class="error-addon-items">
+                        <div id="addon-errors-${addonId}" class="error-addon-items">
                 `;
                 
                 for (let i = 0; i < Math.min(addonErrors.length, 10); i++) {
@@ -1884,14 +1911,14 @@
                     const location = `${err.file || 'unknown'}:${err.line || 0}`;
                     const countStr = (err.counter || 1) > 1 ? `<span class="error-count">×${err.counter}</span>` : '';
                     const msg = extractErrorMessage(err.message);
-                    const errId = `err-${addon}-${i}`;
+                    const errId = `err-${addonIndex}-${i}`;
                     
                     html += `
                         <div class="error-item" onclick="toggleErrorDetail('${errId}')">
-                            <span class="error-location">${location}</span>${countStr}
-                            <span class="error-message">${msg}</span>
+                            <span class="error-location">${escapeHtml(location)}</span>${countStr}
+                            <span class="error-message">${escapeHtml(msg)}</span>
                         </div>
-                        <div id="${errId}" class="error-detail">${err.stack || err.message || 'No details'}</div>
+                        <div id="${errId}" class="error-detail">${escapeHtml(err.stack || err.message || 'No details')}</div>
                     `;
                 }
                 
@@ -1948,18 +1975,19 @@
             let html = '';
             const addons = Object.keys(grouped).sort();
             
-            for (const addon of addons) {
+            for (let addonIndex = 0; addonIndex < addons.length; addonIndex++) {
+                const addon = addons[addonIndex];
                 const addonTests = tests.filter(t => t.addon === addon);
                 const addonPassed = addonTests.filter(t => t.passed).length;
                 const addonPerf = (perfData && perfData[addon]) || [];
-                const perfId = `perf-${addon}`.replace(/\s+/g, '-');
-                const sectionId = `section-tests-${addon}`.replace(/\s+/g, '-');
+                const perfId = `perf-${addonIndex}`;
+                const sectionId = `section-tests-${addonIndex}`;
 
                 html += `
                     <div class="output-section">
                         <div class="output-section-header" onclick="toggleSection('${sectionId}')">
                             <div class="output-section-title">
-                                ✅ TESTS: ${addon}
+                                ✅ TESTS: ${escapeHtml(addon)}
                                 <span style="font-weight: normal; opacity: 0.6; font-size: 0.75rem; margin-left: 0.5rem;">
                                     ${addonPassed}/${addonTests.length} Passed
                                 </span>
@@ -1982,8 +2010,8 @@
                                     <div id="${perfId}" class="test-details-pane-perf">
                                         ${addonPerf.map(p => `
                                             <div class="test-detail-item" style="justify-content: space-between;">
-                                                <div><span>⚡</span> ${p.name} <span style="font-size: 0.9em; opacity: 0.7;">(${p.description})</span></div>
-                                                <div style="color: var(--text); font-weight: 600;">${p.ms != null ? p.ms : ''}${p.percent != null ? ' (' + p.percent + '%)' : ''}</div>
+                                                <div><span>⚡</span> ${escapeHtml(p.name)} <span style="font-size: 0.9em; opacity: 0.7;">(${escapeHtml(p.description)})</span></div>
+                                                <div style="color: var(--text); font-weight: 600;">${escapeHtml(p.ms != null ? p.ms : '')}${p.percent != null ? ' (' + escapeHtml(p.percent) + '%)' : ''}</div>
                                             </div>
                                         `).join('')}
                                     </div>
@@ -1991,15 +2019,16 @@
                 `;
                 
                 const cats = Object.keys(grouped[addon]).sort();
-                for (const cat of cats) {
+                for (let catIndex = 0; catIndex < cats.length; catIndex++) {
+                    const cat = cats[catIndex];
                     html += `
                         <div class="test-category">
-                            <div class="test-category-header">${cat}</div>
+                            <div class="test-category-header">${escapeHtml(cat)}</div>
                     `;
                     
                     for (let i = 0; i < grouped[addon][cat].length; i++) {
                         const t = grouped[addon][cat][i];
-                        const testId = `test-${addon}-${cat}-${i}`.replace(/\s+/g, '-');
+                        const testId = `test-${addonIndex}-${catIndex}-${i}`;
                         const statusClass = t.passed ? 'pass' : 'fail';
                         const duration = t.duration ? `${(t.duration * 1000).toFixed(1)}ms` : '';
                         
@@ -2011,38 +2040,38 @@
                             <div class="${rowCls}" ${hasDetails ? `onclick="toggleTestDetail('${testId}')"` : ''} id="row-${testId}">
                                 <div class="test-info">
                                     <div class="test-status-bullet ${statusClass}"></div>
-                                    <span class="test-name">${t.name || 'unnamed'}</span>
+                                    <span class="test-name">${escapeHtml(t.name || 'unnamed')}</span>
                                     <span class="test-meta">${duration}</span>
                                 </div>
                                 ${hasDetails ? '<span class="test-chevron">▶</span>' : ''}
                             </div>
                             ${hasDetails ? `
                                 <div id="${testId}" class="test-details-pane">
-                                    ${t.message ? `<div class="test-msg">${t.message}</div>` : ''}
+                                    ${t.message ? `<div class="test-msg">${escapeHtml(t.message)}</div>` : ''}
                                     
                                     ${t.details && Object.keys(t.details).length > 0 ? `
                                         <span class="test-label-small">Steps / Details</span>
                                         ${Object.values(t.details).map(d => {
-                                            if (typeof d === 'string') return `<div class="test-detail-item"><span>•</span> ${d}</div>`;
+                                            if (typeof d === 'string') return `<div class="test-detail-item"><span>•</span> ${escapeHtml(d)}</div>`;
                                             
                                             // Handle structured step objects (common in Flightsim/DIAG)
                                             if (typeof d === 'object' && d !== null) {
                                                 const label = d.label || d.msg || d.text || '';
-                                                const value = d.value !== undefined ? `: <span style="color: var(--text); font-weight: 500;">${d.value}</span>` : '';
-                                                const status = d.status ? ` <span style="font-size: 0.8em; opacity: 0.6;">(${d.status})</span>` : '';
+                                                const value = d.value !== undefined ? `: <span style="color: var(--text); font-weight: 500;">${escapeHtml(d.value)}</span>` : '';
+                                                const status = d.status ? ` <span style="font-size: 0.8em; opacity: 0.6;">(${escapeHtml(d.status)})</span>` : '';
                                                 
                                                 if (label || value) {
-                                                    return `<div class="test-detail-item"><span>•</span> ${label}${value}${status}</div>`;
+                                                    return `<div class="test-detail-item"><span>•</span> ${escapeHtml(label)}${value}${status}</div>`;
                                                 }
-                                                return `<div class="test-detail-item"><span>•</span> ${JSON.stringify(d)}</div>`;
+                                                return `<div class="test-detail-item"><span>•</span> ${escapeHtml(JSON.stringify(d))}</div>`;
                                             }
-                                            return `<div class="test-detail-item"><span>•</span> ${d}</div>`;
+                                            return `<div class="test-detail-item"><span>•</span> ${escapeHtml(d)}</div>`;
                                         }).join('')}
                                     ` : ''}
                                     
                                     ${t.logs && t.logs.length > 0 ? `
                                         <span class="test-label-small" style="margin-top: 0.75rem;">Captured Logs</span>
-                                        <div class="test-captured-logs">${t.logs.join('\n')}</div>
+                                        <div class="test-captured-logs">${escapeHtml(t.logs.join('\n'))}</div>
                                     ` : ''}
                                 </div>
                             ` : ''}
@@ -2120,8 +2149,8 @@
                 const source = entry.source || 'System';
                 const category = entry.category ? `[${entry.category}]` : '';
                 const message = entry.message || '';
-                const countStr = entry.count > 1 ? ` <span style="color: var(--text-dim); font-size: 0.825em; font-weight: normal; margin-left: 0.25rem;">(x${entry.count})</span>` : '';
-                html += `<div class="console-entry"><span class="console-source">[${source}]</span><span class="console-category">${category}</span><span class="console-message">${message}${countStr}</span></div>`;
+                const countStr = entry.count > 1 ? ` <span style="color: var(--text-dim); font-size: 0.825em; font-weight: normal; margin-left: 0.25rem;">(x${Number(entry.count) || 0})</span>` : '';
+                html += `<div class="console-entry"><span class="console-source">[${escapeHtml(source)}]</span><span class="console-category">${escapeHtml(category)}</span><span class="console-message">${escapeHtml(message)}${countStr}</span></div>`;
             }
             
             container.innerHTML = html;

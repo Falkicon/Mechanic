@@ -15,6 +15,7 @@ from afd.core.metadata import create_source
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Set
+import asyncio
 import time
 
 from ..config import find_addon_path
@@ -23,7 +24,6 @@ from ..docs_analyzer import (
     MarkdownAnalyzer,
     CodeBlockAnalyzer,
     DocConfidence,
-    DocIssue,
     DocMetrics,
 )
 from ..lua_analyzer import LuaAnalyzer
@@ -443,60 +443,7 @@ def register_commands(server):
                 suggestion="Check the addon name or provide an explicit path with the 'path' parameter",
             )
 
-        # STEP 2: Add markdown analysis, skip git
-        import time
-
-        start_time = time.time()
-
-        # Find markdown files
-        doc_files = list(addon_path.glob("*.md"))
-        docs_path = addon_path / "docs"
-        if docs_path.exists():
-            doc_files.extend(docs_path.rglob("*.md"))
-
-        # Initialize markdown analyzer (NO git - subprocess blocks MCP event loop)
-        markdown_analyzer = MarkdownAnalyzer(addon_path, input.addon)
-
-        # Analyze each file
-        issues = []
-        analyzed = 0
-        for doc_path in doc_files:
-            try:
-                metrics = markdown_analyzer.analyze_file(doc_path)
-                analyzed += 1
-                # Check for dead links
-                for issue in markdown_analyzer.find_dead_links(metrics):
-                    issues.append(
-                        StaleDocIssue(
-                            category=issue.category,
-                            confidence=issue.confidence,
-                            file=issue.file,
-                            line=issue.line,
-                            name=issue.name,
-                            message=issue.message,
-                            suggestion=issue.suggestion,
-                        )
-                    )
-            except Exception:
-                continue
-
-        # Build summary
-        summary = StaleDocsSummary(total=len(issues))
-        for issue in issues:
-            summary.by_category[issue.category] = (
-                summary.by_category.get(issue.category, 0) + 1
-            )
-
-        analysis_time = (time.time() - start_time) * 1000
-
-        result = StaleDocsResult(
-            addon=input.addon,
-            docs_analyzed=analyzed,
-            issues=issues[:50],
-            summary=summary,
-            analysis_time_ms=round(analysis_time, 2),
-            git_available=False,  # Git analysis disabled for MCP (subprocess blocks)
-        )
+        result = await asyncio.to_thread(analyze_docs, addon_path, input.addon, input)
 
         src = create_source(
             type="analysis",

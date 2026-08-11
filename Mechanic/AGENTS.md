@@ -10,7 +10,7 @@ For CLI/Desktop documentation, see the root **[AGENTS.md](../AGENTS.md)**.
 
 | Item | Value |
 |------|-------|
-| **Current Version** | 1.3.0 |
+| **Current Version** | 1.3.3 |
 | **MechanicLib** | 1.0 (Minor 3) |
 | **Primary Commands** | `/mech`, `/mechanic` |
 | **Status** | Stable |
@@ -63,7 +63,6 @@ Mechanic/
 │   ├── Tools.lua          # Tools tab module
 │   ├── API.lua            # API Test Bench module
 │   ├── APIDefinitions.lua # API base schemas
-│   ├── APIDefinitions_Registry.lua # Lazy-loading index
 │   ├── APIDefs/           # Namespace-specific definitions (200+ files)
 │   ├── Inspect.lua        # Inspect tab + Pick mode
 │   ├── InspectTree.lua    # Hierarchical tree component

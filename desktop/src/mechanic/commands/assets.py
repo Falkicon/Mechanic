@@ -8,10 +8,9 @@ Migrated from ADDON_DEV/Tools/AssetManager to AFD commands.
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from afd import CommandResult, success, error
-from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
 from ..config import find_addon_path
@@ -57,6 +56,7 @@ def _check_pillow_available() -> bool:
     try:
         from PIL import Image
 
+        _ = Image
         return True
     except ImportError:
         return False

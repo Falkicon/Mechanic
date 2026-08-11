@@ -1,5 +1,4 @@
 import re
-import json
 
 
 def parse_lua_value(text, pos=0):

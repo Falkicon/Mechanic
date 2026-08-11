@@ -10,8 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from afd import CommandResult, success, error
-from afd.core.metadata import create_source
+from afd import CommandResult, success
 from pydantic import BaseModel, Field
 
 from ..config import get_config

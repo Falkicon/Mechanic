@@ -34,15 +34,7 @@ local ADDON_NAME, ns = ...
 ---@field alternatives string[]? Alternative APIs to use
 ---@field protected boolean? True if API is fully protected (can't call from addon)
 
----@class APIRegistryEntry
----@field ns string The namespace/file where the full definition lives
----@field cat string The category key (legacy, kept for compat)
----@field impact string The midnight impact level
----@field name string The short name of the API
-
 ns.APIDefinitions = ns.APIDefinitions or {}
----@type table<string, APIRegistryEntry>
-ns.APIRegistry = ns.APIRegistry or {}
 
 --------------------------------------------------------------------------------
 -- Impact Level Definitions (for filtering and display)
@@ -69,25 +61,26 @@ ns.APICategories = {}
 ns.APICategoryLookup = {}
 ns.APINamespaces = {} -- Ordered list of namespace keys
 
--- Build namespace categories from the registry
--- Called after APIDefinitions_Registry.lua is loaded
+-- Build namespace categories directly from the definitions to avoid maintaining
+-- a second 700+ KB registry with duplicate metadata.
 function ns.BuildNamespaceCategories()
 	local namespaceSet = {}
 	local namespaceStats = {} -- Track counts per namespace
 
-	-- Scan registry for unique namespaces
-	for apiKey, entry in pairs(ns.APIRegistry) do
-		local nsKey = entry.ns or "Global"
+	for apiKey, definition in pairs(ns.APIDefinitions) do
+		local nsKey = apiKey:match("^(.+)%.") or "Global"
 		if not namespaceSet[nsKey] then
 			namespaceSet[nsKey] = true
-			namespaceStats[nsKey] = { total = 0, high = 0, conditional = 0, restricted = 0 }
+			namespaceStats[nsKey] = { total = 0, normal = 0, high = 0, conditional = 0, restricted = 0 }
 		end
 		namespaceStats[nsKey].total = namespaceStats[nsKey].total + 1
-		local impact = entry.impact or "RESTRICTED"
+		local impact = definition.midnightImpact or "NORMAL"
 		if impact == "HIGH" then
 			namespaceStats[nsKey].high = namespaceStats[nsKey].high + 1
 		elseif impact == "CONDITIONAL" then
 			namespaceStats[nsKey].conditional = namespaceStats[nsKey].conditional + 1
+		elseif impact == "NORMAL" then
+			namespaceStats[nsKey].normal = namespaceStats[nsKey].normal + 1
 		else
 			namespaceStats[nsKey].restricted = namespaceStats[nsKey].restricted + 1
 		end
@@ -110,7 +103,14 @@ function ns.BuildNamespaceCategories()
 		local category = {
 			key = nsKey,
 			name = nsKey,
-			description = string.format("%d APIs (%d high, %d conditional)", stats.total, stats.high, stats.conditional),
+			description = string.format(
+				"%d APIs (%d normal, %d high, %d conditional, %d restricted)",
+				stats.total,
+				stats.normal,
+				stats.high,
+				stats.conditional,
+				stats.restricted
+			),
 			priority = i,
 			stats = stats,
 		}

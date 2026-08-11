@@ -1,9 +1,7 @@
 import asyncio
-from watchfiles import awatch, watch
+from watchfiles import awatch
 from pathlib import Path
 from .server import notify_reload
-from .parsers import parse_savedvariables
-import os
 import time
 
 

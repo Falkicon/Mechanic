@@ -8,6 +8,7 @@ from afd.core.metadata import create_source, create_warning, WarningSeverity
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
+import asyncio
 import re
 
 # Use centralized config
@@ -313,7 +314,8 @@ def register_commands(server):
 
         # Run luacheck
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 [
                     str(luacheck_path),
                     str(addon_path),
@@ -432,7 +434,9 @@ def register_commands(server):
         cmd.append(str(addon_path))
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = await asyncio.to_thread(
+                subprocess.run, cmd, capture_output=True, text=True, timeout=60
+            )
         except subprocess.TimeoutExpired:
             return error(
                 code="TIMEOUT",
@@ -559,10 +563,14 @@ def register_commands(server):
         if test_path:
             cmd.append(str(test_path))
 
-
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120, cwd=str(addon_path)
+            result = await asyncio.to_thread(
+                subprocess.run,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(addon_path),
             )
         except FileNotFoundError:
             return error(

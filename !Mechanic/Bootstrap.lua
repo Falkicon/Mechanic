@@ -20,7 +20,7 @@ _G.Mechanic = Mechanic
 _G.MechanicNS = ns  -- Shared namespace for main addon
 
 -- Version from metadata
-Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "1.3.0"
+Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "1.4.2"
 Mechanic.isBootstrap = true  -- Flag indicating main addon not yet loaded
 
 -- Placeholder for main addon to populate
@@ -46,6 +46,7 @@ local defaults = {
         
         -- API/Lua queue results (written by in-game, read by desktop)
         apiTests = {},
+        apiNotes = {},
         luaEvalResults = {},
         
         -- Console buffer for desktop

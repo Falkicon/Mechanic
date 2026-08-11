@@ -237,8 +237,6 @@ class TokenScanner:
         """Extract all function definitions from Lua code."""
         functions = []
         lines = content.splitlines()
-        stripped = self.strip_comments(content)
-
         # Track line numbers by scanning original content
         for line_num, line in enumerate(lines, 1):
             line_stripped = line.strip()
@@ -423,9 +421,11 @@ class TokenScanner:
 
         return accesses
 
-    def scan_events(self, content: str, file_path: str) -> Tuple[List[EventRegistration], Set[str]]:
+    def scan_events(
+        self, content: str, file_path: str
+    ) -> Tuple[List[EventRegistration], Set[str]]:
         """Extract event registrations from Lua code.
-        
+
         Returns:
             Tuple of (event registrations, handler method names)
             Handler names are the methods that will be called by Ace3.
@@ -438,13 +438,14 @@ class TokenScanner:
             for match in self.PATTERNS["event_register"].finditer(line):
                 event_name = match.group(1)
                 # group(2) is the explicit handler, or None if implicit
-                handler = match.group(2) if match.lastindex >= 2 and match.group(2) else event_name
+                handler = (
+                    match.group(2)
+                    if match.lastindex >= 2 and match.group(2)
+                    else event_name
+                )
                 events.append(
                     EventRegistration(
-                        event=event_name, 
-                        file=file_path, 
-                        line=line_num,
-                        handler=handler
+                        event=event_name, file=file_path, line=line_num, handler=handler
                     )
                 )
                 handlers.add(handler)

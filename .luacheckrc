@@ -42,6 +42,7 @@ globals = {
     "C_UI", "GetMouseFoci", "GetMouseFocus", "C_Texture",
     "CLOSE", "AceGUIEditBoxInsertLink", "ChatFrameUtil", "ChatEdit_InsertLink",
     "AceGUIMultiLineEditBoxInsertLink", "GAME_LOCALE",
+	"EventRegistry", "WorldFrame", "MenuUtil", "GetSpecializationInfoForSpecID",
     
     -- UI & Frame Globals
     "UIParent", "GameTooltip", "ChatFrame1", "SlashCmdList", "UIPARENT_MANAGED_FRAME_POSITIONS",
@@ -57,6 +58,8 @@ globals = {
     -- Mechanic addon-specific globals
     "Mechanic",
     "MechanicDB",
+	"BINDING_HEADER_MECHANIC", "BINDING_NAME_MECHANIC_DEV_RELOAD", "BINDING_NAME_MECHANIC_TOGGLE",
+	"MECHANIC_LUA_QUEUE", "MECHANIC_API_QUEUE", "f",
 }
 
 -- Deprecated/Removed APIs (Marked as read-only but will trigger warnings if used incorrectly)
@@ -82,6 +85,8 @@ ignore = {
     "431", -- Shadowing an upvalue
     "432", -- Shadowing an upvalue argument
     "631", -- Line too long
+	"122", -- Intentional writes to WoW-owned global tables and _G export slots
+	"611", -- Whitespace-only lines (handled by formatter, not a correctness issue)
 }
 
 -- Exclude third-party libraries

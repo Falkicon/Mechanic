@@ -205,8 +205,6 @@ function ToolsModule:OnHide()
 	-- Optional: cleanup
 end
 
-function ToolsModule:OnHide() end
-
 function ToolsModule:Export()
 	local navName = (self.selectedAddon and self.selectedAddon ~= "_empty") and self.selectedAddon
 		or (L["All"] or "All")

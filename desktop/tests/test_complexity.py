@@ -7,11 +7,14 @@ from pathlib import Path
 import tempfile
 
 from mechanic.commands.complexity import (
-    find_deep_nesting, find_long_functions, find_long_files,
-    find_magic_numbers, analyze_nesting_depth, ComplexityCategory,
-    Thresholds
+    find_deep_nesting,
+    find_long_functions,
+    find_long_files,
+    find_magic_numbers,
+    analyze_nesting_depth,
+    ComplexityCategory,
+    Thresholds,
 )
-from mechanic.lua_analyzer import Confidence
 
 
 class TestNestingAnalysis:

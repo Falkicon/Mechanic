@@ -19,8 +19,6 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 from afd.core import (
     CommandResult,
     CommandError,
-    is_success,
-    is_failure,
     Source,
     PlanStep,
     Warning as AfdWarning,

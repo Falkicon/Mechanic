@@ -14,7 +14,6 @@ Workflow:
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source

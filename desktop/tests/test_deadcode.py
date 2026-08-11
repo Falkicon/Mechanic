@@ -4,17 +4,14 @@ Unit tests for dead code detection.
 
 import pytest
 from pathlib import Path
-import tempfile
-import os
 
-from mechanic.lua_analyzer import (
-    TokenScanner, LuaAnalyzer, Confidence,
-    FunctionDef, VariableDef, WOW_SAFE_PATTERNS
-)
+from mechanic.lua_analyzer import TokenScanner, LuaAnalyzer, Confidence
 from mechanic.commands.deadcode import (
-    find_orphaned_files, find_unused_functions, find_unused_locals,
-    find_unreachable_code, find_commented_code_blocks, find_unused_locale_strings,
-    get_loaded_files, get_all_lua_files, DeadCodeCategory, DeadCodeInput
+    find_orphaned_files,
+    find_unreachable_code,
+    find_commented_code_blocks,
+    find_unused_locale_strings,
+    DeadCodeCategory,
 )
 
 
@@ -171,7 +168,7 @@ local y = 2
         assert "OnShow" in callbacks
 
         # C_Timer callbacks
-        code = 'C_Timer.After(1, myCallback)'
+        code = "C_Timer.After(1, myCallback)"
         callbacks = scanner.scan_callback_references(code)
         assert "myCallback" in callbacks
 

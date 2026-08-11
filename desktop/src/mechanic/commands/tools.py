@@ -2,9 +2,10 @@
 AFD commands for tool management.
 """
 
+import asyncio
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from afd.core import CommandResult, CommandContext, success, error
+from afd.core import CommandResult, CommandContext, success
 
 
 class ToolInfo(BaseModel):
@@ -50,7 +51,7 @@ def register_tools_commands(server):
         """Check installation status of all development tools."""
         from ..setup import setup_tools, get_setup_summary
 
-        results = setup_tools(verify_only=True)
+        results = await asyncio.to_thread(setup_tools, verify_only=True)
         summary = get_setup_summary(results)
 
         tools = [
