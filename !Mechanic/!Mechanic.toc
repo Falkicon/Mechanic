@@ -1,8 +1,8 @@
-## Interface: 120001, 120000
+## Interface: 120100
 ## Title: !Mechanic
 ## Notes: Bootstrap loader for Mechanic. Provides MechanicLib registration API and early initialization.
 ## Author: Fen (Falkicon)
-## Version: 1.4.0
+## Version: 1.4.1
 ## X-License: GPL-3.0
 ## X-Category: Development Tools
 ## X-Website: https://github.com/Falkicon/Mechanic
