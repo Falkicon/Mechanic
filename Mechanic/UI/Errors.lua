@@ -200,8 +200,8 @@ function ErrorsModule:OnEnable()
 		return
 	end
 
-	-- BugGrabber uses CallbackHandler
-	_G.BugGrabber.RegisterCallback(self, "BugGrabber_BugGrabbed", "OnBugGrabbed")
+	-- BugGrabber publishes new errors through WoW's EventRegistry.
+	EventRegistry:RegisterCallback("BugGrabber.BugGrabbed", self.OnBugGrabbed, self)
 
 	-- Get current session
 	self.currentSession = _G.BugGrabber:GetSessionId()
