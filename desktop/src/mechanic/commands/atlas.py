@@ -14,7 +14,7 @@ from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
-from ..config import get_config
+from ..config import get_config, get_data_dir
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -89,7 +89,7 @@ def _find_atlas_index() -> Optional[Path]:
     search_paths = []
 
     # Check data directory first
-    search_paths.append(config.data_dir / "atlas_index.json")
+    search_paths.append(get_data_dir(create=False) / "atlas_index.json")
 
     # Check legacy locations
     if config.dev_path:

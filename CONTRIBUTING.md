@@ -32,7 +32,7 @@ Mechanic is built with a **command-first architecture** — a pattern where ever
 ### What This Means in Practice
 
 1. **Commands over UI-only features**
-   - Every capability should be accessible via CLI
+   - Desktop capabilities should be accessible through the shared command registry, CLI, and MCP
    - The dashboard is a *visualization* of command output, not a separate system
    - If an agent can't do it, it's incomplete
 
@@ -73,8 +73,8 @@ def validate_endpoint():
 ## Architecture Overview
 
 ```
-┌─────────────────┐      /reload      ┌─────────────────┐      mech       ┌─────────────────┐
-│   In-Game Hub   │ ───────────────▶  │    Desktop      │ ◀────────────▶  │   Agent CLI     │
+┌─────────────────┐      /reload      ┌─────────────────┐      MCP/CLI    ┌─────────────────┐
+│   In-Game Hub   │ ───────────────▶  │    Desktop      │ ◀────────────▶  │    Clients      │
 │   (Lua Addon)   │   SavedVariables  │   (Python)      │   Commands      │                 │
 └─────────────────┘                   └─────────────────┘                 └─────────────────┘
 ```
@@ -85,18 +85,18 @@ def validate_endpoint():
 |-------|---------|------------|
 | **In-Game** | Data collection, live inspection, user interaction | Lua, AceAddon-3.0, FenUI |
 | **Desktop** | Data aggregation, command execution, dashboard | Python, FastAPI, WebSocket |
-| **CLI** | Agent access, automation, scripting | Click, commands |
+| **Clients** | Agent access, automation, scripting | MCP, Click, shared command schemas |
 
 ### Data Flow
 
-1. **In-Game** → Addon writes to `MechanicDB` (SavedVariables)
+1. **In-Game** → `!Mechanic` owns `MechanicDB`; the main `Mechanic` addon aggregates data into the shared database
 2. **On Reload** → WoW flushes SavedVariables to disk
 3. **Watcher** → Desktop detects file change, parses Lua tables
 4. **Storage** → Data persisted to SQLite for history
-5. **Dashboard** → WebSocket pushes update to browser
-6. **CLI** → Same data available via `mech addon.output`
+5. **Dashboard** → WebSocket invalidates the current view; the browser re-reads its selected diagnostic target
+6. **Commands** → MCP/CLI reads use the same client/account/character/profile target; they do not merge unqualified SQLite history into a selected snapshot
 
-**Key insight:** The in-game addon cannot push data in real-time. All data flows through SavedVariables on `/reload`. Design accordingly.
+**Key insight:** The in-game addon cannot push data in real-time. Game-to-desktop snapshots flow through SavedVariables on reload/logout; desktop-to-game queues are separate addon files loaded on reload. Design accordingly.
 
 ---
 
@@ -112,7 +112,11 @@ commands/
 ├── development.py # addon.validate, addon.lint, addon.format, addon.test
 ├── environment.py # addon.create, addon.sync, libs.check
 ├── release.py     # version.bump, changelog.add, git.commit, git.tag
-├── localization.py# locale.validate, locale.extract, atlas.search
+├── locale.py      # locale.validate, locale.extract
+├── atlas.py       # atlas.scan, atlas.search
+├── catalog.py     # commands.list and mutation audit
+├── targets.py     # diagnostic.targets
+├── diagnostics.py # diagnostic.metrics
 └── output.py      # addon.output (errors, tests, console)
 ```
 
@@ -133,32 +137,31 @@ class MyOutput(BaseModel):
 ### 3. Use the Result Helpers
 
 ```python
-from afd import success, failure
+from afd import success, error
+from afd.core.metadata import create_source
 
 # Success with data
 return success(
     data=MyOutput(status="ok", details=["..."]),
     reasoning="Completed in 0.5s",
-    sources=["path/to/file.lua"]
+    sources=[create_source(type="file", id="result", title="Addon file", location="path/to/file.lua")]
 )
 
 # Failure with error
-return failure(
+return error(
     code="ADDON_NOT_FOUND",
     message=f"Addon '{name}' does not exist",
     suggestion="Check the addon name and try again"
 )
 ```
 
-### 4. Dashboard Mirrors CLI
+### 4. Dashboard Consumes Command Schemas
 
-If you add a command, consider whether it should appear in the dashboard:
+The dashboard loads `commands.list` and generates forms for all registered commands, including defaults, descriptions, and mutation status. Add accurate typed schemas and tests; do not maintain a second copy of command defaults in JavaScript. Complex inputs can use raw JSON.
 
-- **Yes:** Core workflow commands (validate, lint, test, output)
-- **Maybe:** Utility commands (atlas.search, libs.check)
-- **No:** Internal commands (sv.parse, server.shutdown)
+Register every command in the explicit read-only/mutating audit in `commands/catalog.py`. File writes, code execution, process/UI actions, and commands with optional mutation must be classified accordingly. A read-only command must not create data directories or initialize a database on its first call.
 
-The dashboard calls commands via the same server the CLI uses. Never add dashboard-only logic.
+For diagnostic commands, use the shared `DiagnosticTarget`/`SelectedTarget` models. For release/sync changes, preserve preview behavior and report partial completion with actionable recovery guidance.
 
 ---
 
@@ -166,15 +169,16 @@ The dashboard calls commands via the same server the CLI uses. Never add dashboa
 
 1. **Define schemas** in the appropriate module
 2. **Implement the command** with `@server.command()` decorator
-3. **Add CLI wrapper** if it needs special argument handling
-4. **Write tests** in `desktop/tests/`
-5. **Update AGENTS.md** with command documentation
+3. **Register the module** in `commands/core.py` and classify mutation in `commands/catalog.py`
+4. **Write tests** through `server.execute` in `desktop/tests/`
+5. **Update the command reference**, relevant usage docs, and changelog; add a CLI wrapper only if generic `call` is insufficient
 
 ### Checklist
 
 - [ ] Input/output schemas defined with descriptions
-- [ ] Command returns `success()` or `failure()`
-- [ ] Works via `mech call <command> -i '{...}'`
+- [ ] Command returns `success()` or `error()`
+- [ ] Works via `mech call <command> '{...}'`
+- [ ] Mutation classification is explicit; read-only behavior and previews match their claims
 - [ ] Error cases handled gracefully
 - [ ] Tests cover happy path and edge cases
 - [ ] AGENTS.md updated
@@ -185,7 +189,8 @@ The dashboard calls commands via the same server the CLI uses. Never add dashboa
 
 ### Python (Desktop)
 
-- **Formatter:** We don't enforce one, but be consistent
+- **Formatter:** Ruff; CI runs `ruff format --check src/ tests/`
+- **Lint:** Ruff correctness rules `E4,E7,E9,F`, pinned in `desktop/constraints-dev.txt`; broader modernization debt is recorded in the [review](docs/quality-review-2026-09-05.md)
 - **Type hints:** Required for public functions and schemas
 - **Docstrings:** Required for commands, optional elsewhere
 
@@ -203,8 +208,15 @@ The dashboard calls commands via the same server the CLI uses. Never add dashboa
 
 ```bash
 cd desktop
-pytest -v
+python -m pip install -c constraints-dev.txt -e ".[dev]"
+python -m pytest -v
+python -m ruff check src tests
+python -m ruff format --check src tests
 ```
+
+The shared pytest fixture isolates home/config/data paths and WoW discovery. Use temporary fixtures; never read or write a developer's installed addon or saved diagnostic history from a test. Install the MCP extra for transport coverage and set `MECHANIC_LUA` to a Lua 5.1 executable for the real bootstrap contract. Missing optional runtimes cause those cases to skip.
+
+From the repository root, run `lua5.1 tests/addon_regressions.lua`, `lua5.1 tests/overhead_regressions.lua`, `node tests/dashboard_regressions.cjs`, and `node tests/dashboard_schema_regressions.cjs` for addon/dashboard changes. CI also builds and smoke-tests the installed wheel, including packaged dashboard assets.
 
 ### Test Philosophy
 
@@ -220,7 +232,7 @@ pytest -v
 
 1. **Explain the use case** — Why is this change valuable?
 2. **Keep it focused** — One feature/fix per PR
-3. **Test your changes** — At minimum, manual testing
+3. **Verify your changes** — Run the relevant automated checks. For installed addon changes, include live reload validation when available; clearly state when only offline checks ran. Documentation-only edits need link/example verification rather than a game reload.
 4. **Update docs** — AGENTS.md, README if needed
 
 ### PR Template

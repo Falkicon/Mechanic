@@ -39,7 +39,7 @@ Mechanic uses a **pragmatic traditional structure** rather than strict layered s
 |-------|-------|-------|
 | **Utilities** | `Utils.lua` | Pure functions with FenUI fallbacks |
 | **Core** | `Core.lua` | Mixed logic + events + registration |
-| **View** | `UI/*.lua` | 14 tab modules using FenUI widgets |
+| **View** | `UI/*.lua` | Seven tabs plus their supporting modules, using FenUI widgets |
 
 This is intentional - Mechanic is a dev tool where full layer separation provides minimal testability benefit for significant refactoring effort.
 
@@ -77,8 +77,9 @@ Mechanic/
 │   ├── MechanicLib/       # SOURCE - synced to other addons
 │   ├── FenUI/             # UI framework
 │   └── Ace3 libs...
-└── Locales/
-    └── enUS.lua
+└── Locales/               # 13 locales loaded by Mechanic.toc
+    ├── enUS.lua
+    └── ...
 ```
 
 ---
@@ -102,7 +103,7 @@ MechanicLib:Register("AddonName", capabilities)
 MechanicLib:Log("AddonName", "message", MechanicLib.Categories.TRIGGER)
 ```
 
-**Source of Truth**: `Libs/MechanicLib/MechanicLib.lua`
+**Editing source**: `Libs/MechanicLib/MechanicLib.lua`. At runtime, `!Mechanic` loads its bootstrap copy first from `../!Mechanic/Libs/MechanicLib/MechanicLib.lua`. After changing the editing source, sync and verify every embedded copy before testing.
 
 ---
 
@@ -156,28 +157,20 @@ MechanicLib.Categories = {
 
 ### Standard Workflows
 
-```bash
-# Linting
-mech call addon.lint '{"addon": "Mechanic"}'
+Use Mechanic's MCP tools directly with `{"addon": "Mechanic"}`:
 
-# Formatting
-mech call addon.format '{"addon": "Mechanic"}'
+| Task | MCP tool |
+|------|----------|
+| Linting | `addon.lint` |
+| Formatting | `addon.format` |
+| TOC validation | `addon.validate` |
+| Library status | `libs.check` |
 
-# TOC Validation
-mech call addon.validate '{"addon": "Mechanic"}'
-
-# Library status
-mech call libs.check '{"addon": "Mechanic"}'
-```
+The `mech` CLI is a user-facing fallback when MCP is unavailable.
 
 ### In-Game Testing
 
-> **IMPORTANT**: Do NOT use `reload.trigger`. Ask the user to `/reload` in WoW and wait for their confirmation before calling `addon.output`.
-
-```bash
-# Get errors and output (after user confirms reload)
-mech call addon.output '{"agent_mode": true}'
-```
+> **IMPORTANT**: Do NOT use `reload.trigger`. Ask the user to `/reload` in WoW and wait for their confirmation before calling the `addon.output` MCP tool with `agent_mode: true` and the target selected through `diagnostic.targets`. Install/sync worktree changes before live verification; documentation-only changes require no reload.
 
 ---
 
@@ -205,7 +198,7 @@ mech call addon.output '{"agent_mode": true}'
 | `!Mechanic` | Required | Bootstrap loader (loads first) |
 | `!BugGrabber` | Optional | Error capture for Errors module |
 | `FenUI` | Local | UI framework (synced from _dev_/Libs) |
-| `MechanicLib` | Local | Registration API (source of truth here) |
+| `MechanicLib` | Local | Registration API; editing source here, bootstrap runtime copy in `!Mechanic` |
 | `Ace3` | Embedded | Addon framework |
 | `LibDBIcon` | Embedded | Minimap button |
 | `LibDataBroker` | Embedded | Launcher support |
@@ -247,7 +240,7 @@ end
 1. **Core.lua is large (41KB)** - Contains mixed concerns; edit carefully
 2. **Utils.lua is pure** - Keep utility functions stateless and testable
 3. **UI modules are self-contained** - Each tab manages its own state
-4. **MechanicLib is the source** - Changes here must be synced to consuming addons
+4. **MechanicLib is edited here** - Sync and verify the `!Mechanic` runtime copy and all consuming addons after changes
 5. **FenUI first** - Use FenUI widgets; add new widgets to FenUI proper
 6. **Test both scenarios** - Ensure addons work with and without Mechanic
 
@@ -255,10 +248,17 @@ end
 
 ## Testing
 
-Manual testing required - no automated test framework for this addon.
+Run the offline addon regressions from the repository root when Lua 5.1 is available:
+
+```bash
+lua tests/addon_regressions.lua
+lua tests/overhead_regressions.lua
+```
+
+These checks cover bootstrap contracts, main-addon lifecycle behavior, and diagnostic overhead. In-game behavior still requires the following manual test matrix.
 
 **Test Matrix**:
-1. Load Mechanic alone - verify UI opens
+1. Load both `!Mechanic` and `Mechanic` without other integrated addons - verify UI opens
 2. Load with registered addons - verify registration in Tools tab
 3. Load without !BugGrabber - verify graceful degradation
 4. Verify all tabs render correctly

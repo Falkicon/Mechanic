@@ -79,13 +79,29 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if not MechanicDB.profiles then
             MechanicDB.profiles = {}
         end
-        if not MechanicDB.profiles.Default then
-            MechanicDB.profiles.Default = {}
+        local name = UnitName and UnitName("player")
+        local realm = GetRealmName and GetRealmName()
+        local character = name and realm and (name .. " - " .. realm)
+        MechanicDB.profileKeys = MechanicDB.profileKeys or {}
+        local profile = character and MechanicDB.profileKeys[character] or "Default"
+        local target = _G.MECHANIC_DIAGNOSTIC_TARGET
+        -- Queue files are shared by every account on this client. Never execute
+        -- a character-bound request on another character or unknown identity.
+        local matches = not target or (not target.character or target.character == character)
+        if target and target.profile and target.profile ~= profile then
+            matches = false
         end
-        
-        -- Store reference for queue processing
-        ns.rawDB = MechanicDB.profiles.Default
-        
+        if not matches then
+            _G.MECHANIC_LUA_QUEUE = nil
+            _G.MECHANIC_API_QUEUE = nil
+        end
+        MechanicDB.profiles[profile] = MechanicDB.profiles[profile] or {}
+        ns.rawDB = MechanicDB.profiles[profile]
+        ns.profileName = profile
+        if character then
+            MechanicDB.profileKeys[character] = profile
+        end
+
         -- Apply defaults for keys we need
         for key, value in pairs(defaults.profile) do
             if ns.rawDB[key] == nil then
@@ -140,44 +156,74 @@ function Mechanic:ProcessLuaEvalQueue()
     _G.MECHANIC_LUA_QUEUE = nil
     
     local results = {}
+    local lastRun = date("%Y-%m-%d %H:%M:%S")
+
+    -- SavedVariables cannot safely store arbitrary return values (functions,
+    -- frames, or cyclic tables). Keep the same textual result contract as Core.
+    local function describe(value)
+        if issecretvalue and issecretvalue(value) then
+            return "[secret]"
+        end
+        local ok, text = pcall(tostring, value)
+        return ok and text or "[unprintable]"
+    end
+
+    local function serialize(value)
+        if issecretvalue and issecretvalue(value) then
+            return "[secret]"
+        end
+        if type(value) ~= "table" then
+            return describe(value)
+        end
+        local parts, count = {}, 0
+        for key, entry in pairs(value) do
+            count = count + 1
+            if count > 10 then
+                table.insert(parts, "...")
+                break
+            end
+            table.insert(parts, describe(key) .. "=" .. describe(entry))
+        end
+        return "{" .. table.concat(parts, ", ") .. "}"
+    end
     
     for i, item in ipairs(queue) do
         local code = item.code
         local label = item.label or ("snippet_" .. i)
         
         -- Execute the code
-        local fn, loadErr = loadstring("return " .. code)
-        if not fn then
-            -- Try without return wrapper
-            fn, loadErr = loadstring(code)
+        local fn, loadErr
+        if type(code) ~= "string" or code == "" then
+            loadErr = "Empty or invalid code snippet"
+        else
+            fn, loadErr = loadstring("return " .. code, label)
         end
+        if not fn and type(code) == "string" and code ~= "" then
+            -- Try without return wrapper
+            fn, loadErr = loadstring(code, label)
+        end
+
+        local entry = { label = label, code = code, executedAt = lastRun }
         
         if fn then
             local success, result = pcall(fn)
             if success then
-                results[label] = {
-                    success = true,
-                    value = result,
-                    code = code,
-                }
+                entry.success = true
+                entry.result = serialize(result)
+                entry.resultType = type(result)
             else
-                results[label] = {
-                    success = false,
-                    error = tostring(result),
-                    code = code,
-                }
+                entry.success = false
+                entry.error = describe(result)
             end
         else
-            results[label] = {
-                success = false,
-                error = "Load error: " .. tostring(loadErr),
-                code = code,
-            }
+            entry.success = false
+            entry.error = "Load error: " .. describe(loadErr)
         end
+        table.insert(results, entry)
     end
     
     -- Store results in SavedVariables for desktop to read
-    ns.rawDB.luaEvalResults = results
+    ns.rawDB.luaEvalResults = { results = results, lastRun = lastRun }
     
     -- Print summary
     local passed, failed = 0, 0

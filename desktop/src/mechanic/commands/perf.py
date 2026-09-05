@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from afd import CommandResult, success
+from afd import CommandResult, error, success
 from pydantic import BaseModel, Field
 
 from ..config import get_config
@@ -24,8 +24,8 @@ from ..config import get_config
 class PerfBaselineInput(BaseModel):
     addon: str = Field(..., description="Name of the addon")
     version: str = Field(..., description="Version being measured")
-    memory_kb: float = Field(..., description="Memory usage in KB")
-    cpu_ms: float = Field(..., description="CPU time in milliseconds")
+    memory_kb: float = Field(..., ge=0, description="Memory usage in KB")
+    cpu_ms: float = Field(..., ge=0, description="CPU time in milliseconds")
 
 
 class PerfBaselineOutput(BaseModel):
@@ -39,13 +39,13 @@ class PerfBaselineOutput(BaseModel):
 
 class PerfCompareInput(BaseModel):
     addon: str = Field(..., description="Name of the addon")
-    memory_kb: float = Field(..., description="Current memory usage in KB")
-    cpu_ms: float = Field(..., description="Current CPU time in milliseconds")
+    memory_kb: float = Field(..., ge=0, description="Current memory usage in KB")
+    cpu_ms: float = Field(..., ge=0, description="Current CPU time in milliseconds")
     memory_threshold: float = Field(
-        default=1.5, description="Memory increase factor that triggers warning"
+        default=1.5, gt=0, description="Memory increase factor that triggers warning"
     )
     cpu_threshold: float = Field(
-        default=2.0, description="CPU increase factor that triggers warning"
+        default=2.0, gt=0, description="CPU increase factor that triggers warning"
     )
 
 
@@ -63,7 +63,9 @@ class PerfCompareOutput(BaseModel):
 
 class PerfReportInput(BaseModel):
     addon: str = Field(..., description="Name of the addon")
-    limit: int = Field(default=10, description="Number of recent measurements to show")
+    limit: int = Field(
+        default=10, ge=1, description="Number of recent measurements to show"
+    )
 
 
 class PerfReportOutput(BaseModel):
@@ -97,7 +99,31 @@ def _get_baselines_dir() -> Path:
 
 def _get_baseline_path(addon_name: str) -> Path:
     """Get the path to an addon's baseline file."""
+    if not _is_safe_addon_name(addon_name):
+        raise ValueError(
+            "Addon name cannot contain path separators or reserved characters"
+        )
     return _get_baselines_dir() / f"{addon_name}_baseline.json"
+
+
+def _is_safe_addon_name(addon_name: str) -> bool:
+    """Return whether an addon name is safe to use as a local baseline filename."""
+    reserved = '<>:"/\\|?*'
+    return (
+        bool(addon_name.strip())
+        and addon_name not in {".", ".."}
+        and not any(char in reserved or ord(char) < 32 for char in addon_name)
+    )
+
+
+def _invalid_addon_error(addon_name: str):
+    return error(
+        code="INVALID_ADDON",
+        message=f"Invalid addon name: {addon_name!r}",
+        suggestion=(
+            "Provide an addon folder name without path separators or reserved characters"
+        ),
+    )
 
 
 def _load_baseline(addon_name: str) -> Dict[str, Any]:
@@ -128,6 +154,9 @@ async def _perf_baseline(
     """
     Record a performance baseline measurement for an addon.
     """
+    if not _is_safe_addon_name(input.addon):
+        return _invalid_addon_error(input.addon)
+
     baseline = _load_baseline(input.addon)
 
     measurement = {
@@ -164,6 +193,9 @@ async def _perf_compare(
     """
     Compare current performance metrics against the baseline and detect regressions.
     """
+    if not _is_safe_addon_name(input.addon):
+        return _invalid_addon_error(input.addon)
+
     baseline = _load_baseline(input.addon)
 
     if not baseline["history"]:
@@ -232,6 +264,9 @@ async def _perf_report(
     """
     Generate a performance report for an addon.
     """
+    if not _is_safe_addon_name(input.addon):
+        return _invalid_addon_error(input.addon)
+
     baseline = _load_baseline(input.addon)
 
     if not baseline["history"]:
@@ -307,7 +342,7 @@ async def _perf_list(
     addons = []
 
     for path in baselines_dir.glob("*_baseline.json"):
-        addon_name = path.stem.replace("_baseline", "")
+        addon_name = path.name.removesuffix("_baseline.json")
         addons.append(addon_name)
 
     addons.sort()

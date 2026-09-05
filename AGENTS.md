@@ -3,12 +3,16 @@
 Technical reference for AI agents working on the Mechanic project.
 
 ---
-## The year is 2026. Your Year clock may be off!
+## Scope and source of truth
+
+This file covers the bootstrap addon and desktop tool. Main-addon work also follows [Mechanic/AGENTS.md](Mechanic/AGENTS.md). Read current schemas through `commands.list`; package/TOC files define component versions. Historical plans and review reports describe their dated snapshots.
 
 
 ## MCP Server (Primary)
 
-Mechanic exposes all 53 commands as MCP tools. **ALWAYS use MCP tools directly** - this is the fastest and most reliable way to interact with the ecosystem.
+Mechanic exposes its registered commands through MCP. **Use connected MCP tools directly** for ecosystem operations. The enhanced MCP adapter uses dash names (for example, `addon-output`); this document uses registry names (`addon.output`).
+
+If Mechanic MCP is unavailable, state that limitation and use source inspection and isolated offline checks for repository work. Do not substitute a live CLI operation or claim that offline checks verified installed game state.
 
 ### Key MCP Tools
 
@@ -18,7 +22,10 @@ Mechanic exposes all 53 commands as MCP tools. **ALWAYS use MCP tools directly**
 | `addon.test` | Run Busted tests for an addon |
 | `addon.lint` | Run Luacheck linter |
 | `sandbox.test` | Run tests offline (no WoW needed) |
-| `api.search` | Search WoW APIs (offline) |
+| `api.search` | Search local API definitions (offline) |
+| `diagnostic.targets` | Discover client/account/character/profile identities |
+| `diagnostic.metrics` | Read bounded desktop overhead and optional saved addon metrics |
+| `commands.list` | Read schemas and mutation metadata |
 
 ### After In-Game Changes
 
@@ -26,7 +33,9 @@ Mechanic exposes all 53 commands as MCP tools. **ALWAYS use MCP tools directly**
 
 1. **Ask** the user to `/reload` in WoW
 2. **Wait** for the user to confirm the reload is complete
-3. **Then** call the `addon.output` MCP tool with `agent_mode=true` to get accurate results
+3. **Then** call the `addon.output` MCP tool with `agent_mode=true` and the same explicit diagnostic target.
+
+A worktree edit does not update an installed addon automatically. Complete offline checks first; live verification requires installing/syncing the changed addon and a confirmed reload. Documentation-only changes do not require a game reload.
 
 ---
 
@@ -40,7 +49,8 @@ The `mech` CLI is for user interaction. AI agents should use MCP tools. Referenc
 
 | Component | Path | Description |
 |-----------|------|-------------|
-| **WoW Addon** | `!Mechanic/` | In-game development hub |
+| **Bootstrap Addon** | `!Mechanic/` | Registration library, early queues, and SavedVariables owner |
+| **Main Addon** | `Mechanic/` | In-game UI and diagnostic aggregation |
 | **Desktop Tool** | `desktop/` | Local companion (CLI + Dashboard) |
 | **Specifications** | `PLAN/` | Phase plans and master spec |
 
@@ -64,19 +74,21 @@ Mechanic/                   ← Git repo root
 ├── desktop/                ← Mechanic Desktop
 │   ├── pyproject.toml
 │   ├── dashboard/          ← Web UI (vanilla HTML/JS)
-│   ├── data/               ← SQLite database
-│   ├── tests/              ← Pytest test suite (154 tests)
+│   ├── tests/              ← Isolated Pytest test suite
 │   └── src/mechanic/
 │       ├── cli.py          ← Click CLI entry point
 │       ├── server.py       ← FastAPI + WebSocket
 │       ├── watcher.py      ← SavedVariables file watcher
 │       └── commands/       ← Command modules
-│           ├── core.py       ← Base commands (sv.*, reload.*, etc.)
+│           ├── core.py       ← Base commands (sv.*, dashboard.metrics, server.shutdown)
 │           ├── development.py ← addon.validate, addon.lint, etc.
 │           ├── release.py    ← version.bump, changelog.add, etc.
 │           ├── locale.py     ← locale.validate, locale.extract
 │           ├── atlas.py      ← atlas.scan, atlas.search
-│           └── environment.py ← addon.create, addon.sync, libs.check
+│           ├── environment.py ← addon.create, addon.sync, libs.check
+│           ├── catalog.py     ← schemas and mutation audit
+│           ├── targets.py     ← diagnostic.targets
+│           └── diagnostics.py ← diagnostic.metrics
 ├── PLAN/                   ← Project-wide specs
 ├── AGENTS.md               ← This file
 ├── README.md
@@ -96,11 +108,14 @@ Mechanic/                   ← Git repo root
 3. **Actionable Errors**: Errors include `code`, `message`, and `suggestion` for recovery.
 4. **Metadata for Trust**: Include `sources`, `reasoning`, and `confidence` where applicable.
 5. **Headless Backend**: UI is a pure consumer of commands via `/api/execute` bridge.
+6. **Mutation Audit**: Add every new command to the explicit read-only/mutating audit in `commands/catalog.py`; registry initialization rejects unaudited commands.
+7. **Diagnostic Identity**: Use `diagnostic.targets` and pass the same target through queues and reads. Never choose a profile or client by newest-file/first-match heuristics.
 
 ### Command Template
 
 ```python
-from afd import CommandResult, success, error
+from typing import Any
+from afd import CommandResult, success
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
@@ -130,13 +145,13 @@ async def my_command(input: MyInput, context: Any = None) -> CommandResult[MyOut
 
 ## Command Reference
 
-For the complete command reference with all 53 commands, see the **using-mechanic** skill:
-`.claude/skills/using-mechanic/references/afd-commands.md`
+For registered input/output schemas and mutation metadata, call `commands.list`. See [command reference](.claude/skills/using-mechanic/references/afd-commands.md) and [diagnostic workflow](docs/quality-improvements.md).
 
 ### Command Categories (Summary)
 
 | Category | Commands | File |
 |----------|----------|------|
+| Diagnostics | `diagnostic.targets`, `diagnostic.metrics`, `commands.list` | `targets.py`, `diagnostics.py`, `catalog.py` |
 | Core | `sv.*`, `dashboard.*`, `server.*` | `core.py` |
 | Development | `addon.validate`, `addon.lint`, `addon.format`, `addon.test`, `addon.deprecations` | `development.py` |
 | Release | `version.bump`, `changelog.add`, `git.*`, `release.all` | `release.py` |
@@ -173,18 +188,22 @@ async def test_my_command_success():
 
 Run tests: `pytest -v` from `desktop/`
 
-Current test status: **154 tests passing**
+Latest verified test status (2026-09-05): **243 tests passing** with MCP installed and `MECHANIC_LUA` set to a Lua 5.1 executable. Optional transport/Lua cases skip when their runtimes are absent.
+
+Additional offline regressions: `lua tests/addon_regressions.lua`, `lua tests/overhead_regressions.lua`, `node tests/dashboard_regressions.cjs`, and `node tests/dashboard_schema_regressions.cjs` from the repository root. See `docs/quality-improvements.md` for current validation and the original review for deferred findings. Desktop tests must use temporary output/data directories; the shared fixture isolates configuration and discovery.
 
 ---
 
 ## Development Workflow
 
 1. **Environment Setup**:
-   - Run `desktop/scripts/setup_dev_env.bat` to install Lua/C dependencies.
-   - Verify with `mech call addon.test`.
+   - From `desktop/`, install the development dependencies with `python -m pip install -c constraints-dev.txt -e ".[dev]"`.
+   - For Windows Lua/Busted compilation, see `desktop/scripts/setup_dev_env.bat`. It installs dependencies; do not run it just to inspect repository state.
+   - Query `tools.status` through MCP before using external addon tools. `addon.test` requires an addon input.
 
 2. **Adding a new feature**:
    - Create command in appropriate module (`development.py`, `release.py`, etc.)
+   - Add the command to the explicit mutation audit in `commands/catalog.py`; registration rejects unaudited names.
    - Add tests in `desktop/tests/`
    - Run `pytest -v` to verify
    - Update `.claude/skills/using-mechanic/references/afd-commands.md` with the new command
@@ -199,12 +218,13 @@ Current test status: **154 tests passing**
 
 ## Agent Guidelines
 
-1. **Diagnostic Hub First**: `!Mechanic` is now the architect of all ecosystem data. When you need to understand the state of the entire project (tests, perf, logs), trigger or trust the **Diagnostic Hub**.
-2. **Addon work**: Navigate to `!Mechanic/` subfolder, reference its `AGENTS.md`.
+1. **Diagnostic Hub First**: The bootstrap owns `MechanicDB`; the main addon aggregates ecosystem diagnostics into it. Discover a target and read its saved output after the confirmed reload. SQLite history is separate from that selected snapshot.
+2. **Addon work**: Bootstrap code is in `!Mechanic/`; main addon code and its additional instructions are in `Mechanic/`. There is no separate bootstrap `AGENTS.md`.
 3. **Desktop work**: Navigate to `desktop/` subfolder, follow command patterns.
-4. **Always test**: Run `pytest` after making changes to `desktop/`.
-5. **Reload Workflow**: After code changes, ask the user to `/reload` and wait for confirmation before calling `addon.output`. The timing between reload and SavedVariables sync is unpredictable.
-6. **Junction links**: Must point to `!Mechanic/!Mechanic`, not root.
+4. **Verification**: Run `pytest` for desktop code changes, the relevant Lua/Node harnesses for addon/dashboard changes, and Ruff for Python. For documentation-only changes, verify paths, examples, and references against source.
+5. **Reload Workflow**: After installing addon changes, ask the user to `/reload` and wait for confirmation before calling `addon.output`. Do not infer completion from elapsed time or watcher events.
+6. **Addon links**: `<client>/Interface/AddOns/!Mechanic` must point to `<repo>/!Mechanic`; the sibling `Mechanic` link must point to `<repo>/Mechanic`. Each destination must contain its matching TOC. Never point either addon link at the repository root.
+7. **Local data**: Default history is `~/.mechanic/data/mechanic.db`; `MECHANIC_DATA_DIR` overrides the directory. Keep fixtures and benchmarks in temporary paths. Read-only commands must not initialize directories or databases.
 
 ---
 

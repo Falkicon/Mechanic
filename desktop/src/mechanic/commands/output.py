@@ -11,6 +11,8 @@ Philosophy:
 from afd import CommandResult, success
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
+
+from ..targets import DiagnosticTarget, SelectedTarget, TargetError, select_target
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import re
@@ -22,6 +24,7 @@ import re
 
 
 class AddonOutputInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     """Input for addon output command."""
 
     agent_mode: bool = Field(
@@ -30,6 +33,7 @@ class AddonOutputInput(BaseModel):
 
 
 class AddonOutputResult(BaseModel):
+    target: Optional[SelectedTarget] = None
     """Formatted addon output for agent consumption."""
 
     output: str = Field(..., description="Formatted markdown output")
@@ -608,8 +612,6 @@ def register_commands(server):
         3. Extract console buffer from MechanicDB
         4. Format everything as markdown (compressed if agent_mode)
         """
-        from ..server import storage
-        from ..config import discover_saved_variables
         from ..parsers import parse_savedvariables
 
         # Extract agent_mode from input
@@ -621,7 +623,12 @@ def register_commands(server):
         hub_perf = {}  # NEW: Hub performance data
 
         # Get latest reload from database
-        latest = storage.get_latest_metrics()
+        try:
+            selected = select_target(input.target)
+        except TargetError as exc:
+            return exc.result()
+        # Untargeted historical metrics must not leak between clients or profiles.
+        latest = None
         timestamp_str = None
 
         if latest and latest.get("timestamp"):
@@ -630,7 +637,9 @@ def register_commands(server):
             )
 
         # Discover SavedVariables paths
-        sv_paths = discover_saved_variables()
+        from pathlib import Path
+
+        sv_paths = [Path(selected.sv_path).parent]
 
         # Parse BugGrabber errors (from first available account)
         errors = []
@@ -680,19 +689,20 @@ def register_commands(server):
                     # Find MechanicDB
                     db = variables.get("MechanicDB", {})
 
-                    # Get profile data (handle AceDB structure)
-                    profile_data = db
-                    if "profiles" in db:
-                        # Get first available profile
-                        profiles = db.get("profiles", {})
-                        if profiles:
-                            profile_name = (
-                                list(profiles.keys())[0]
-                                if isinstance(profiles, dict)
-                                else None
-                            )
-                            if profile_name:
-                                profile_data = profiles.get(profile_name, {})
+                    if selected.profile is not None and selected.profile not in db.get(
+                        "profiles", {}
+                    ):
+                        raise TargetError(
+                            "TARGET_NOT_FOUND", "Selected profile no longer exists."
+                        )
+                    profile_data = (
+                        db["profiles"][selected.profile]
+                        if selected.profile is not None
+                        else db
+                    )
+                    timestamp_str = profile_data.get("luaEvalResults", {}).get(
+                        "lastRun"
+                    )
 
                     console = parse_console_from_mechanic_db(profile_data)
                     libraries = parse_libraries_from_mechanic_db(profile_data)
@@ -730,8 +740,12 @@ def register_commands(server):
                         )
                     )
                     break
-                except Exception:
-                    pass
+                except TargetError as exc:
+                    return exc.result()
+                except Exception as exc:
+                    return TargetError(
+                        "TARGET_READ_ERROR", f"Cannot read selected diagnostics: {exc}"
+                    ).result()
 
         # Get test results from latest reload
         if latest and latest.get("addons_data"):
@@ -1017,6 +1031,7 @@ def register_commands(server):
 
         # Build result
         result = AddonOutputResult(
+            target=selected,
             output=output,
             error_count=len(errors),
             test_count=len(tests),

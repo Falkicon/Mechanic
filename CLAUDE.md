@@ -1,41 +1,21 @@
-# Mechanic - WoW Addon Development Hub
+# Mechanic agent entry point
 
-This repository contains the Mechanic development hub for World of Warcraft addons.
+Follow [AGENTS.md](AGENTS.md) for repository layout, command standards, testing, and MCP usage. Main-addon changes also follow [Mechanic/AGENTS.md](Mechanic/AGENTS.md). Keeping shared workflow rules there avoids conflicting copies.
 
-## The Reload Loop (MANDATORY)
+## Diagnostic workflow
 
-After ANY addon code change, you MUST verify the changes in-game:
+Use connected Mechanic MCP tools directly. Discover a target with `diagnostic.targets` and use the same client/account/character/profile selector for queueing and reading results. MCP tool names may use dashes (`diagnostic-targets`, `addon-output`) while the registry uses dots.
 
-1. **Ask** the user to `/reload` in WoW
-2. **Wait** for the user to confirm the reload is complete
-3. **Then** use the `addon.output` MCP tool (agent_mode=true) to get errors, tests, and console logs
+After addon changes are installed, ask the user to `/reload`, wait for explicit completion, then read `addon.output` with `agent_mode: true` and the selected target. Worktree-only changes and offline tests do not prove live game behavior. Documentation-only changes require no game reload.
 
-> **CRITICAL**: Do NOT pull output immediately after making changes. The timing between reload and SavedVariables sync is unpredictable. Always wait for user confirmation before calling `addon.output`.
+## Addon constraints
 
-## MCP-First Development
+- Target Lua 5.1-compatible syntax; avoid `goto`, `bit32`, and newer Lua-only features.
+- Follow the addon's combat-lockdown and secret-value handling patterns.
+- Keep desktop features behind typed commands; register mutation metadata and expose them through the shared command bridge.
 
-Always prioritize calling MCP tools directly instead of using the shell.
+## Repository skills and references
 
-- **Status**: `env.status`
-- **Errors/Logs**: `addon.output` (with `agent_mode=true`)
-- **Linting**: `addon.lint`
-- **Testing**: `addon.test` or `sandbox.test`
-- **Research**: `api.search` or `fencore.search`
+The checked-in skills use names such as `k-mechanic`, `k-ecosystem`, `s-develop`, `s-debug`, `s-test`, `s-research`, and `s-release` under [.claude/skills](.claude/skills/). Read the matching `SKILL.md` when applying one; do not assume older skill names still exist.
 
-## Technical Constraints
-
-- **Lua 5.1**: Target WoW's Lua engine. Avoid `goto`, `bit32`, or 5.2+ features.
-- **Combat Lockdown**: Never modify protected frames or call protected APIs in combat. Use `InCombatLockdown()` guards.
-- **Secret Values**: Handle 12.0+ secret values using passthrough patterns. Never attempt to log or modify them directly.
-- **Command-First**: All new features must be implemented as commands before being added to any UI.
-
-## Skills & Capabilities
-
-On-demand skills are available in `.claude/skills/`:
-- `fen-ecosystem`: General ecosystem context and workflows
-- `developing-addons`: Core architecture and patterns
-- `debugging-addons`: Systematic problem solving
-- `testing-addons`: Busted and Sandbox testing
-- `researching-apis`: API discovery and Blizzard UI research
-- `using-mechanic`: Mechanic CLI and hub reference
-- `releasing-addons`: Automated release workflow
+The [command snapshot](.claude/skills/using-mechanic/references/afd-commands.md) is a reference document, not an installed `using-mechanic` skill. `commands.list` supplies current schemas and mutation metadata.

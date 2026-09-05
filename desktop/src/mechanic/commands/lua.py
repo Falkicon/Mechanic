@@ -19,6 +19,17 @@ from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
+from ..targets import (
+    DiagnosticTarget,
+    SelectedTarget,
+    TargetError,
+    select_target,
+    read_profile,
+    queue_target_lua,
+)
+
+from ..lua_strings import quote_lua_string as escape_lua_label
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SCHEMAS
@@ -26,6 +37,7 @@ from pydantic import BaseModel, Field
 
 
 class LuaQueueInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     code: List[str] = Field(
         ...,
         description="List of Lua code snippets to execute. Each snippet should return a value.",
@@ -37,6 +49,7 @@ class LuaQueueInput(BaseModel):
 
 
 class LuaQueueResult(BaseModel):
+    target: Optional[SelectedTarget] = None
     queued: int
     queue_file: str
     snippets: List[str]
@@ -44,10 +57,12 @@ class LuaQueueResult(BaseModel):
 
 
 class LuaResultsInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     pass  # No input needed
 
 
 class LuaResultsResult(BaseModel):
+    target: Optional[SelectedTarget] = None
     results: List[Dict[str, Any]]
     total: int
     last_run: Optional[str]
@@ -59,31 +74,10 @@ class LuaResultsResult(BaseModel):
 
 
 def find_addon_path() -> Optional[Path]:
-    """Find the !Mechanic addon folder (where we can write queue files)."""
-    from ..config import discover_saved_variables
+    from ..targets import discover_targets
 
-    paths = discover_saved_variables()
-    if not paths:
-        return None
-
-    # Find the most recently modified !Mechanic.lua, then derive addon path
-    best_path = None
-    best_mtime = 0
-
-    for sv_dir in paths:
-        mechanic_lua = sv_dir / "!Mechanic.lua"
-        if mechanic_lua.exists():
-            mtime = mechanic_lua.stat().st_mtime
-            if mtime > best_mtime:
-                best_mtime = mtime
-                # sv_dir is like: _beta_/WTF/Account/XXX/SavedVariables
-                # Go up 4 levels to get to _beta_, then down to Interface/AddOns
-                wow_client = sv_dir.parent.parent.parent.parent
-                addon_path = wow_client / "Interface" / "AddOns" / "!Mechanic"
-                if addon_path.exists():
-                    best_path = addon_path
-
-    return best_path
+    candidates = [c for c in discover_targets() if Path(c.addon_path).exists()]
+    return Path(select_target(candidates=candidates).addon_path) if candidates else None
 
 
 def escape_lua_string(s: str) -> str:
@@ -97,15 +91,17 @@ def escape_lua_string(s: str) -> str:
 
 
 def write_lua_queue_file(
-    snippets: List[str], labels: Optional[List[str]] = None
+    snippets: List[str],
+    labels: Optional[List[str]] = None,
+    target: Optional[SelectedTarget] = None,
 ) -> Optional[Path]:
     """
     Write the Lua eval queue to MechanicQueue.lua.
 
     Completely rewrites the file (both API and Lua queues are written fresh).
     """
-    addon_path = find_addon_path()
-    if not addon_path:
+    addon_path = Path(target.addon_path) if target else find_addon_path()
+    if not addon_path or not addon_path.exists():
         return None
 
     queue_file = addon_path / "MechanicQueue.lua"
@@ -115,8 +111,10 @@ def write_lua_queue_file(
     for i, code in enumerate(snippets):
         label = labels[i] if labels and i < len(labels) else f"snippet_{i + 1}"
         escaped_code = escape_lua_string(code)
+        escaped_label = escape_lua_label(label)
         queue_items.append(
-            f'\t{{\n\t\t["label"] = "{label}",\n\t\t["code"] = {escaped_code},\n\t}}'
+            f'\t{{\n\t\t["label"] = {escaped_label},\n'
+            f'\t\t["code"] = {escaped_code},\n\t}}'
         )
 
     queue_lua = "{\n" + ",\n".join(queue_items) + "\n}"
@@ -129,32 +127,14 @@ def write_lua_queue_file(
 MECHANIC_LUA_QUEUE = {queue_lua}
 """
 
+    if target:
+        content = queue_target_lua(target) + content
     queue_file.write_text(content, encoding="utf-8")
     return queue_file
 
 
-def get_lua_results() -> Dict[str, Any]:
-    """Read Lua eval results from MechanicDB SavedVariables."""
-    from ..config import discover_saved_variables
-    from ..parsers import parse_savedvariables
-
-    sv_paths = discover_saved_variables()
-
-    for sv_path in sv_paths:
-        mechanic_file = sv_path / "!Mechanic.lua"
-        if mechanic_file.exists():
-            try:
-                content = mechanic_file.read_text(encoding="utf-8", errors="replace")
-                variables = parse_savedvariables(content)
-                db = variables.get("MechanicDB", {})
-                profiles = db.get("profiles", {})
-                if profiles:
-                    profile_data = profiles.get("Default", {})
-                    return profile_data.get("luaEvalResults", {})
-            except Exception:
-                pass
-
-    return {}
+def get_lua_results(target=None) -> Dict[str, Any]:
+    return read_profile(target or select_target()).get("luaEvalResults", {})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -190,7 +170,11 @@ def register_commands(server):
             )
 
         # Write to queue file
-        queue_path = write_lua_queue_file(input.code, input.labels)
+        try:
+            selected = select_target(input.target)
+            queue_path = write_lua_queue_file(input.code, input.labels, selected)
+        except TargetError as exc:
+            return exc.result()
 
         if not queue_path:
             return error(
@@ -208,6 +192,7 @@ def register_commands(server):
 
         return success(
             data=LuaQueueResult(
+                target=selected,
                 queued=len(input.code),
                 queue_file=str(queue_path),
                 snippets=previews,
@@ -225,11 +210,17 @@ def register_commands(server):
     async def lua_results(
         input: LuaResultsInput, context: Any = None
     ) -> CommandResult[LuaResultsResult]:
-        results_data = get_lua_results()
+        try:
+            selected = select_target(input.target)
+            results_data = get_lua_results(selected)
+        except TargetError as exc:
+            return exc.result()
 
         if not results_data:
             return success(
-                data=LuaResultsResult(results=[], total=0, last_run=None),
+                data=LuaResultsResult(
+                    target=selected, results=[], total=0, last_run=None
+                ),
                 reasoning="No Lua eval results found. Queue some code with lua.queue, then /reload in WoW.",
             )
 
@@ -242,6 +233,7 @@ def register_commands(server):
 
         return success(
             data=LuaResultsResult(
+                target=selected,
                 results=results
                 if isinstance(results, list)
                 else list(results.values()),

@@ -1,0 +1,33 @@
+# Mechanic Desktop CI/dev constraints
+#
+# These are the versions exercised by the 2026-09-05 review environment.  All
+# application and test tooling is pinned so the Python 3.10-3.12 matrix does
+# not silently move to a new formatter, test runner, or web stack.  Optional
+# integrations (MCP, Gemini, and Pillow) are intentionally outside this CI
+# install; the dedicated MCP job below pins its adapter separately. Gemini and
+# Pillow retain their independent extras in pyproject.toml.
+#
+# Verify compatibility before changing a pin with:
+#   python -m pip check
+#   python -c "import sys; assert (3, 10) <= sys.version_info[:2] <= (3, 12)"
+
+build==1.5.0
+setuptools==83.0.0
+wheel==0.46.3
+pip==25.2
+
+click==8.4.2
+fastapi==0.131.0
+uvicorn==0.51.0
+watchfiles==1.2.0
+pydantic==2.13.4
+python-dotenv==1.2.2
+requests==2.34.2
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1
+ruff==0.16.0
+
+# Optional protocol adapter exercised by the dedicated MCP CI job.
+mcp==1.28.1

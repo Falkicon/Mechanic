@@ -13,6 +13,7 @@ import tempfile
 import os
 import zipfile
 from types import SimpleNamespace
+from mechanic.commands import perf
 from mechanic.commands.core import get_server
 from mechanic.commands.apidefs import _extract_response_zip
 from afd.testing.assertions import (
@@ -80,39 +81,20 @@ async def test_sv_parse_valid_file():
 
 @pytest.mark.asyncio
 async def test_addon_output():
-    """Test addon.output returns structured markdown output."""
+    """Test addon.output reports the missing target without WoW state."""
     server = get_server()
     result = await server.execute("addon.output", {})
 
-    data = assert_success(result)
-
-    # Verify schema
-    assert hasattr(data, "output")
-    assert hasattr(data, "error_count")
-    assert hasattr(data, "test_count")
-    assert hasattr(data, "console_count")
-
-    # Verify compliance
-    assert_has_reasoning(result)
-    assert_has_sources(result)
-
-    # Verify markdown structure
-    assert "## Addon Output" in data.output
-    assert "### Errors" in data.output
-    assert "### Tests" in data.output
-    assert "### Console" in data.output
+    assert_error(result, "TARGET_NOT_FOUND")
 
 
 @pytest.mark.asyncio
 async def test_addon_output_agent_mode():
-    """Test addon.output with agent_mode compression."""
+    """Test addon.output agent mode preserves target selection errors."""
     server = get_server()
     result = await server.execute("addon.output", {"agent_mode": True})
 
-    data = assert_success(result)
-    assert hasattr(data, "output")
-    # Agent mode should still produce valid output
-    assert "## Addon Output" in data.output
+    assert_error(result, "TARGET_NOT_FOUND")
 
 
 @pytest.mark.asyncio
@@ -232,13 +214,11 @@ async def test_libs_sync_missing_addon():
 
 @pytest.mark.asyncio
 async def test_api_search():
-    """Test api.search finds WoW APIs."""
+    """Test api.search reports missing APIDefs deterministically."""
     server = get_server()
     result = await server.execute("api.search", {"query": "UnitHealth"})
 
-    data = assert_success(result)
-    assert hasattr(data, "results") or hasattr(data, "apis") or hasattr(data, "matches")
-    assert_has_reasoning(result)
+    assert_error(result, "NO_APIDEFS")
 
 
 @pytest.mark.asyncio
@@ -247,8 +227,8 @@ async def test_api_search_no_results():
     server = get_server()
     result = await server.execute("api.search", {"query": "xyznonexistent12345"})
 
-    # Should succeed with empty results, not error
-    assert_success(result)
+    # Without a WoW API database, an empty result would be misleading.
+    assert_error(result, "NO_APIDEFS")
 
 
 @pytest.mark.asyncio
@@ -314,23 +294,21 @@ async def test_api_stats():
 
 @pytest.mark.asyncio
 async def test_lua_queue():
-    """Test lua.queue accepts Lua code for evaluation."""
+    """Test lua.queue requires an explicit discovered diagnostic target."""
     server = get_server()
     # lua.queue expects a list of code strings
     result = await server.execute("lua.queue", {"code": ["return 1 + 1"]})
 
-    assert_success(result)
-    assert_has_reasoning(result)
+    assert_error(result, "TARGET_NOT_FOUND")
 
 
 @pytest.mark.asyncio
 async def test_lua_results():
-    """Test lua.results returns evaluation results."""
+    """Test lua.results requires an explicit discovered diagnostic target."""
     server = get_server()
     result = await server.execute("lua.results", {})
 
-    assert_success(result)
-    assert_has_reasoning(result)
+    assert_error(result, "TARGET_NOT_FOUND")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -579,8 +557,7 @@ async def test_dashboard_metrics():
     server = get_server()
     result = await server.execute("dashboard.metrics", {})
 
-    assert_success(result)
-    assert_has_reasoning(result)
+    assert_error(result, "NO_DATA")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -672,8 +649,9 @@ async def test_perf_list():
 
 
 @pytest.mark.asyncio
-async def test_perf_baseline():
+async def test_perf_baseline(tmp_path, monkeypatch):
     """Test perf.baseline records a measurement."""
+    monkeypatch.setattr(perf, "_get_baselines_dir", lambda: tmp_path)
     server = get_server()
     result = await server.execute(
         "perf.baseline",

@@ -6,7 +6,20 @@ For the in-game addon changelog, see [Mechanic/CHANGELOG.md](./Mechanic/CHANGELO
 
 ## [Unreleased]
 
+### Added
+- Shared diagnostic target discovery and selection, with offline queue-to-SavedVariables contract coverage.
+- Command schema catalog and mutation audit, dashboard forms generated from schemas, and explicit diagnostic target selection.
+- Release/sync previews, preflight validation, and structured partial-failure recovery guidance.
+- Bounded, on-demand desktop and saved addon overhead metrics.
+- Isolated test configuration, constrained CI tooling, and installed-wheel dashboard smoke validation.
+
 ### Fixed
+- Generate valid positional-JSON CLI documentation with schema-derived types and escaped Markdown tables.
+- Correct MCP handler signatures, local dashboard request validation, SQLite connection cleanup, watcher shutdown, environment precedence, and dashboard wheel packaging.
+- Safely encode queue parameters/labels, constrain performance baseline filenames, and treat API search patterns as wildcards rather than regular expressions.
+- Align bootstrap Lua results with the desktop contract, stop hidden addon polling, restore saved auto-refresh preferences, and fix the settings locale namespace.
+- Decode SavedVariables string escapes, reject truncated tables, and avoid repeated full-suffix copies during parsing.
+- Reconnect dashboard sockets, tolerate corrupt persisted addon data, supervise desktop service failures, and isolate documentation/performance tests from persistent files.
 - **MCP tool names**: Use dashes instead of dots in MCP tool names (`addon-lint` vs `addon.lint`) for Cursor agent compatibility. Cursor's agent tool injection doesn't handle dots in tool names.
 - **Async command execution**: Run external tools, Git, API downloads, file picking, and stale-doc Git analysis without blocking the command server.
 - **Dashboard safety**: Escape addon output and command data before rendering, and remove calls to nonexistent reload/removal commands.
@@ -15,6 +28,7 @@ For the in-game addon changelog, see [Mechanic/CHANGELOG.md](./Mechanic/CHANGELO
 - **Release commands**: Restore `git.commit`, `git.tag`, and `release.all` with scoped staging and actionable Git failures.
 
 ### Changed
+- Refresh repository and component entry docs, command examples, agent guidance, security boundaries, and the roadmap against the current implementation.
 - Python and Lua linting now cover the complete tracked source and fail CI on violations.
 - The desktop server version now comes from the package version.
 

@@ -143,6 +143,9 @@
         .cmd-btn:hover { background: var(--card); color: var(--text); border-color: var(--border); }
         .cmd-btn.active { background: var(--primary-glow); color: var(--primary); border-color: var(--primary); }
         .cmd-icon { font-size: 0.75rem; width: 1rem; text-align: center; }
+        .command-picker { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.4rem; font-size: 0.7rem; }
+        .catalog-status { margin-top: 0.3rem; color: var(--text-dim); font-size: 0.6rem; line-height: 1.35; }
+        .target-select { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.4rem; font-size: 0.67rem; }
 
         /* Main Content Views */
         .view { display: none; flex: 1 1 0; min-height: 0; overflow-y: auto; }
@@ -180,6 +183,25 @@
         .command-actions { display: flex; align-items: center; gap: 0.75rem; }
         .history-nav { display: flex; align-items: center; gap: 0.5rem; }
         .history-info { font-size: 0.65rem; color: var(--text-dim); }
+        .mutation-badge { padding: 0.125rem 0.375rem; border-radius: 4px; border: 1px solid var(--border); }
+        .mutation-badge.mutating { color: var(--warning); border-color: var(--warning); }
+        .mutation-badge.read-only { color: var(--success); border-color: var(--success); }
+        .command-input-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem; padding: 0.9rem; }
+        .command-input-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+        .command-input-title { color: var(--text-muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .input-mode-buttons { display: flex; gap: 0.25rem; }
+        .input-mode-buttons .active { color: var(--primary); border-color: var(--primary); }
+        .schema-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.75rem; }
+        .schema-field { min-width: 0; }
+        .schema-label { display: block; color: var(--text); font-family: var(--mono); font-size: 0.72rem; margin-bottom: 0.25rem; }
+        .schema-required { color: var(--warning); font-family: inherit; font-size: 0.6rem; }
+        .schema-description { color: var(--text-dim); font-size: 0.65rem; line-height: 1.35; margin-bottom: 0.3rem; }
+        .schema-control, .command-raw-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 0.45rem 0.55rem; font-family: var(--mono); font-size: 0.7rem; }
+        textarea.schema-control, .command-raw-input { resize: vertical; line-height: 1.45; }
+        .schema-control:focus, .command-raw-input:focus { outline: none; border-color: var(--primary); }
+        .schema-empty { color: var(--text-dim); font-size: 0.75rem; }
+        .command-input-error { color: var(--error); font-size: 0.68rem; line-height: 1.5; margin-top: 0.6rem; white-space: pre-wrap; }
+        .hidden { display: none !important; }
 
         /* Command Result */
         .result-section { margin-bottom: 1rem; }
@@ -497,6 +519,22 @@
                 <div id="addon-status" class="addon-status">Add an addon to get started</div>
             </div>
 
+            <div class="sidebar-section">
+                <div class="sidebar-title">All Commands</div>
+                <select id="command-picker" class="command-picker" aria-label="Command picker">
+                    <option value="">Loading command catalog…</option>
+                </select>
+                <div id="catalog-status" class="catalog-status">Loading schemas…</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Diagnostic Target</div>
+                <select id="diagnostic-target" class="target-select" aria-label="Diagnostic target">
+                    <option value="">Select a client/profile…</option>
+                </select>
+                <div id="target-status" class="catalog-status">No target selected</div>
+            </div>
+
             <!-- Sandbox -->
             <div class="sidebar-section">
                 <div class="sidebar-title">Sandbox</div>
@@ -555,7 +593,7 @@
         <!-- Main Area -->
         <main class="main-area" style="position: relative;">
             <!-- Get Started Overlay -->
-            <div id="get-started-overlay" class="get-started-overlay">
+            <div id="get-started-overlay" class="get-started-overlay hidden">
                 <div class="get-started-icon">🔧</div>
                 <div class="get-started-title">Welcome to Mechanic</div>
                 <div class="get-started-text">
@@ -657,11 +695,25 @@
                         <div class="command-info">
                             <div id="cmd-name" class="command-name">addon.validate</div>
                             <div id="cmd-desc" class="command-desc">Description</div>
-                            <div class="command-meta">
-                                <span id="cmd-status" class="result-status success">—</span>
-                                <span id="cmd-time">—</span>
+                             <div class="command-meta">
+                                 <span id="cmd-status" class="result-status success">—</span>
+                                 <span id="cmd-time">—</span>
+                                 <span id="cmd-mutation" class="mutation-badge">Schema unavailable</span>
+                             </div>
+                     </div>
+
+                    <div class="command-input-card">
+                        <div class="command-input-toolbar">
+                            <div class="command-input-title">Input</div>
+                            <div class="input-mode-buttons">
+                                <button id="btn-form-mode" class="btn btn-ghost active" type="button">Form</button>
+                                <button id="btn-raw-mode" class="btn btn-ghost" type="button">Raw JSON</button>
                             </div>
                         </div>
+                        <div id="cmd-schema-form" class="schema-fields"></div>
+                        <textarea id="cmd-raw-input" class="command-raw-input hidden" rows="10" spellcheck="false" aria-label="Raw command input">{}</textarea>
+                        <div id="cmd-input-error" class="command-input-error hidden"></div>
+                    </div>
                         <div class="command-actions">
                             <div class="history-nav">
                                 <button id="btn-prev" class="btn btn-nav" disabled>◀</button>
@@ -923,6 +975,7 @@
         </div>
     </div>
 
+    <script src="schema-form.js"></script>
     <script>
         // ═══════════════════════════════════════════════════════════════════════════
         // STATE
@@ -930,6 +983,11 @@
         let selectedAddon = localStorage.getItem('mechanic.selectedAddon') || '';
         let currentCommand = null;
         let startTime = Date.now();
+        let commandCatalog = new Map();
+        let activeSchemaForm = null;
+        let commandInputMode = 'form';
+        let diagnosticTargets = [];
+        let selectedDiagnosticTarget = loadStoredDiagnosticTarget();
         
         // Command history: { "addon.validate": [result1, result2, ...], ... }
         const commandHistory = {};
@@ -939,20 +997,40 @@
         // Addons are discovered dynamically - no hardcoded list
         const mechanicAddons = [];
         
-        // Default parameters for commands
-        const commandDefaults = {
-            'release.all': { version: '1.2.3', message: 'Release features', category: 'Changed' },
-            'version.bump': { version: '1.2.3' },
-            'changelog.add': { version: '1.2.3', message: 'Added new feature' },
-            'git.commit': { message: 'chore: update' },
-            'git.tag': { version: '1.2.3' },
-            'addon.create': { name: 'MyAddon', title: 'My Addon', author: 'Name', addon: null },
-            'addon.sync': { flavors: null }, // Uses selected addon
-            'atlas.search': { query: 'inv_sword' }
-        };
-
         // { "MyAddon": "C:/Path/To/MyAddon" }
-        let knownAddons = JSON.parse(localStorage.getItem('mechanic.addons') || '{}');
+        function loadKnownAddons() {
+            try {
+                const stored = localStorage.getItem('mechanic.addons');
+                if (!stored) return {};
+
+                const parsed = JSON.parse(stored);
+                const prototype = parsed && typeof parsed === 'object'
+                    ? Object.getPrototypeOf(parsed)
+                    : null;
+                if (prototype !== Object.prototype || Array.isArray(parsed)) return {};
+                if (Object.values(parsed).some(value => typeof value !== 'string')) return {};
+                return parsed;
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function loadStoredDiagnosticTarget() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem('mechanic.diagnosticTarget') || 'null');
+                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+                const target = {};
+                for (const key of ['client', 'account', 'character', 'profile']) {
+                    if (parsed[key] !== null && parsed[key] !== undefined && typeof parsed[key] !== 'string') return null;
+                    if (typeof parsed[key] === 'string' && parsed[key]) target[key] = parsed[key];
+                }
+                return Object.keys(target).length ? target : null;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        let knownAddons = loadKnownAddons();
 
         function escapeHtml(value) {
             return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -974,7 +1052,7 @@
                 addonStatus.textContent = 'Click + to add an addon';
                 addonStatus.title = '';
                 selectedAddon = '';
-                overlay.classList.remove('hidden');
+                overlay.classList.add('hidden');
                 return;
             }
             
@@ -1001,7 +1079,7 @@
             if (!selectedAddon) {
                 addonStatus.textContent = 'Click + to add an addon';
                 addonStatus.title = '';
-                overlay.classList.remove('hidden');
+                overlay.classList.add('hidden');
                 return;
             }
             
@@ -1018,36 +1096,8 @@
                 addonStatus.title = '';
             }
             
-            // Update input with path if known
-            const defaults = commandDefaults[currentCommand] || {};
-            const payload = { addon: selectedAddon, ...defaults };
-            if (addonPath) {
-                payload.path = addonPath;
-            }
-            consoleInput.value = JSON.stringify(payload);
+            if (currentCommand && commandCatalog.has(currentCommand)) renderCommandInput(currentCommand);
         }
-
-        // Command descriptions
-        const commandDescriptions = {
-            'addon.validate': 'Checks for basic addon structure and critical files.',
-            'addon.lint': 'Runs Luacheck to find syntax errors and global variable issues.',
-            'addon.format': 'Runs StyLua to format code according to style guide.',
-            'addon.test': 'Runs Busted unit tests.',
-            'addon.deprecations': 'Scans for deprecated WoW API usage.',
-            'version.bump': 'Updates the version number in the .toc file.',
-            'changelog.add': 'Adds a new entry to CHANGELOG.md.',
-            'git.commit': 'Stages all changes and creates a git commit.',
-            'git.tag': 'Creates a git tag for the current version.',
-            'release.all': 'Runs the full release flow: Bump -> Changelog -> Commit -> Tag.',
-            'locale.validate': 'Checks if other locales match the enUS baseline keys.',
-            'locale.extract': 'Scans Lua files for potential localizable strings.',
-            'atlas.search': 'Searches the Blizzard Atlas for icons/textures.',
-            'addon.create': 'Generates a new empty addon from a template.',
-            'addon.sync': 'Syncs addon folder to game client directories.',
-            'libs.check': 'Checks status of embedded libraries against libs.json config.',
-            'libs.sync': 'Syncs libraries from source based on libs.json configuration.',
-            'libs.init': 'Creates a libs.json config file from currently installed libraries.'
-        };
 
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -1066,6 +1116,10 @@
         const sandboxTab = document.getElementById('sandbox-tab');
         const testHero = document.getElementById('test-hero');
         const testList = document.getElementById('test-list');
+        const commandPicker = document.getElementById('command-picker');
+        const catalogStatus = document.getElementById('catalog-status');
+        const diagnosticTargetSelect = document.getElementById('diagnostic-target');
+        const targetStatus = document.getElementById('target-status');
 
         // Command view elements
         const cmdName = document.getElementById('cmd-name');
@@ -1078,6 +1132,12 @@
         const btnNext = document.getElementById('btn-next');
         const historyInfo = document.getElementById('history-info');
         const btnRunCmd = document.getElementById('btn-run-cmd');
+        const cmdMutation = document.getElementById('cmd-mutation');
+        const cmdSchemaForm = document.getElementById('cmd-schema-form');
+        const cmdRawInput = document.getElementById('cmd-raw-input');
+        const cmdInputError = document.getElementById('cmd-input-error');
+        const btnFormMode = document.getElementById('btn-form-mode');
+        const btnRawMode = document.getElementById('btn-raw-mode');
 
         // ═══════════════════════════════════════════════════════════════════════════
         // TOAST NOTIFICATIONS
@@ -1104,40 +1164,100 @@
         // ═══════════════════════════════════════════════════════════════════════════
         // WEBSOCKET
         // ═══════════════════════════════════════════════════════════════════════════
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        ws.onopen = () => { statusDot.className = 'status-dot connected'; statusText.textContent = 'Connected'; };
-        ws.onclose = () => { statusDot.className = 'status-dot disconnected'; statusText.textContent = 'Disconnected'; };
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'reload') updateTestResults(msg);
-            if (msg.type === 'command_result') {
-                // Command ran from external source (agent, CLI)
-                addToHistory(msg.command, msg.result);
-                showToast(msg.command, msg.result.reasoning || 'Completed', msg.result.success ? 'success' : 'error');
-                // Update view if we're looking at this command
-                if (currentCommand === msg.command) {
-                    historyIndex[currentCommand] = commandHistory[currentCommand].length - 1;
-                    displayCurrentResult();
+        const WS_RECONNECT_BASE_DELAY = 1000;
+        const WS_RECONNECT_MAX_DELAY = 30000;
+        let ws = null;
+        let wsReconnectTimer = null;
+        let wsReconnectAttempts = 0;
+        let pageUnloading = false;
+
+        function scheduleWebSocketReconnect() {
+            if (pageUnloading || wsReconnectTimer !== null) return;
+
+            const delay = Math.min(
+                WS_RECONNECT_BASE_DELAY * (2 ** wsReconnectAttempts),
+                WS_RECONNECT_MAX_DELAY
+            );
+            wsReconnectAttempts += 1;
+            wsReconnectTimer = setTimeout(() => {
+                wsReconnectTimer = null;
+                connectWebSocket();
+            }, delay);
+        }
+
+        function connectWebSocket() {
+            if (pageUnloading || (ws && (
+                ws.readyState === WebSocket.CONNECTING ||
+                ws.readyState === WebSocket.OPEN
+            ))) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            ws = socket;
+            socket.onopen = () => {
+                wsReconnectAttempts = 0;
+                statusDot.className = 'status-dot connected';
+                statusText.textContent = 'Connected';
+            };
+            socket.onclose = () => {
+                if (socket !== ws) return;
+                statusDot.className = 'status-dot disconnected';
+                statusText.textContent = 'Disconnected';
+                scheduleWebSocketReconnect();
+            };
+            socket.onmessage = (event) => {
+                let msg;
+                try {
+                    msg = JSON.parse(event.data);
+                } catch (e) {
+                    return;
                 }
+                if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
+
+                if (msg.type === 'reload') updateTestResults(msg);
+                if (msg.type === 'command_result') {
+                    if (typeof msg.command !== 'string' || !msg.result ||
+                        typeof msg.result !== 'object' || Array.isArray(msg.result)) return;
+                    // Command ran from external source (agent, CLI)
+                    addToHistory(msg.command, msg.result);
+                    showToast(msg.command, msg.result.reasoning || 'Completed', msg.result.success ? 'success' : 'error');
+                    // Update view if we're looking at this command
+                    if (currentCommand === msg.command) {
+                        historyIndex[currentCommand] = commandHistory[currentCommand].length - 1;
+                        displayCurrentResult();
+                    }
+                }
+            };
+        }
+
+        function closeWebSocketOnUnload() {
+            pageUnloading = true;
+            if (wsReconnectTimer !== null) {
+                clearTimeout(wsReconnectTimer);
+                wsReconnectTimer = null;
             }
-        };
+        }
+
+        window.addEventListener('unload', closeWebSocketOnUnload);
+        connectWebSocket();
 
         // ═══════════════════════════════════════════════════════════════════════════
         // VIEW SWITCHING
         // ═══════════════════════════════════════════════════════════════════════════
-        function showView(viewName) {
+        function showView(viewName, refresh = true) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(`view-${viewName}`).classList.add('active');
             
             mechanicTab.classList.toggle('active', viewName === 'mechanic');
             sandboxTab.classList.toggle('active', viewName === 'sandbox');
             document.querySelectorAll('.cmd-btn').forEach(b => b.classList.remove('active'));
-            
+
             if (viewName === 'command' && currentCommand) {
-                const btn = document.querySelector(`[data-cmd="${currentCommand}"]`);
+                const btn = Array.from(document.querySelectorAll('[data-cmd]'))
+                    .find(candidate => candidate.dataset.cmd === currentCommand);
                 if (btn) btn.classList.add('active');
             }
-            
+
             // Highlight view buttons
             const viewBtn = document.querySelector(`[data-view="${viewName}"]`);
             if (viewBtn) viewBtn.classList.add('active');
@@ -1145,19 +1265,219 @@
             localStorage.setItem('mechanic.activeView', viewName);
             
             // Auto-refresh data for specific views
-            if (viewName === 'libraries') refreshLibraries();
-            if (viewName === 'settings') refreshSettings();
-            if (viewName === 'sandbox') refreshSandboxStubs();
+            if (refresh && viewName === 'libraries') refreshLibraries();
+            if (refresh && viewName === 'settings') refreshSettings();
+            if (refresh && viewName === 'sandbox') refreshSandboxStubs();
+        }
+
+        function commandContext() {
+            const context = {};
+            if (selectedAddon) context.addon = selectedAddon;
+            const addonPath = selectedAddon ? knownAddons[selectedAddon] : null;
+            if (addonPath) context.path = addonPath;
+            if (selectedDiagnosticTarget) context.target = selectedDiagnosticTarget;
+            return context;
+        }
+
+        function showCommandInputErrors(errors) {
+            const messages = Array.isArray(errors) ? errors.filter(Boolean) : [];
+            cmdInputError.textContent = messages.join('\n');
+            cmdInputError.classList.toggle('hidden', messages.length === 0);
+        }
+
+        function setCommandInputMode(mode) {
+            if (mode === 'form' && commandInputMode === 'raw' && activeSchemaForm) {
+                try {
+                    const rawValue = JSON.parse(cmdRawInput.value.trim() || '{}');
+                    if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+                        throw new Error('Command input must be a JSON object');
+                    }
+                    activeSchemaForm.setValue(rawValue);
+                    showCommandInputErrors([]);
+                } catch (error) {
+                    showCommandInputErrors([error.message]);
+                    return;
+                }
+            }
+            commandInputMode = mode;
+            const raw = mode === 'raw';
+            cmdSchemaForm.classList.toggle('hidden', raw);
+            cmdRawInput.classList.toggle('hidden', !raw);
+            btnFormMode.classList.toggle('active', !raw);
+            btnRawMode.classList.toggle('active', raw);
+        }
+
+        function renderCommandInput(commandName) {
+            const command = commandCatalog.get(commandName);
+            activeSchemaForm = null;
+            showCommandInputErrors([]);
+            if (!command || !command.input_schema || !globalThis.MechanicSchemaForm ||
+                !globalThis.MechanicSchemaForm.supportsSchemaForm(command.input_schema)) {
+                cmdSchemaForm.replaceChildren();
+                cmdSchemaForm.oninput = null;
+                cmdRawInput.value = '{}';
+                consoleInput.value = '{}';
+                setCommandInputMode('raw');
+                return;
+            }
+
+            activeSchemaForm = globalThis.MechanicSchemaForm.createSchemaForm(
+                cmdSchemaForm,
+                command.input_schema,
+                { context: commandContext() }
+            );
+            const initial = activeSchemaForm.initialValue;
+            cmdRawInput.value = JSON.stringify(initial, null, 2);
+            consoleInput.value = JSON.stringify(initial);
+            setCommandInputMode('form');
+            cmdSchemaForm.oninput = () => {
+                if (!activeSchemaForm) return;
+                const parsed = activeSchemaForm.getValue();
+                if (parsed.errors.length === 0) {
+                    cmdRawInput.value = JSON.stringify(parsed.value, null, 2);
+                    consoleInput.value = JSON.stringify(parsed.value);
+                    showCommandInputErrors([]);
+                }
+            };
+        }
+
+        function getCurrentCommandInput() {
+            const command = commandCatalog.get(currentCommand);
+            if (commandInputMode === 'form' && activeSchemaForm) return activeSchemaForm.getValue();
+            let value;
+            try {
+                value = JSON.parse(cmdRawInput.value.trim() || '{}');
+            } catch (error) {
+                return { errors: [`Input must contain valid JSON: ${error.message}`] };
+            }
+            if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                return { errors: ['Command input must be a JSON object'] };
+            }
+            const errors = command && command.input_schema && globalThis.MechanicSchemaForm &&
+                globalThis.MechanicSchemaForm.supportsSchemaForm(command.input_schema)
+                ? globalThis.MechanicSchemaForm.validateValue(value, command.input_schema, command.input_schema, 'input')
+                : [];
+            return { value, errors };
+        }
+
+        function installCommandCatalog(commands) {
+            commandCatalog = new Map();
+            for (const command of commands) {
+                if (!command || typeof command.name !== 'string' || !command.name) continue;
+                if (!command.input_schema || typeof command.input_schema !== 'object' || Array.isArray(command.input_schema)) continue;
+                commandCatalog.set(command.name, {
+                    name: command.name,
+                    description: typeof command.description === 'string' ? command.description : '',
+                    input_schema: command.input_schema,
+                    output_schema: command.output_schema,
+                    mutation: command.mutation === true,
+                });
+            }
+            const sorted = [...commandCatalog.values()].sort((left, right) => left.name.localeCompare(right.name));
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = sorted.length ? 'Choose a command…' : 'No commands available';
+            commandPicker.replaceChildren(placeholder, ...sorted.map(command => {
+                const option = document.createElement('option');
+                option.value = command.name;
+                option.textContent = `${command.name}${command.mutation ? ' • changes state' : ''}`;
+                return option;
+            }));
+            catalogStatus.textContent = `${sorted.length} registered command${sorted.length === 1 ? '' : 's'}`;
+        }
+
+        async function loadCommandCatalog() {
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'commands.list', input: {} })
+                });
+                const result = await response.json();
+                const commands = result && result.success && Array.isArray(result.data?.commands)
+                    ? result.data.commands
+                    : null;
+                if (!commands) throw new Error(result?.error?.message || 'Catalog response was invalid');
+                installCommandCatalog(commands);
+            } catch (error) {
+                commandCatalog = new Map();
+                commandPicker.replaceChildren();
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Catalog unavailable';
+                commandPicker.appendChild(option);
+                catalogStatus.textContent = 'Use the raw command console below.';
+            }
+        }
+
+        function targetSelector(target) {
+            const selector = {};
+            for (const key of ['client', 'account', 'character', 'profile']) {
+                if (typeof target?.[key] === 'string' && target[key]) selector[key] = target[key];
+            }
+            return selector;
+        }
+
+        function targetsMatch(left, right) {
+            return ['client', 'account', 'character', 'profile']
+                .every(key => (left?.[key] || null) === (right?.[key] || null));
+        }
+
+        function installDiagnosticTargets(targets) {
+            diagnosticTargets = targets.filter(target => target && typeof target === 'object' && !Array.isArray(target));
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select a client/profile…';
+            diagnosticTargetSelect.replaceChildren(placeholder, ...diagnosticTargets.map((target, index) => {
+                const option = document.createElement('option');
+                option.value = String(index);
+                const characterProfile = [target.character, target.profile].filter(Boolean).join(' → ') || 'No profile';
+                option.textContent = `${target.client || 'Unknown client'} • ${target.account || 'Unknown account'} • ${characterProfile}`;
+                return option;
+            }));
+            const restoredIndex = selectedDiagnosticTarget
+                ? diagnosticTargets.findIndex(target => targetsMatch(targetSelector(target), selectedDiagnosticTarget))
+                : -1;
+            if (restoredIndex >= 0) {
+                selectedDiagnosticTarget = targetSelector(diagnosticTargets[restoredIndex]);
+                diagnosticTargetSelect.value = String(restoredIndex);
+                targetStatus.textContent = 'Explicit target selected';
+            } else {
+                selectedDiagnosticTarget = null;
+                localStorage.removeItem('mechanic.diagnosticTarget');
+                targetStatus.textContent = diagnosticTargets.length
+                    ? `${diagnosticTargets.length} target${diagnosticTargets.length === 1 ? '' : 's'} available; choose one`
+                    : 'No diagnostic targets found';
+            }
+        }
+
+        async function loadDiagnosticTargets() {
+            try {
+                const response = await fetch('/api/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'diagnostic.targets', input: {} })
+                });
+                const result = await response.json();
+                if (!result?.success || !Array.isArray(result.data?.targets)) throw new Error('Target response was invalid');
+                installDiagnosticTargets(result.data.targets);
+            } catch (error) {
+                diagnosticTargets = [];
+                selectedDiagnosticTarget = null;
+                targetStatus.textContent = 'Target discovery unavailable';
+            }
         }
 
         function navigateToCommand(cmd) {
             currentCommand = cmd;
             cmdName.textContent = cmd;
-            cmdDesc.textContent = commandDescriptions[cmd] || 'No description available.';
+            const command = commandCatalog.get(cmd);
+            cmdDesc.textContent = command?.description || 'No schema description available. Raw JSON input remains available.';
+            cmdMutation.textContent = command ? (command.mutation ? 'Changes state' : 'Read only') : 'Schema unavailable';
+            cmdMutation.className = `mutation-badge ${command ? (command.mutation ? 'mutating' : 'read-only') : ''}`;
             consoleCmd.value = cmd;
-            
-            const defaults = commandDefaults[cmd] || {};
-            consoleInput.value = JSON.stringify({addon: selectedAddon, ...defaults});
+            commandPicker.value = command ? cmd : '';
+            renderCommandInput(cmd);
             
             showView('command');
             displayCurrentResult();
@@ -1451,13 +1771,11 @@
         // COMMAND EXECUTION
         // ═══════════════════════════════════════════════════════════════════════════
         async function executeCommand(command, input = {}) {
-            const finalInput = { addon: selectedAddon, ...input };
-            
             try {
                 const res = await fetch('/api/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command, input: finalInput })
+                    body: JSON.stringify({ command, input })
                 });
                 const result = await res.json();
                 
@@ -1480,8 +1798,15 @@
         btnRunCmd.onclick = async () => {
             if (currentCommand && !btnRunCmd.classList.contains('loading')) {
                 try {
-                    // Read current input from the console box to capture defaults/edits
-                    const input = JSON.parse(consoleInput.value.trim() || '{}');
+                    const parsed = getCurrentCommandInput();
+                    if (parsed.errors.length) {
+                        showCommandInputErrors(parsed.errors);
+                        showToast('Input Error', parsed.errors[0], 'error');
+                        return;
+                    }
+                    const input = parsed.value;
+                    consoleInput.value = JSON.stringify(input);
+                    showCommandInputErrors([]);
                     
                     // Show loading state (keeps "▶ Run" text)
                     btnRunCmd.classList.add('loading');
@@ -1491,7 +1816,7 @@
                     // Reset button
                     btnRunCmd.classList.remove('loading');
                 } catch (e) {
-                    showToast('Input Error', 'Invalid JSON in console input', 'error');
+                    showToast('Input Error', e.message || 'Invalid command input', 'error');
                     btnRunCmd.classList.remove('loading');
                 }
             }
@@ -1524,6 +1849,30 @@
                 btn.onclick = () => navigateToCommand(btn.dataset.cmd);
             }
         });
+
+        commandPicker.onchange = () => {
+            if (commandPicker.value) navigateToCommand(commandPicker.value);
+        };
+        diagnosticTargetSelect.onchange = () => {
+            const index = Number.parseInt(diagnosticTargetSelect.value, 10);
+            selectedDiagnosticTarget = Number.isInteger(index) && diagnosticTargets[index]
+                ? targetSelector(diagnosticTargets[index])
+                : null;
+            if (selectedDiagnosticTarget) {
+                localStorage.setItem('mechanic.diagnosticTarget', JSON.stringify(selectedDiagnosticTarget));
+                targetStatus.textContent = 'Explicit target selected';
+            } else {
+                localStorage.removeItem('mechanic.diagnosticTarget');
+                targetStatus.textContent = 'No target selected';
+            }
+            clearOutputPane(selectedDiagnosticTarget
+                ? 'Loading output for the selected target…'
+                : 'Select a diagnostic target to load addon output.');
+            if (currentCommand && commandCatalog.has(currentCommand)) renderCommandInput(currentCommand);
+            if (selectedDiagnosticTarget) fetchAddonOutput();
+        };
+        btnFormMode.onclick = () => setCommandInputMode('form');
+        btnRawMode.onclick = () => setCommandInputMode('raw');
         
         // Library Manager buttons
         document.getElementById('btn-lib-refresh').onclick = () => refreshLibraries();
@@ -1767,7 +2116,7 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
             switch(e.key.toLowerCase()) {
                 case 'r': showReloadInstructions(); break;
                 case 'v': navigateToCommand('addon.validate'); break;
@@ -1788,21 +2137,44 @@
             const body = document.getElementById(`output-${section}-body`);
             body.classList.toggle('collapsed');
         }
-        
+
+        function clearOutputPane(message) {
+            outputData = { errors: [], tests: [], console: [], timestamp: null };
+            document.getElementById('output-error-count').textContent = '0';
+            document.getElementById('output-test-count').textContent = '0/0';
+            document.getElementById('output-console-count').textContent = '0';
+            document.getElementById('output-error-tree').textContent = message;
+            document.getElementById('output-addon-tests-container').replaceChildren();
+            document.getElementById('output-console-entries').textContent = message;
+            document.getElementById('output-libraries-row').replaceChildren();
+        }
+
         // Fetch and render addon output
         async function fetchAddonOutput() {
+            if (!selectedDiagnosticTarget) {
+                clearOutputPane('Select a diagnostic target to load addon output.');
+                targetStatus.textContent = diagnosticTargets.length ? 'Choose a target to read diagnostics' : targetStatus.textContent;
+                return;
+            }
+            const requestedTarget = { ...selectedDiagnosticTarget };
             try {
                 const response = await fetch('/api/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'addon.output', input: {} })
+                    body: JSON.stringify({ command: 'addon.output', input: { target: requestedTarget } })
                 });
                 const result = await response.json();
+                if (!selectedDiagnosticTarget || !targetsMatch(requestedTarget, selectedDiagnosticTarget)) return;
                 if (result.success && result.data) {
                     // Parse the data from the result
                     updateOutputPane(result.data);
+                } else {
+                    clearOutputPane(result?.error?.message || 'Could not load output for the selected target.');
                 }
             } catch (e) {
+                if (selectedDiagnosticTarget && targetsMatch(requestedTarget, selectedDiagnosticTarget)) {
+                    clearOutputPane(`Could not load output for the selected target: ${e.message}`);
+                }
                 console.log('Failed to fetch addon output:', e);
             }
         }
@@ -1851,20 +2223,11 @@
         
         // Handle WebSocket messages for real-time updates
         function updateTestResults(msg) {
-            // Update header
-            document.getElementById('output-reload-time').textContent = new Date().toLocaleTimeString();
-            // Removed addon name display as requested
-            
-            const tests = msg.data?.tests || [];
-            const passed = tests.filter(t => t.passed).length;
-            
-            // Update test count
-            document.getElementById('output-test-count').textContent = `${passed}/${tests.length}`;
-            
-            // Render test badges
-            renderTestBadges(tests, msg.data?.perf);
-            
-            // Fetch full output to get errors and console
+            if (!selectedDiagnosticTarget) return;
+            const payloadTarget = msg.target || msg.data?.target;
+            if (payloadTarget && !targetsMatch(targetSelector(payloadTarget), selectedDiagnosticTarget)) return;
+            // Reload broadcasts are invalidations. Always re-read the selected target
+            // so an ambiguous watcher payload cannot mix profiles in the dashboard.
             fetchAddonOutput();
         }
         
@@ -2169,11 +2532,15 @@
         
         // Copy all output for AI
         document.getElementById('btn-copy-output')?.addEventListener('click', async () => {
+            if (!selectedDiagnosticTarget) {
+                showToast('Target required', 'Select a diagnostic target before copying output.', 'error');
+                return;
+            }
             try {
                 const response = await fetch('/api/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'addon.output', input: { agent_mode: true } })
+                    body: JSON.stringify({ command: 'addon.output', input: { agent_mode: true, target: selectedDiagnosticTarget } })
                 });
                 const result = await response.json();
                 if (result.success && result.data?.output) {
@@ -2196,25 +2563,10 @@
                 uptimeEl.textContent = mins > 0 ? `${mins}m ${seconds % 60}s` : `${seconds}s`;
             }, 1000);
             
-            // Load accounts
-            const result = await executeCommand('sv.discover', {});
-            if (result.success && result.data?.paths) {
-                const accounts = result.data.paths.map(path => {
-                    const parts = path.split(/[/\\]/);
-                    const flavor = parts.find(p => p.startsWith('_') && p.endsWith('_')) || '';
-                    const account = parts[parts.length - 2] || 'Unknown';
-                    return `${account} (${flavor.replace(/_/g, '')})`;
-                });
-                accountsInfo.textContent = `Accounts: ${accounts.join(', ')}`;
-            }
-            
-            // Check tool status
-            try {
-                const toolResult = await executeCommand('tools.status', {});
-                if (toolResult.success && toolResult.data?.required_missing > 0) {
-                    document.getElementById('tool-banner').style.display = 'flex';
-                }
-            } catch (e) {}
+            // Catalog and target discovery are metadata reads. Loading the page does
+            // not execute the selected command or any mutating action.
+            await Promise.all([loadCommandCatalog(), loadDiagnosticTargets()]);
+            accountsInfo.textContent = 'Accounts: use diagnostic target selector';
             
             // Load persisted command history
             await loadHistory();
@@ -2232,9 +2584,9 @@
             if (lastView === 'command' && lastCommand) {
                 navigateToCommand(lastCommand);
             } else if (['mechanic', 'libraries', 'settings', 'sandbox'].includes(lastView)) {
-                showView(lastView);
+                showView(lastView, false);
             } else {
-                showView('mechanic');
+                showView('mechanic', false);
             }
         }
         

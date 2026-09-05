@@ -151,15 +151,45 @@ async def start_services(
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
     server = uvicorn.Server(config)
 
-    server_task = asyncio.create_task(server.serve())
+    async def serve():
+        try:
+            await server.serve()
+        except SystemExit as exc:
+            # Uvicorn exits on bind errors. Keep that failure within the
+            # supervisor so existing services can be cleaned up first.
+            raise RuntimeError(f"Server exited with status {exc.code}") from exc
+
+    server_task = asyncio.create_task(serve())
     watcher_task = asyncio.create_task(watcher.start(stop_event=stop_event))
+    stop_task = asyncio.create_task(stop_event.wait())
+    tasks = {server_task, watcher_task, stop_task}
 
-    await stop_event.wait()
-
-    click.echo("\nShutting down services...")
-    watcher.stop()
-    server.should_exit = True
-    await asyncio.gather(server_task, watcher_task, return_exceptions=True)
+    try:
+        watched = set(tasks)
+        while True:
+            done, _ = await asyncio.wait(watched, return_when=asyncio.FIRST_COMPLETED)
+            if server_task in done:
+                await server_task
+                break
+            if watcher_task in done:
+                await watcher_task
+                # No valid watch paths is supported: the dashboard can run alone.
+                watched.remove(watcher_task)
+            if stop_task in done:
+                break
+    finally:
+        click.echo("\nShutting down services...")
+        stop_event.set()
+        watcher.stop()
+        server.should_exit = True
+        try:
+            # Give Uvicorn a bounded opportunity to finish active requests.
+            await asyncio.wait(tasks, timeout=5)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def start_server(
@@ -180,21 +210,30 @@ def start_server(
         loop.add_signal_handler(signal.SIGINT, handle_signal)
         loop.add_signal_handler(signal.SIGTERM, handle_signal)
 
-    try:
-        loop.run_until_complete(
-            start_services(
-                port, watch_paths, src_paths, auto_reload, reload_key, stop_event
-            )
+    services_task = loop.create_task(
+        start_services(
+            port, watch_paths, src_paths, auto_reload, reload_key, stop_event
         )
+    )
+    try:
+        loop.run_until_complete(services_task)
     except (KeyboardInterrupt, asyncio.CancelledError):
         handle_signal()
-        loop.run_until_complete(
-            start_services(
-                port, watch_paths, src_paths, auto_reload, reload_key, stop_event
-            )
-        )
+        # Resume the existing supervisor; never construct another set of services.
+        loop.run_until_complete(asyncio.gather(services_task, return_exceptions=True))
     finally:
-        loop.close()
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

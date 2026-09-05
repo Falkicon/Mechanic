@@ -255,6 +255,10 @@ end
 
 function PerformanceModule:OnShow()
 	self.visible = true
+	self.autoRefresh = Mechanic.db.profile.autoRefresh ~= false
+	if self.autoRefreshCheck then
+		self.autoRefreshCheck:SetChecked(self.autoRefresh, true)
+	end
 	self:RefreshNavItems()
 
 	-- Sync selected addon with layout's restored selection
@@ -856,7 +860,7 @@ end
 --------------------------------------------------------------------------------
 
 function PerformanceModule:StartAutoRefresh()
-	if self.refreshTimer then
+	if self.refreshTimer or not self.visible or not self.autoRefresh then
 		return
 	end
 	self.refreshTimer = C_Timer.NewTicker(Mechanic.db.profile.refreshInterval or 1, function()

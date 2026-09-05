@@ -51,47 +51,44 @@ TOOL_CATEGORIES = {
 # ═══════════════════════════════════════════════════════════════════════════════
 # TOOL ANNOTATIONS (2025 MCP Spec)
 # ═══════════════════════════════════════════════════════════════════════════════
-# These hints help agents understand tool behavior for safer, smarter execution.
+# Independent idempotency/external-service hints. Mutability comes from the
+# audited command registry during registration, including description badges.
 
 TOOL_ANNOTATIONS = {
-    # Destructive tools - require confirmation, cannot be undone
-    "server.shutdown": {"destructive": True, "idempotent": False},
-    "git.commit": {"destructive": True, "idempotent": False},
-    "git.tag": {"destructive": True, "idempotent": False},
-    "release.all": {"destructive": True, "idempotent": False},
-    "version.bump": {"destructive": True, "idempotent": True},
-    "changelog.add": {"destructive": True, "idempotent": False},
-    "libs.sync": {"destructive": True, "idempotent": True},
-    # Read-only tools - safe to call anytime, no side effects
-    "sv.parse": {"readOnly": True, "idempotent": True},
-    "sv.discover": {"readOnly": True, "idempotent": True},
-    "dashboard.metrics": {"readOnly": True, "idempotent": True},
-    "addon.validate": {"readOnly": True, "idempotent": True},
-    "addon.lint": {"readOnly": True, "idempotent": True},
-    "addon.deprecations": {"readOnly": True, "idempotent": True},
-    "addon.output": {"readOnly": True, "idempotent": True},
-    "addon.deadcode": {"readOnly": True, "idempotent": True},
-    "addon.security": {"readOnly": True, "idempotent": True},
-    "addon.complexity": {"readOnly": True, "idempotent": True},
-    "docs.stale": {"readOnly": True, "idempotent": True},
-    "libs.check": {"readOnly": True, "idempotent": True},
-    "api.search": {"readOnly": True, "idempotent": True},
-    "api.info": {"readOnly": True, "idempotent": True},
-    "api.list": {"readOnly": True, "idempotent": True},
-    "api.stats": {"readOnly": True, "idempotent": True},
-    "atlas.search": {"readOnly": True, "idempotent": True},
-    "locale.validate": {"readOnly": True, "idempotent": True},
-    "locale.extract": {"readOnly": True, "idempotent": True},
-    "env.status": {"readOnly": True, "idempotent": True},
-    "tools.status": {"readOnly": True, "idempotent": True},
-    "sandbox.status": {"readOnly": True, "idempotent": True},
-    "lua.results": {"readOnly": True, "idempotent": True},
-    "perf.report": {"readOnly": True, "idempotent": True},
-    "perf.list": {"readOnly": True, "idempotent": True},
-    "assets.list": {"readOnly": True, "idempotent": True},
-    # Open world - fetches from internet, may have prompt injection risk
+    "server.shutdown": {"idempotent": False},
+    "git.commit": {"idempotent": False},
+    "git.tag": {"idempotent": False},
+    "release.all": {"idempotent": False},
+    "version.bump": {"idempotent": True},
+    "changelog.add": {"idempotent": False},
+    "libs.sync": {"idempotent": True},
+    "sv.parse": {"idempotent": True},
+    "sv.discover": {"idempotent": True},
+    "dashboard.metrics": {"idempotent": True},
+    "addon.validate": {"idempotent": True},
+    "addon.lint": {"idempotent": True},
+    "addon.deprecations": {"idempotent": True},
+    "addon.output": {"idempotent": True},
+    "addon.deadcode": {"idempotent": True},
+    "addon.security": {"idempotent": True},
+    "addon.complexity": {"idempotent": True},
+    "docs.stale": {"idempotent": True},
+    "libs.check": {"idempotent": True},
+    "api.search": {"idempotent": True},
+    "api.info": {"idempotent": True},
+    "api.list": {"idempotent": True},
+    "api.stats": {"idempotent": True},
+    "atlas.search": {"idempotent": True},
+    "locale.validate": {"idempotent": True},
+    "locale.extract": {"idempotent": True},
+    "env.status": {"idempotent": True},
+    "tools.status": {"idempotent": True},
+    "sandbox.status": {"idempotent": True},
+    "lua.results": {"idempotent": True},
+    "perf.report": {"idempotent": True},
+    "perf.list": {"idempotent": True},
+    "assets.list": {"idempotent": True},
     "research.query": {"openWorld": True, "idempotent": True},
-    # Idempotent mutators - safe to retry
     "addon.format": {"idempotent": True},
     "addon.sync": {"idempotent": True},
     "assets.sync": {"idempotent": True},
@@ -330,6 +327,7 @@ def build_rich_description(
     base_description: str,
     input_schema: Optional[Type[BaseModel]] = None,
     fallback_params: Optional[List[Any]] = None,
+    mutation: Optional[bool] = None,
 ) -> str:
     """Build a rich, agent-friendly tool description (2025 MCP best practices).
 
@@ -348,7 +346,9 @@ def build_rich_description(
 
     # Category and badges line
     category = get_category_for_tool(cmd_name)
-    annotations = get_annotations_for_tool(cmd_name)
+    annotations = dict(get_annotations_for_tool(cmd_name))
+    if mutation is not None:
+        annotations.update(readOnly=not mutation, destructive=mutation)
 
     badges = []
     if annotations.get("readOnly"):
@@ -613,7 +613,7 @@ Example: {}""",
         manifest = {
             "name": "Mechanic MCP Server",
             "description": "WoW addon development toolkit",
-            "version": "0.2.1",
+            "version": afd_server.version,
             "total_tools": len(commands),
             "categories": {},
         }
@@ -700,9 +700,9 @@ def _register_enhanced_tool(mcp_server, afd_server, cmd):
         cmd.description,
         input_schema,
         parameters_from_def,
+        mutation=cmd.mutation,
     )
 
-    @mcp_server.tool(name=mcp_tool_name, description=rich_description)
     async def tool_handler(**kwargs) -> str:
         """MCP tool handler with enhanced output formatting and error handling."""
 
@@ -753,4 +753,29 @@ def _register_enhanced_tool(mcp_server, afd_server, cmd):
             }
             return format_result_for_agent(error_result)
 
+    # Expose the registered Pydantic fields rather than an untyped kwargs envelope.
+    # FastMCP follows __signature__ and still calls the **kwargs handler above.
+    if input_schema is not None:
+        import inspect
+
+        tool_handler.__signature__ = inspect.Signature(
+            [
+                inspect.Parameter(
+                    name,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    annotation=field.annotation,
+                    default=inspect.Parameter.empty if field.is_required() else field,
+                )
+                for name, field in input_schema.model_fields.items()
+            ],
+            return_annotation=str,
+        )
+    annotations = {"readOnlyHint": not cmd.mutation, "destructiveHint": cmd.mutation}
+    extra = get_annotations_for_tool(afd_name)
+    for key in ("idempotent", "openWorld"):
+        if key in extra:
+            annotations[f"{key}Hint"] = extra[key]
+    mcp_server.tool(
+        name=mcp_tool_name, description=rich_description, annotations=annotations
+    )(tool_handler)
     return tool_handler
