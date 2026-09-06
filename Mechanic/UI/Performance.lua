@@ -543,7 +543,10 @@ function PerformanceModule:SortAddonData(data)
 			valB = tonumber(valB) or 0
 		end
 
-		return self.sortDesc and valA > valB or valA < valB
+		if self.sortDesc then
+			return valA > valB
+		end
+		return valA < valB
 	end)
 end
 
