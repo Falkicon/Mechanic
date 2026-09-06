@@ -2,6 +2,12 @@
 
 All notable changes to the Mechanic in-game addons will be documented in this file.
 
+## [1.4.4 / 1.3.5] - 2026-09-06
+
+### Fixed
+- Correct descending performance-table sorting, which could crash when opening the Performance tab.
+- Add regression coverage for all sortable columns, both directions, ties, and varied input order.
+
 ## [1.4.3 / 1.3.4] - 2026-09-06
 
 ### Fixed
