@@ -10,7 +10,7 @@ For CLI/Desktop documentation, see the root **[AGENTS.md](../AGENTS.md)**.
 
 | Item | Value |
 |------|-------|
-| **Current Version** | 1.3.3 |
+| **Current Version** | 1.3.4 |
 | **MechanicLib** | 1.0 (Minor 3) |
 | **Primary Commands** | `/mech`, `/mechanic` |
 | **Status** | Stable |

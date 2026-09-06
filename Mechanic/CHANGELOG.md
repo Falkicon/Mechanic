@@ -2,6 +2,20 @@
 
 All notable changes to the Mechanic in-game addons will be documented in this file.
 
+## [1.4.3 / 1.3.4] - 2026-09-06
+
+### Fixed
+- Keep Lua/API queue execution bound to the selected character and profile, including delayed execution after profile changes.
+- Align bootstrap result serialization with desktop reads and preserve errors from invalid snippets.
+- Stop hidden performance polling, restore saved auto-refresh preferences, and correct the settings locale namespace.
+
+### Added
+- Save passive snapshots of Mechanic-owned ticker state and existing hub/UI timings for desktop diagnostics.
+- Add offline queue, lifecycle, and overhead regression coverage.
+
+### Changed
+- Refresh addon setup and agent documentation for the bootstrap/main-addon layout and confirmed-reload workflow.
+
 ## [1.4.2 / 1.3.3] - 2026-08-10
 
 ### Fixed
