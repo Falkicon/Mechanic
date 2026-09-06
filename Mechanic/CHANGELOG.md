@@ -14,6 +14,7 @@ All notable changes to the Mechanic in-game addons will be documented in this fi
 - Add offline queue, lifecycle, and overhead regression coverage.
 
 ### Changed
+- Package the bootstrap and main addon as sibling folders with embedded libraries at their loaded paths; exclude development assets.
 - Refresh addon setup and agent documentation for the bootstrap/main-addon layout and confirmed-reload workflow.
 
 ## [1.4.2 / 1.3.3] - 2026-08-10
