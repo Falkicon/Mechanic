@@ -60,6 +60,42 @@ C_Timer = { NewTicker = function()
 end }
 assert(loadfile("Mechanic/UI/Performance.lua"))("Mechanic", {})
 local perf = addon.Perf
+-- Sorting must preserve every row and order ties consistently in either direction.
+local originalColumn, originalDesc = perf.sortColumn, perf.sortDesc
+for _, column in ipairs({ "name", "memory", "memoryPercent", "cpu", "cpuPercent" }) do
+    for _, descending in ipairs({ true, false }) do
+        for _, count in ipairs({ 0, 1, 2, 64 }) do
+            for _, pattern in ipairs({ "ascending", "descending", "mixed", "equal" }) do
+                local rows, remaining = {}, {}
+                for i = 1, count do
+                    local value = i
+                    if pattern == "descending" then value = count - i end
+                    if pattern == "mixed" then value = (i * 17) % 23 end
+                    if pattern == "equal" then value = 7 end
+                    local row = { [column] = column == "name" and string.format("Addon%03d", value) or value }
+                    rows[i], remaining[row] = row, true
+                end
+                perf.sortColumn, perf.sortDesc = column, descending
+                perf:SortAddonData(rows)
+                assert(#rows == count, "sort must preserve row count")
+                for i, row in ipairs(rows) do
+                    assert(remaining[row], "sort must preserve each row exactly once")
+                    remaining[row] = nil
+                    if i > 1 then
+                        local previous, current = rows[i - 1][column], row[column]
+                        if descending then
+                            assert(previous >= current, "descending " .. column .. " sort: " .. pattern)
+                        else
+                            assert(previous <= current, "ascending " .. column .. " sort: " .. pattern)
+                        end
+                    end
+                end
+                assert(next(remaining) == nil, "sort must not lose rows")
+            end
+        end
+    end
+end
+perf.sortColumn, perf.sortDesc = originalColumn, originalDesc
 perf.RefreshNavItems, perf.UpdateDisplay, perf.UpdateCPUButtonState = noop, noop, noop
 perf.layout = { GetSelectedKey = function() return "general" end }
 perf:OnShow()

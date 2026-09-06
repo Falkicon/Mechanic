@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to !Mechanic will be documented in this file.
+## [1.4.4] - 2026-09-06
+
+- Bundle main addon 1.3.5 with the Performance-tab sorting crash fix.
+
 ## [1.4.3] - 2026-09-06
 
 - Guard queued diagnostics by character/profile and align serialized results with desktop readers.
