@@ -111,10 +111,13 @@ function Mechanic:OnInitialize()
 	-- Process API test queue - check both pending from bootstrap and fresh global
 	-- Bootstrap may have stored pending queue for us
 	if self.pendingAPIQueue and #self.pendingAPIQueue > 0 then
-		C_Timer.After(0.5, function()
-			self:ExecuteAPITestQueue(self.pendingAPIQueue)
-			self.pendingAPIQueue = nil
-		end)
+		local queue, target = self.pendingAPIQueue, _G.MECHANIC_DIAGNOSTIC_TARGET
+		self.pendingAPIQueue = nil
+		if self:DiagnosticTargetMatches(target) then
+			C_Timer.After(0.5, function()
+				self:ExecuteAPITestQueue(queue, target)
+			end)
+		end
 	else
 		self:ProcessAPITestQueue()
 	end
@@ -146,7 +149,28 @@ end
 -- API Test Queue Processing (CLI-driven automation)
 --------------------------------------------------------------------------------
 
+--- Recheck identity after AceDB initialization and again at delayed execution.
+function Mechanic:DiagnosticTargetMatches(target)
+	target = target or _G.MECHANIC_DIAGNOSTIC_TARGET
+	if target == nil then return true end
+	if type(target) ~= "table" then return false end
+	local name = UnitName and UnitName("player")
+	local realm = GetRealmName and GetRealmName()
+	local character = name and realm and (name .. " - " .. realm)
+	if target.character and target.character ~= character then return false end
+	if target.profile then
+		local profile = self.db and self.db.GetCurrentProfile and self.db:GetCurrentProfile()
+		if target.profile ~= profile then return false end
+	end
+	return true
+end
+
 function Mechanic:ProcessAPITestQueue()
+	local target = _G.MECHANIC_DIAGNOSTIC_TARGET
+	if not self:DiagnosticTargetMatches(target) then
+		_G.MECHANIC_API_QUEUE = nil
+		return
+	end
 	-- Read from MECHANIC_API_QUEUE global (set by MechanicQueue.lua)
 	-- This file is written by CLI and read on addon load
 	local queue = _G.MECHANIC_API_QUEUE
@@ -160,11 +184,12 @@ function Mechanic:ProcessAPITestQueue()
 
 	-- Defer execution slightly to ensure API module is loaded
 	C_Timer.After(0.5, function()
-		self:ExecuteAPITestQueue(queue)
+		self:ExecuteAPITestQueue(queue, target)
 	end)
 end
 
-function Mechanic:ExecuteAPITestQueue(queue)
+function Mechanic:ExecuteAPITestQueue(queue, target)
+	if not self:DiagnosticTargetMatches(target) then return end
 	if not self.API then
 		self:Print("|cFFFF6666[Queue] API module not loaded|r")
 		return
@@ -214,6 +239,11 @@ end
 --------------------------------------------------------------------------------
 
 function Mechanic:ProcessLuaEvalQueue()
+	local target = _G.MECHANIC_DIAGNOSTIC_TARGET
+	if not self:DiagnosticTargetMatches(target) then
+		_G.MECHANIC_LUA_QUEUE = nil
+		return
+	end
 	-- Read from MECHANIC_LUA_QUEUE global (set by MechanicQueue.lua)
 	local queue = _G.MECHANIC_LUA_QUEUE
 	
@@ -226,11 +256,12 @@ function Mechanic:ProcessLuaEvalQueue()
 	
 	-- Defer execution slightly to ensure everything is loaded
 	C_Timer.After(0.5, function()
-		self:ExecuteLuaEvalQueue(queue)
+		self:ExecuteLuaEvalQueue(queue, target)
 	end)
 end
 
-function Mechanic:ExecuteLuaEvalQueue(queue)
+function Mechanic:ExecuteLuaEvalQueue(queue, target)
+	if not self:DiagnosticTargetMatches(target) then return end
 	local count = #queue
 	self:Print(string.format("|cFF00FFFF[Lua Eval] Processing %d snippet(s) from CLI...|r", count))
 	
@@ -488,6 +519,24 @@ function Mechanic:SyncAllAddonData()
 
 	self.db.profile.lastSync = time()
 	self.perf.blocks.hubSync = debugprofilestop() - syncStart
+	self.db.profile.diagnosticOverhead = self:GetDiagnosticOverheadSnapshot()
+end
+
+--- Snapshot only Mechanic-owned tickers and already measured durations; no polling.
+function Mechanic:GetDiagnosticOverheadSnapshot()
+	local function isActive(ticker)
+		return ticker ~= nil and (not ticker.IsCancelled or not ticker:IsCancelled())
+	end
+	local perfActive = isActive(self.Perf and self.Perf.refreshTimer)
+	local inspectActive = isActive(self.Inspect and self.Inspect.watchTicker)
+	return {
+		captured_at = time(),
+		active_tickers = (perfActive and 1 or 0) + (inspectActive and 1 or 0),
+		perf_ticker_active = perfActive,
+		inspect_ticker_active = inspectActive,
+		hub_sync_ms = self.perf and self.perf.blocks and self.perf.blocks.hubSync or 0,
+		ui_refresh_ms = self.Perf and self.Perf.blocks and self.Perf.blocks.uiRefresh or 0,
+	}
 end
 
 --- Persist console buffer and library info before logout/reload for desktop agent access.
@@ -506,6 +555,7 @@ function Mechanic:OnPlayerLogout()
 		self.db.profile.loadedLibraries = libs
 		self.db.profile.librariesTimestamp = date("%Y-%m-%d %H:%M:%S")
 	end
+	self.db.profile.diagnosticOverhead = self:GetDiagnosticOverheadSnapshot()
 end
 
 --------------------------------------------------------------------------------

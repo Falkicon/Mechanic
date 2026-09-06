@@ -14,7 +14,7 @@ import subprocess
 import shutil
 
 # Use centralized config
-from ..config import get_config, find_addon_path
+from ..config import get_config, find_addon_path, get_data_dir
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -178,21 +178,29 @@ def register_commands(server):
         flavors: Optional[List[str]] = Field(
             None, description="WoW flavors to sync to (defaults to all)"
         )
+        dry_run: bool = Field(
+            False,
+            description="Validate and preview junctions without creating directories or links",
+        )
 
     class SyncLink(BaseModel):
         flavor: str
         target: str
         status: str
+        source: str = ""
 
     class AddonSyncResult(BaseModel):
         addon: str
-        links: List[SyncLink] = []
+        dry_run: bool = False
+        links: List[SyncLink] = Field(default_factory=list)
         success_count: int = 0
         error_count: int = 0
+        steps_completed: List[str] = Field(default_factory=list)
+        recovery: List[str] = Field(default_factory=list)
 
     @server.command(
         name="addon.sync",
-        description="Create junction links from development addon to WoW client folders",
+        description="Preflight and create addon junction links; supports dry_run",
         input_schema=AddonSyncInput,
         output_schema=AddonSyncResult,
     )
@@ -201,107 +209,129 @@ def register_commands(server):
     ) -> CommandResult[AddonSyncResult]:
         config = get_config()
         wow_base = config.wow_root
-
         if not wow_base or not wow_base.exists():
             return error(
                 code="WOW_NOT_FOUND",
                 message="WoW installation not found",
-                suggestion="Set MECHANIC_WOW_ROOT environment variable or create ~/.mechanic/config.json",
+                suggestion="Configure MECHANIC_WOW_ROOT",
             )
-
-        # Find source addon using centralized path resolution
-        source_path = find_addon_path(input.addon)
-        if not source_path:
+        source = find_addon_path(input.addon)
+        if not source:
             return error(
                 code="ADDON_NOT_FOUND",
                 message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or create it first with addon.create",
+                suggestion="Check the addon name or create it first",
+            )
+
+        def safe_component(value):
+            return (
+                bool(value)
+                and value not in (".", "..")
+                and not any(c in value for c in '<>:"/\\|?*')
             )
 
         flavors = input.flavors or config.flavors
-        links = []
-        success_count = 0
-        error_count = 0
-
-        for flavor in flavors:
-            addons_path = wow_base / flavor / "Interface" / "AddOns" / input.addon
-
-            if addons_path.exists():
-                links.append(
-                    SyncLink(flavor=flavor, target=str(addons_path), status="exists")
+        if not safe_component(input.addon) or any(
+            not safe_component(f) for f in flavors
+        ):
+            return error(
+                code="INVALID_TARGET",
+                message="Addon and flavors must be single folder names",
+                suggestion="Use configured WoW flavor names and an addon folder name",
+            )
+        source = source.resolve()
+        data = AddonSyncResult(addon=input.addon, dry_run=input.dry_run)
+        for flavor in dict.fromkeys(flavors):
+            target = wow_base / flavor / "Interface" / "AddOns" / input.addon
+            status = "planned"
+            if not target.parent.resolve().is_relative_to(wow_base.resolve()):
+                status = "conflict: parent points outside WoW installation"
+            elif target.exists() or target.is_symlink():
+                status = (
+                    "exists"
+                    if target.resolve() == source
+                    else "conflict: existing target differs from source"
                 )
-                success_count += 1
+            data.links.append(
+                SyncLink(
+                    flavor=flavor, target=str(target), source=str(source), status=status
+                )
+            )
+        conflicts = [link for link in data.links if link.status.startswith("conflict")]
+        if conflicts:
+            data.error_count = len(conflicts)
+            data.recovery = [
+                "Inspect conflicting targets and correct the configured paths before syncing."
+            ]
+            result = error(
+                code="SYNC_PREFLIGHT_FAILED",
+                message="Conflicting addon destinations",
+                suggestion=data.recovery[0],
+                details={"links": [link.model_dump() for link in conflicts]},
+            )
+            result.data = data
+            return result
+        if input.dry_run:
+            return success(
+                data, reasoning="Junction preview; no directories or links created"
+            )
+        for link in data.links:
+            if link.status == "exists":
+                data.success_count += 1
                 continue
-
-            # Create parent directory if needed
-            addons_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Create junction (Windows) or symlink
+            target = Path(link.target)
             try:
+                target.parent.mkdir(parents=True, exist_ok=True)
                 if subprocess.sys.platform == "win32":
-                    # Use mklink /J for junction
+                    env = os.environ.copy()
+                    env.update(
+                        MECHANIC_LINK_TARGET=str(target),
+                        MECHANIC_LINK_SOURCE=str(source),
+                    )
                     result = await asyncio.to_thread(
                         subprocess.run,
                         [
-                            "cmd",
-                            "/c",
-                            "mklink",
-                            "/J",
-                            str(addons_path),
-                            str(source_path),
+                            "powershell",
+                            "-NoProfile",
+                            "-Command",
+                            "New-Item -ItemType Junction -Path $env:MECHANIC_LINK_TARGET -Target $env:MECHANIC_LINK_SOURCE -ErrorAction Stop | Out-Null",
                         ],
                         capture_output=True,
                         text=True,
                         timeout=10,
+                        env=env,
                     )
-                    if result.returncode == 0:
-                        links.append(
-                            SyncLink(
-                                flavor=flavor, target=str(addons_path), status="created"
-                            )
+                    if result.returncode:
+                        raise OSError(
+                            result.stderr.strip() or "Junction creation failed"
                         )
-                        success_count += 1
-                    else:
-                        links.append(
-                            SyncLink(
-                                flavor=flavor,
-                                target=str(addons_path),
-                                status=f"failed: {result.stderr}",
-                            )
-                        )
-                        error_count += 1
                 else:
-                    addons_path.symlink_to(source_path)
-                    links.append(
-                        SyncLink(
-                            flavor=flavor, target=str(addons_path), status="created"
-                        )
-                    )
-                    success_count += 1
-            except Exception as e:
-                links.append(
-                    SyncLink(
-                        flavor=flavor, target=str(addons_path), status=f"error: {e}"
-                    )
+                    target.symlink_to(source, target_is_directory=True)
+                link.status = "created"
+                data.success_count += 1
+                data.steps_completed.append(str(target))
+            except Exception as exc:
+                link.status = f"error: {exc}"
+                data.error_count += 1
+                data.recovery = [
+                    "Inspect the failed target and its parent folders; completed links and created parent directories remain.",
+                    "Correct permissions or paths and retry addon.sync; existing matching links are preserved.",
+                ]
+                result = error(
+                    code="SYNC_PARTIAL_FAILURE",
+                    message=f"Could not create {target}: {exc}",
+                    suggestion=data.recovery[0],
+                    details={
+                        "steps_completed": data.steps_completed,
+                        "failed_target": str(target),
+                        "recovery": data.recovery,
+                    },
                 )
-                error_count += 1
-
-        src = create_source(
-            type="junction",
-            id=f"sync-{input.addon}",
-            title=f"Junction Links for {input.addon}",
-            location=str(source_path),
-        )
-
+                result.data = data
+                return result
         return success(
-            data=AddonSyncResult(
-                addon=input.addon,
-                links=links,
-                success_count=success_count,
-                error_count=error_count,
-            ),
-            reasoning=f"Synced {input.addon} to {success_count} clients ({error_count} errors)",
-            sources=[src],
+            data,
+            reasoning=f"Synced {input.addon} to {data.success_count} clients",
             confidence=1.0,
         )
 
@@ -583,6 +613,8 @@ def register_commands(server):
         skipped: int = 0
         removed: int = 0
         errors: int = 0
+        steps_completed: List[str] = Field(default_factory=list)
+        recovery: List[str] = Field(default_factory=list)
 
     def _find_library_source(
         lib_name: str,
@@ -697,6 +729,31 @@ def register_commands(server):
         configured_libs = libs_config.get("libraries", {})
         notes = libs_config.get("notes", {})
 
+        if mode != "include":
+            return error(
+                code="UNSUPPORTED_MODE",
+                message=f"Library sync mode '{mode}' is not supported",
+                suggestion="Use include mode with explicit libraries",
+            )
+        if not isinstance(configured_libs, dict) or any(
+            not isinstance(name, str)
+            or not name
+            or name in (".", "..")
+            or any(c in name for c in '<>:"/\\|?*')
+            for name in configured_libs
+        ):
+            return error(
+                code="INVALID_CONFIG",
+                message="Library names must be single folder names",
+                suggestion="Correct the libraries mapping in libs.json",
+            )
+        if not input.dry_run:
+            preview = await sync_libs(
+                input.model_copy(update={"dry_run": True}), context
+            )
+            if not preview.success:
+                return preview
+
         # Find default source library path
         default_source = Path(input.source) if input.source else None
         if not default_source:
@@ -715,17 +772,6 @@ def register_commands(server):
         actions = []
         copied = updated = skipped = removed = errors = 0
 
-        # Debug: Track source resolution
-        debug_info = {
-            "default_source": str(default_source) if default_source else None,
-            "dev_path": str(config.dev_path) if config.dev_path else None,
-        }
-        # Write debug info to file for troubleshooting
-        import json
-
-        with open(config.data_dir / "libs_sync_debug.json", "w") as f:
-            json.dump(debug_info, f, indent=2)
-
         # Get currently installed
         installed = {item.name for item in libs_path.iterdir() if item.is_dir()}
 
@@ -739,6 +785,30 @@ def register_commands(server):
                 src_lib = _find_library_source(
                     lib_name, lib_config, default_source, config.dev_path
                 )
+
+                if (
+                    target_path.is_symlink()
+                    or target_path.resolve().parent != libs_path.resolve()
+                    or (
+                        src_lib
+                        and (
+                            not src_lib.is_dir()
+                            or src_lib.resolve() == target_path.resolve()
+                            or src_lib.resolve().is_relative_to(target_path.resolve())
+                            or target_path.resolve().is_relative_to(src_lib.resolve())
+                        )
+                    )
+                ):
+                    actions.append(
+                        SyncAction(
+                            library=lib_name,
+                            action="error",
+                            target=str(target_path),
+                            reason="Unsafe or overlapping source/target path",
+                        )
+                    )
+                    errors += 1
+                    continue
 
                 # Handle "local" libs - sync from shared Libs folder
                 if version == "local":
@@ -850,6 +920,20 @@ def register_commands(server):
                 for lib_name in installed:
                     if lib_name not in configured_libs and lib_name != "libs.json":
                         target_path = libs_path / lib_name
+                        if (
+                            target_path.is_symlink()
+                            or target_path.resolve().parent != libs_path.resolve()
+                        ):
+                            actions.append(
+                                SyncAction(
+                                    library=lib_name,
+                                    action="error",
+                                    target=str(target_path),
+                                    reason="Refusing to remove a linked library",
+                                )
+                            )
+                            errors += 1
+                            continue
                         if not input.dry_run:
                             try:
                                 shutil.rmtree(target_path)
@@ -887,19 +971,48 @@ def register_commands(server):
             location=str(libs_path),
         )
 
+        data = LibsSyncResult(
+            addon=input.addon,
+            dry_run=input.dry_run,
+            actions=actions,
+            copied=copied,
+            updated=updated,
+            skipped=skipped,
+            removed=removed,
+            errors=errors,
+            steps_completed=[]
+            if input.dry_run
+            else [
+                f"{a.action}: {a.library}"
+                for a in actions
+                if a.action in ("copy", "update", "remove")
+            ],
+        )
+        if errors:
+            data.recovery = [
+                "Inspect error actions and their library folders before retrying; a failed copy/update may leave a partial folder.",
+                "Restore affected libraries from their source or backup, then run dry_run=true before retrying.",
+                "Completed actions were not rolled back."
+                if not input.dry_run
+                else "Preflight did not change library files.",
+            ]
+            result = error(
+                code="LIBS_PREFLIGHT_FAILED"
+                if input.dry_run
+                else "LIBS_PARTIAL_FAILURE",
+                message=f"Library sync encountered {errors} errors",
+                suggestion=data.recovery[0],
+                details={
+                    "actions": [a.model_dump() for a in actions],
+                    "steps_completed": data.steps_completed,
+                    "recovery": data.recovery,
+                },
+            )
+            result.data = data
+            return result
         return success(
-            data=LibsSyncResult(
-                addon=input.addon,
-                dry_run=input.dry_run,
-                actions=actions,
-                copied=copied,
-                updated=updated,
-                skipped=skipped,
-                removed=removed,
-                errors=errors,
-                _debug=debug_info,
-            ),
-            reasoning=f"{'Preview: ' if input.dry_run else ''}{copied} copied, {updated} updated, {skipped} skipped, {removed} removed, {errors} errors",
+            data=data,
+            reasoning=f"{'Preview: ' if input.dry_run else ''}{copied} copied, {updated} updated, {skipped} skipped, {removed} removed",
             sources=[src],
             confidence=1.0,
         )
@@ -951,7 +1064,7 @@ def register_commands(server):
             data=EnvStatusResult(
                 wow_root=str(config.wow_root) if config.wow_root else None,
                 dev_path=str(config.dev_path) if config.dev_path else None,
-                data_dir=str(config.data_dir),
+                data_dir=str(get_data_dir(create=False)),
                 flavors=flavors,
             ),
             reasoning=f"Environment configured with {len([f for f in flavors if f.exists])} active WoW clients",

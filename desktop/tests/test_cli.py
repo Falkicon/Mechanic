@@ -113,13 +113,13 @@ def test_cli_commands_detail_not_found():
 
 
 def test_cli_call_discover():
-    """Test calling sv.discover via CLI."""
+    """Test calling sv.discover is deterministic without a WoW install."""
     runner = CliRunner()
     result = runner.invoke(main, ["call", "sv.discover"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Calling sv.discover" in result.output
-    assert "Success" in result.output or "Failed" in result.output
+    assert "NOT_FOUND" in result.output
 
 
 def test_cli_call_json_output():
@@ -127,18 +127,20 @@ def test_cli_call_json_output():
     runner = CliRunner()
     result = runner.invoke(main, ["--json", "call", "sv.discover"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     data = json.loads(result.output)
-    assert "success" in data
+    assert data["success"] is False
+    assert data["error"]["code"] == "NOT_FOUND"
 
 
 def test_cli_call_with_args():
-    """Test call with JSON arguments."""
+    """Test call returns the structured no-target error in an isolated run."""
     runner = CliRunner()
     result = runner.invoke(main, ["call", "addon.output", '{"agent_mode": true}'])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "Calling addon.output" in result.output
+    assert "TARGET_NOT_FOUND" in result.output
 
 
 def test_cli_call_invalid_command():
@@ -170,8 +172,7 @@ def test_cli_addon_output():
     result = runner.invoke(main, ["addon.output"])
 
     assert result.exit_code == 0
-    assert "Success" in result.output
-    assert "output" in result.output.lower()
+    assert "TARGET_NOT_FOUND" in result.output
 
 
 def test_cli_addon_output_json():
@@ -181,8 +182,8 @@ def test_cli_addon_output_json():
 
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["success"] is True
-    assert "data" in data
+    assert data["success"] is False
+    assert data["error"]["code"] == "TARGET_NOT_FOUND"
 
 
 def test_cli_addon_output_agent():
@@ -191,8 +192,7 @@ def test_cli_addon_output_agent():
     result = runner.invoke(main, ["--agent", "addon.output"])
 
     assert result.exit_code == 0
-    # Agent mode should still produce output
-    assert "Success" in result.output or "output" in result.output.lower()
+    assert "TARGET_NOT_FOUND" in result.output
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -252,21 +252,27 @@ def test_cli_stop_json():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_cli_docs():
+def test_cli_docs(tmp_path):
     """Test docs command generates documentation."""
     runner = CliRunner()
-    result = runner.invoke(main, ["docs"])
+    output = tmp_path / "cli-reference.md"
+    result = runner.invoke(main, ["docs", "-o", str(output)])
 
     assert result.exit_code == 0
     assert "Generated" in result.output or "Success" in result.output
+    assert output.is_file()
+    assert output.read_text(encoding="utf-8").startswith("# CLI Reference")
 
 
-def test_cli_docs_json_format():
+def test_cli_docs_json_format(tmp_path):
     """Test docs with JSON format option."""
     runner = CliRunner()
-    result = runner.invoke(main, ["docs", "-f", "json"])
+    output = tmp_path / "cli-reference.json"
+    result = runner.invoke(main, ["docs", "-f", "json", "-o", str(output)])
 
     assert result.exit_code == 0
+    assert output.is_file()
+    assert isinstance(json.loads(output.read_text(encoding="utf-8")), list)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -387,10 +393,11 @@ def test_cli_json_quiet_combined():
     runner = CliRunner()
     result = runner.invoke(main, ["--json", "--quiet", "call", "sv.discover"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     # Should still produce JSON
     data = json.loads(result.output)
-    assert "success" in data
+    assert data["success"] is False
+    assert data["error"]["code"] == "NOT_FOUND"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

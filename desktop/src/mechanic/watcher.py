@@ -12,6 +12,7 @@ class SVWatcher:
         src_paths: list[Path] = None,
         auto_reload: bool = False,
         reload_key: str = "^+r",
+        target: dict | None = None,
     ):
         # Keep original for diagnostics
         self.raw_watch = watch_paths
@@ -21,13 +22,16 @@ class SVWatcher:
         self.watch_paths = [p for p in watch_paths if p.exists()]
         self.src_paths = [p for p in (src_paths or []) if p.exists()]
 
+        self.target = target
         self.auto_reload = auto_reload
         self.reload_key = reload_key
         self.running = False
         self.last_parsed = {}
+        self._stop_event = None
 
     async def start(self, stop_event: asyncio.Event = None):
         self.running = True
+        self._stop_event = stop_event if stop_event is not None else asyncio.Event()
 
         # Diagnostics for the user
         invalid = [str(p) for p in self.raw_watch + self.raw_src if not p.exists()]
@@ -44,6 +48,7 @@ class SVWatcher:
         all_watch_paths = self.watch_paths + self.src_paths
         if not all_watch_paths:
             print("❌ Error: No valid paths to watch. The watcher cannot start.")
+            self.running = False
             return
 
         print(
@@ -53,7 +58,7 @@ class SVWatcher:
             print(f"   📂 Watching SV: {p}")
 
         try:
-            async for changes in awatch(*all_watch_paths, stop_event=stop_event):
+            async for changes in awatch(*all_watch_paths, stop_event=self._stop_event):
                 if not self.running:
                     break
 
@@ -93,8 +98,31 @@ class SVWatcher:
                             server = get_server()
 
                             result = await server.execute(
-                                "sv.parse", {"file_path": str(file_path_obj)}
+                                "sv.parse",
+                                {
+                                    "file_path": str(file_path_obj),
+                                    "target": self.target,
+                                },
                             )
+
+                            if (
+                                not result.success
+                                and result.error
+                                and result.error.code == "TARGET_AMBIGUOUS"
+                                and file_path_obj.stem == "!Mechanic"
+                            ):
+                                # The browser owns its target selection. Invalidate
+                                # without publishing one arbitrary profile's data.
+                                await notify_reload(
+                                    {
+                                        "addon": "!Mechanic",
+                                        "timestamp": time.time(),
+                                        "target": None,
+                                        "candidates": result.error.details.get(
+                                            "candidates", []
+                                        ),
+                                    }
+                                )
 
                             if result.success and result.data:
                                 var_name = file_path_obj.stem
@@ -130,6 +158,9 @@ class SVWatcher:
                                                 "addon": var_name,
                                                 "timestamp": time.time(),
                                                 "data": addon_data,
+                                                "target": result.data.target.model_dump()
+                                                if result.data.target
+                                                else None,
                                             }
                                         )
                                     else:
@@ -145,6 +176,10 @@ class SVWatcher:
         except Exception as e:
             if self.running:  # Only print if we didn't expect to stop
                 print(f"Watcher loop error: {e}")
+        finally:
+            self.running = False
 
     def stop(self):
         self.running = False
+        if self._stop_event is not None:
+            self._stop_event.set()

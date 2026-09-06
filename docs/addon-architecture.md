@@ -348,7 +348,7 @@ WoW uses Lua 5.1. Your Core layer must avoid:
 mech call sandbox.generate
 
 # Run tests
-mech call sandbox.test -i '{"addon": "MyAddon"}'
+mech call sandbox.test '{"addon": "MyAddon"}'
 ```
 
 See [Test Integration](./integration/testing.md) for full testing documentation.
@@ -358,10 +358,39 @@ See [Test Integration](./integration/testing.md) for full testing documentation.
 Register tests with MechanicLib for runtime verification:
 
 ```lua
-MechanicLib:RegisterTest("MyAddon", "wealth.check", function()
+local results = {}
+
+local function runWealthCheck()
     local result = Actions.CheckWealth(Context:Build())
-    return result.success and result.data.isRich ~= nil
-end)
+    results["wealth.check"] = {
+        passed = result.success and result.data.isRich ~= nil,
+        message = result.reasoning,
+    }
+    return results["wealth.check"].passed
+end
+
+MechanicLib:Register("MyAddon", {
+    tests = {
+        getAll = function()
+            return {
+                { id = "wealth.check", name = "Wealth check", category = "Core" },
+            }
+        end,
+        run = function(id)
+            if id == "wealth.check" then
+                return runWealthCheck()
+            end
+            return false
+        end,
+        runAll = function()
+            local passed = runWealthCheck() and 1 or 0
+            return passed, 1
+        end,
+        getResult = function(id)
+            return results[id]
+        end,
+    },
+})
 ```
 
 ---

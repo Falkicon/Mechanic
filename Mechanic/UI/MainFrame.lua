@@ -139,6 +139,23 @@ function Mechanic:CreateMainFrame()
 
 	-- Initial badge state
 	self:UpdateErrorBadge()
+
+	-- Parent visibility changes do not call the modules' Lua lifecycle methods.
+	-- Forward them so closing the panel stops polling and pick-mode handlers.
+	local function notifyShownModules(method)
+		for _, name in ipairs({ "Console", "Errors", "Tests", "Tools", "API", "Inspect", "Perf" }) do
+			local module = self[name]
+			if module and module.frame and module.frame:IsShown() and module[method] then
+				module[method](module)
+			end
+		end
+	end
+	frame:HookScript("OnHide", function()
+		notifyShownModules("OnHide")
+	end)
+	frame:HookScript("OnShow", function()
+		notifyShownModules("OnShow")
+	end)
 end
 
 function Mechanic:OnTabChanged(key)

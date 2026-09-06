@@ -11,6 +11,7 @@ Provides static API lookup and test queue management:
 These commands work WITHOUT the game running - they read the APIDefs files directly.
 """
 
+import math
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,16 @@ from typing import Any, Dict, List, Optional
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
+
+from ..targets import (
+    DiagnosticTarget,
+    SelectedTarget,
+    TargetError,
+    select_target,
+    queue_target_lua,
+)
+
+from ..lua_strings import quote_lua_string as _lua_string
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -29,7 +40,7 @@ class APISearchInput(BaseModel):
     query: str = Field(..., description="Search pattern (supports * wildcards)")
     category: Optional[str] = Field(None, description="Filter by category")
     namespace: Optional[str] = Field(None, description="Filter by namespace")
-    limit: int = Field(20, description="Max results to return")
+    limit: int = Field(20, ge=1, description="Max results to return")
 
 
 class APISearchResult(BaseModel):
@@ -52,7 +63,7 @@ class APIListInput(BaseModel):
         None, description="Namespace to list (e.g., C_Spell)"
     )
     category: Optional[str] = Field(None, description="Category to list")
-    limit: int = Field(50, description="Max results")
+    limit: int = Field(50, ge=1, description="Max results")
 
 
 class APIListResult(BaseModel):
@@ -62,6 +73,7 @@ class APIListResult(BaseModel):
 
 
 class APIQueueInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     apis: List[str] = Field(..., description="List of API names to queue for testing")
     params: Optional[Dict[str, Dict[str, Any]]] = Field(
         None,
@@ -70,6 +82,7 @@ class APIQueueInput(BaseModel):
 
 
 class APIQueueResult(BaseModel):
+    target: Optional[SelectedTarget] = None
     queued: List[str]
     queue_file: str
     message: str
@@ -256,59 +269,17 @@ def format_signature(api: Dict[str, Any]) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def find_savedvariables_path() -> Optional[Path]:
-    """Find the most recent !Mechanic.lua SavedVariables file."""
-    from ..config import discover_saved_variables
-
-    paths = discover_saved_variables()
-    if not paths:
-        return None
-
-    # Find the most recently modified !Mechanic.lua
-    best_path = None
-    best_mtime = 0
-
-    for sv_dir in paths:
-        mechanic_lua = sv_dir / "!Mechanic.lua"
-        if mechanic_lua.exists():
-            mtime = mechanic_lua.stat().st_mtime
-            if mtime > best_mtime:
-                best_mtime = mtime
-                best_path = mechanic_lua
-
-    return best_path
-
-
 def find_addon_path() -> Optional[Path]:
-    """Find the !Mechanic addon folder (where we can write queue files)."""
-    from ..config import discover_saved_variables
+    from ..targets import discover_targets
 
-    paths = discover_saved_variables()
-    if not paths:
-        return None
-
-    # Find the most recently modified !Mechanic.lua, then derive addon path
-    best_path = None
-    best_mtime = 0
-
-    for sv_dir in paths:
-        mechanic_lua = sv_dir / "!Mechanic.lua"
-        if mechanic_lua.exists():
-            mtime = mechanic_lua.stat().st_mtime
-            if mtime > best_mtime:
-                best_mtime = mtime
-                # sv_dir is like: _beta_/WTF/Account/XXX/SavedVariables
-                # Go up 4 levels to get to _beta_, then down to Interface/AddOns
-                wow_client = sv_dir.parent.parent.parent.parent  # _beta_
-                addon_path = wow_client / "Interface" / "AddOns" / "!Mechanic"
-                if addon_path.exists():
-                    best_path = addon_path
-
-    return best_path
+    candidates = [c for c in discover_targets() if Path(c.addon_path).exists()]
+    return Path(select_target(candidates=candidates).addon_path) if candidates else None
 
 
 def write_queue_file(
-    queue: List[str], params: Optional[Dict[str, Dict[str, Any]]] = None
+    queue: List[str],
+    params: Optional[Dict[str, Dict[str, Any]]] = None,
+    target: Optional[SelectedTarget] = None,
 ) -> Optional[Path]:
     """
     Write the test queue to a separate MechanicQueue.lua file in the addon folder.
@@ -316,8 +287,8 @@ def write_queue_file(
     This file is read by the addon on load and won't be overwritten by WoW's
     SavedVariables system during /reload.
     """
-    addon_path = find_addon_path()
-    if not addon_path:
+    addon_path = Path(target.addon_path) if target else find_addon_path()
+    if not addon_path or not addon_path.exists():
         return None
 
     queue_file = addon_path / "MechanicQueue.lua"
@@ -328,7 +299,8 @@ def write_queue_file(
         api_params = params.get(api, {}) if params else {}
         params_lua = lua_encode_table(api_params) if api_params else "{}"
         queue_items.append(
-            f'\t{{\n\t\t["api"] = "{api}",\n\t\t["params"] = {params_lua},\n\t}}'
+            f'\t{{\n\t\t["api"] = {_lua_encode(api)},\n'
+            f'\t\t["params"] = {params_lua},\n\t}}'
         )
 
     queue_lua = "{\n" + ",\n".join(queue_items) + "\n}"
@@ -340,29 +312,40 @@ def write_queue_file(
 MECHANIC_API_QUEUE = {queue_lua}
 """
 
+    if target:
+        content = queue_target_lua(target) + content
     queue_file.write_text(content, encoding="utf-8")
     return queue_file
 
 
 def lua_encode_table(d: Dict[str, Any]) -> str:
-    """Encode a Python dict as a Lua table string."""
-    if not d:
-        return "{}"
+    """Encode a Python mapping as a Lua table without producing executable text."""
+    return _lua_encode(d)
 
-    items = []
-    for k, v in d.items():
-        if isinstance(v, str):
-            items.append(f'["{k}"] = "{v}"')
-        elif isinstance(v, bool):
-            items.append(f'["{k}"] = {"true" if v else "false"}')
-        elif isinstance(v, (int, float)):
-            items.append(f'["{k}"] = {v}')
-        elif v is None:
-            items.append(f'["{k}"] = nil')
-        elif isinstance(v, dict):
-            items.append(f'["{k}"] = {lua_encode_table(v)}')
 
-    return "{ " + ", ".join(items) + " }"
+def _lua_encode(value: Any) -> str:
+    """Encode the JSON-like values accepted by API queue parameters."""
+    if value is None:
+        return "nil"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return _lua_string(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Lua queue parameters cannot contain NaN or infinity")
+        return repr(value)
+    if isinstance(value, dict):
+        items = [
+            f"[{_lua_encode(str(key))}] = {_lua_encode(item)}"
+            for key, item in value.items()
+        ]
+        return "{ " + ", ".join(items) + " }"
+    if isinstance(value, (list, tuple)):
+        return "{ " + ", ".join(_lua_encode(item) for item in value) + " }"
+    raise ValueError(f"Unsupported Lua queue parameter type: {type(value).__name__}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -391,7 +374,7 @@ def register_commands(server):
             )
 
         # Convert wildcard to regex
-        pattern = input.query.replace("*", ".*").replace("?", ".")
+        pattern = re.escape(input.query).replace(r"\*", ".*").replace(r"\?", ".")
         regex = re.compile(pattern, re.IGNORECASE)
 
         matches = []
@@ -529,12 +512,12 @@ def register_commands(server):
         all_apis = load_all_apis()
         valid_apis = []
         invalid_apis = []
+        api_names_by_case = {name.lower(): name for name in all_apis}
 
         for api_name in input.apis:
-            if api_name in all_apis or any(
-                k.lower() == api_name.lower() for k in all_apis
-            ):
-                valid_apis.append(api_name)
+            canonical_name = api_names_by_case.get(api_name.lower())
+            if canonical_name:
+                valid_apis.append(canonical_name)
             else:
                 invalid_apis.append(api_name)
 
@@ -546,7 +529,28 @@ def register_commands(server):
             )
 
         # Write to queue file in addon folder (not SavedVariables)
-        queue_path = write_queue_file(valid_apis, input.params)
+        normalized_params = None
+        if input.params:
+            normalized_params = {
+                api_names_by_case.get(name.lower(), name): values
+                for name, values in input.params.items()
+            }
+        try:
+            if normalized_params:
+                _lua_encode(normalized_params)
+            selected = select_target(input.target)
+            queue_path = write_queue_file(valid_apis, normalized_params, selected)
+        except TargetError as exc:
+            return exc.result()
+        except ValueError as exc:
+            return error(
+                code="INVALID_PARAMS",
+                message=str(exc),
+                suggestion=(
+                    "Use strings, numbers, booleans, null, lists, or nested "
+                    "objects as API parameters"
+                ),
+            )
 
         if not queue_path:
             return error(
@@ -561,7 +565,10 @@ def register_commands(server):
 
         return success(
             data=APIQueueResult(
-                queued=valid_apis, queue_file=str(queue_path), message=message
+                target=selected,
+                queued=valid_apis,
+                queue_file=str(queue_path),
+                message=message,
             ),
             reasoning=f"Wrote test queue to {queue_path.name}",
         )

@@ -13,7 +13,7 @@ CurseForge can automatically package and publish your addon when you push to Git
 **Setup Steps:**
 
 1. Go to your CurseForge project → **Integration** tab
-2. Copy the **Push Token** (a UUID like `ca3777b9-f1c2-495a-91b0-d553a44ce46e`)
+2. Copy the **Push Token** (keep this token private)
 3. In your GitHub repo, go to **Settings → Webhooks → Add webhook**
 4. Configure the webhook:
    - **Payload URL**: `https://www.curseforge.com/api/projects/{projectID}/package?token={token}`
@@ -23,7 +23,7 @@ CurseForge can automatically package and publish your addon when you push to Git
 
 **Example Payload URL:**
 ```
-https://www.curseforge.com/api/projects/1409478/package?token=ca3777b9-f1c2-495a-91b0-d553a44ce46e
+https://www.curseforge.com/api/projects/{projectID}/package?token={token}
 ```
 
 Once configured, every push to GitHub triggers CurseForge packaging automatically.

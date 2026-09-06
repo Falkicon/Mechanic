@@ -1,9 +1,8 @@
-# !Mechanic
+# Mechanic
 
-In-game development hub for World of Warcraft addon developers. Centralizes debugging, testing, error capture, and performance monitoring with universal copy support.
+In-game development hub for World of Warcraft addon developers. The installed addon uses two folders: `!Mechanic` loads the registration and queue bootstrap first, and `Mechanic` provides the full UI. Together they centralize debugging, testing, error capture, and performance monitoring with universal copy support.
 
-![WoW Version](https://img.shields.io/badge/WoW-12.0%2B-blue)
-![Interface](https://img.shields.io/badge/Interface-120001-green)
+![Interface](https://img.shields.io/badge/Interface-120100-green)
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
@@ -11,10 +10,13 @@ In-game development hub for World of Warcraft addon developers. Centralizes debu
 
 | Feature | Description |
 |---------|-------------|
+| **Inspect** | Frame and table inspector with Pick mode, editable properties, details, and a live watch list. |
 | **Console** | Aggregated debug output from all registered addons with filters, search, and dedup. Includes **semantic color highlighting** (e.g., Purple for Midnight secret values). |
 | **Errors** | BugGrabber integration with pause/resume - finally copy errors without them scrolling away. |
 | **Tests** | Unified view of test results across all addons with **structured diagnostic details** for granular check reporting. |
 | **Performance** | Memory/CPU metrics with extended diagnostics (FPS, latency, GC). |
+| **Tools** | Diagnostic panels registered by integrated addons. |
+| **API** | Test bench for exploring APIs and validating Midnight behavior. |
 | **Universal Copy** | Every piece of data is copyable with optional environment context. Console exports automatically strip color codes for clean text. |
 
 ## Why Mechanic?
@@ -28,17 +30,21 @@ In-game development hub for World of Warcraft addon developers. Centralizes debu
 
 1. Download from [CurseForge](https://curseforge.com/wow/addons/mechanic) or [GitHub](https://github.com/Falkicon/Mechanic)
 2. Extract to `Interface/AddOns/`
-3. Optionally install `!BugGrabber` for error capture
+3. Verify that both `Interface/AddOns/!Mechanic/` and `Interface/AddOns/Mechanic/` exist
+4. Optionally install `!BugGrabber` for error capture
 
 ## Usage
 
 | Command | Action |
 |---------|--------|
 | `/mech` | Toggle main panel |
+| `/mech inspect` | Open Inspect tab |
 | `/mech console` | Open Console tab |
 | `/mech errors` | Open Errors tab |
 | `/mech tests` | Open Tests tab |
 | `/mech perf` | Open Performance tab |
+| `/mech tools` | Open Tools tab |
+| `/mech api` | Open API tab |
 | `/mech reload` | Reload UI |
 | `/mech gc` | Force garbage collection |
 
@@ -46,7 +52,7 @@ In-game development hub for World of Warcraft addon developers. Centralizes debu
 
 ### Integration via MechanicLib
 
-MechanicLib is a lightweight library (~150 lines) that lets your addon integrate with Mechanic. It supports rich test results and semantic logging:
+MechanicLib is a lightweight library that lets your addon integrate with Mechanic. It supports rich test results and semantic logging:
 
 ```lua
 local MechanicLib = LibStub("MechanicLib-1.0", true)

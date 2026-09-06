@@ -18,16 +18,18 @@ from typing import Dict, List, Optional, Any
 
 from dotenv import load_dotenv
 
-# Load .env files in order of priority (later files don't override earlier values)
-# 1. User-level .env (lowest priority)
-_user_env = Path.home() / ".mechanic" / ".env"
-if _user_env.exists():
-    load_dotenv(_user_env, override=False)
 
-# 2. Desktop directory .env (higher priority)
-_desktop_env = Path(__file__).parent.parent.parent / ".env"
-if _desktop_env.exists():
-    load_dotenv(_desktop_env, override=True)
+def load_environment(desktop_env: Path, user_env: Path) -> None:
+    """Load project defaults before user defaults, preserving system overrides."""
+    for path in (desktop_env, user_env):
+        if path.exists():
+            load_dotenv(path, override=False)
+
+
+load_environment(
+    Path(__file__).parent.parent.parent / ".env",
+    Path.home() / ".mechanic" / ".env",
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -85,15 +87,14 @@ def get_config_paths() -> List[Path]:
     return paths
 
 
-def get_data_dir() -> Path:
-    """Get the data directory for storing databases and cache."""
-    # Check for user-specified data dir
+def get_data_dir(*, create: bool = True) -> Path:
+    """Resolve the data directory; readers can opt out of initialization."""
     if "MECHANIC_DATA_DIR" in os.environ:
-        return Path(os.environ["MECHANIC_DATA_DIR"])
-
-    # Default: ~/.mechanic/data
-    data_dir = Path.home() / ".mechanic" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
+        data_dir = Path(os.environ["MECHANIC_DATA_DIR"]).expanduser()
+    else:
+        data_dir = Path.home() / ".mechanic" / "data"
+    if create:
+        data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
 
@@ -142,7 +143,10 @@ class MechanicConfig:
         for config_path in get_config_paths():
             if config_path.exists():
                 try:
-                    self._config = json.loads(config_path.read_text(encoding="utf-8"))
+                    loaded = json.loads(config_path.read_text(encoding="utf-8"))
+                    if not isinstance(loaded, dict):
+                        continue
+                    self._config = loaded
                     break
                 except (json.JSONDecodeError, IOError):
                     continue

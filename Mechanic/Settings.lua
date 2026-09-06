@@ -5,7 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
-local L = LibStub("AceLocale-3.0"):GetLocale("!Mechanic", true) or {}
+local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true) or {}
 local AceConfig = LibStub("AceConfig-3.0")
 local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local LDBIcon = LibStub("LibDBIcon-1.0", true)

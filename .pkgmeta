@@ -1,6 +1,17 @@
-package-as: !Mechanic
+package-as: '!Mechanic'
+
+# Both addons must be siblings in Interface/AddOns, with their TOCs at the root.
+move-folders:
+  '!Mechanic/Mechanic': Mechanic
+  '!Mechanic/!Mechanic': '!Mechanic'
+
+# The bootstrap and UI require their embedded libraries.
+enable-nolib-creation: no
 
 ignore:
+  - .agent
+  - .claude
+  - .ruff_cache
   - .github
   - .gitignore
   - .luacheckrc
@@ -17,17 +28,26 @@ ignore:
   - desktop
   - docs
   - _TemplateAddon
+  - CLAUDE.md
+  - tests
+  - dist
+  - UI
+  - Mechanic/AGENTS.md
+  - Mechanic/Libs/FenUI/AGENTS.md
+  - Mechanic/Libs/FenUI/Docs
+  - Mechanic/Libs/FenUI/CONTRIBUTING.md
+  - Mechanic/Libs/FenUI/IMPROVEMENTS.md
 
 externals:
-  Libs/LibStub: https://repos.curseforge.com/wow/libstub/trunk
-  Libs/CallbackHandler-1.0: https://repos.curseforge.com/wow/callbackhandler/trunk/CallbackHandler-1.0
-  Libs/LibDataBroker-1.1: https://repos.curseforge.com/wow/libdatabroker-1-1/trunk
-  Libs/LibDBIcon-1.0: https://repos.curseforge.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
-  Libs/AceAddon-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceAddon-3.0
-  Libs/AceDB-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceDB-3.0
-  Libs/AceEvent-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceEvent-3.0
-  Libs/AceConsole-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceConsole-3.0
-  Libs/AceConfig-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceConfig-3.0
-  Libs/AceGUI-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceGUI-3.0
-  Libs/AceLocale-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceLocale-3.0
+  '!Mechanic/Libs/LibStub': https://repos.curseforge.com/wow/libstub/trunk
+  Mechanic/Libs/CallbackHandler-1.0: https://repos.curseforge.com/wow/callbackhandler/trunk/CallbackHandler-1.0
+  Mechanic/Libs/LibDataBroker-1.1: https://github.com/tekkub/libdatabroker-1-1.git
+  Mechanic/Libs/LibDBIcon-1.0: https://repos.curseforge.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
+  Mechanic/Libs/AceAddon-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceAddon-3.0
+  Mechanic/Libs/AceDB-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceDB-3.0
+  Mechanic/Libs/AceEvent-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceEvent-3.0
+  Mechanic/Libs/AceConsole-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceConsole-3.0
+  Mechanic/Libs/AceConfig-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceConfig-3.0
+  Mechanic/Libs/AceGUI-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceGUI-3.0
+  Mechanic/Libs/AceLocale-3.0: https://repos.curseforge.com/wow/ace3/trunk/AceLocale-3.0
 

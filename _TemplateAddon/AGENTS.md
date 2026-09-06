@@ -14,35 +14,28 @@ Technical reference for AI agents working on this addon.
 
 | File | Purpose |
 |------|---------|
-| `Core.lua` | Main addon initialization and logic |
-| `DevMarker.lua` | Development mode detection (excluded from releases) |
-| `embeds.xml` | Library loading manifest |
-| `Locales/enUS.lua` | English localization strings |
-| `.luacheckrc` | Linting configuration |
-| `.pkgmeta` | CurseForge packaging config |
+| `TemplateAddon/Core.lua` | Main addon initialization and logic |
+| `TemplateAddon/DevMarker.lua` | Development mode detection (excluded from releases) |
+| `TemplateAddon/embeds.xml` | Library loading manifest |
+| `TemplateAddon/Locales/enUS.lua` | English localization strings |
+| `TemplateAddon/.luacheckrc` | Linting configuration |
+| `TemplateAddon/.pkgmeta` | CurseForge packaging config |
 
 ---
 
 ## Development Commands
 
-Use the `addon-dev` CLI or Mechanic Desktop for development tasks:
+Use Mechanic's MCP tools directly with `{"addon": "TemplateAddon"}`:
 
-```bash
-# Validate TOC file
-addon-dev validate TemplateAddon
+| Task | MCP tool |
+|------|----------|
+| Validate the TOC | `addon.validate` |
+| Lint Lua code | `addon.lint` |
+| Format Lua code | `addon.format` |
+| Run tests, when a `Tests/` directory exists | `addon.test` |
+| Create junction links to WoW clients | `addon.sync` |
 
-# Lint code
-addon-dev lint TemplateAddon
-
-# Format code
-addon-dev format TemplateAddon
-
-# Run tests (if Tests/ directory exists)
-addon-dev test TemplateAddon
-
-# Create junction links to WoW clients
-addon-dev sync TemplateAddon
-```
+The `mech` CLI is a user-facing fallback when MCP is unavailable.
 
 ---
 

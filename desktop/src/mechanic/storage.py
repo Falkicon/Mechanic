@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 import json
 from pathlib import Path
 from datetime import datetime
@@ -11,7 +12,7 @@ class Storage:
         self._init_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS reload_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,10 +60,46 @@ class Storage:
                 ON command_results(command)
             """)
 
+    @staticmethod
+    def read_stats(db_path: Path) -> dict:
+        """Inspect existing history using SQLite read-only mode; never initialize it."""
+        db_path = Path(db_path)
+        if not db_path.is_file():
+            return {
+                "available": False,
+                "reason": "History database does not exist",
+                "file_bytes": 0,
+                "rows": {},
+            }
+        tables = ("reload_history", "test_results", "perf_metrics", "command_results")
+        try:
+            with closing(
+                sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+            ) as conn:
+                rows = {
+                    name: conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
+                    for name in tables
+                }
+            return {
+                "available": True,
+                "file_bytes": db_path.stat().st_size,
+                "rows": rows,
+            }
+        except (OSError, sqlite3.Error) as exc:
+            return {
+                "available": False,
+                "reason": f"History statistics unavailable: {exc}",
+                "file_bytes": 0,
+                "rows": {},
+            }
+
+    def get_stats(self) -> dict:
+        return self.read_stats(self.db_path)
+
     def save_reload(
         self, timestamp: float, addons_data: dict, session_id: str = "default"
     ):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO reload_history (timestamp, session_id, addons_data) VALUES (?, ?, ?)",
@@ -94,21 +131,31 @@ class Storage:
                     )
             return reload_id
 
-    def get_latest_metrics(self):
-        with sqlite3.connect(self.db_path) as conn:
+    @staticmethod
+    def read_latest_metrics(db_path: Path):
+        """Read existing history without creating its directory, database or schema."""
+        db_path = Path(db_path)
+        if not db_path.is_file():
+            return None
+        with closing(
+            sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM reload_history ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if row:
-                res = dict(row)
-                if res.get("addons_data"):
+                result = dict(row)
+                if result.get("addons_data"):
                     try:
-                        res["addons_data"] = json.loads(res["addons_data"])
-                    except Exception:
+                        result["addons_data"] = json.loads(result["addons_data"])
+                    except (ValueError, TypeError):
                         pass
-                return res
-            return None
+                return result
+        return None
+
+    def get_latest_metrics(self):
+        return self.read_latest_metrics(self.db_path)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # COMMAND HISTORY
@@ -118,7 +165,7 @@ class Storage:
         self, command: str, result: Dict[str, Any], addon: Optional[str] = None
     ) -> int:
         """Save a command execution result to the database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO command_results (command, addon, timestamp, success, result_json) VALUES (?, ?, ?, ?, ?)",
@@ -136,7 +183,7 @@ class Storage:
         self, command: Optional[str] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """Get command execution history, optionally filtered by command name."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.row_factory = sqlite3.Row
 
             if command:
@@ -165,7 +212,7 @@ class Storage:
 
     def clear_command_history(self, command: Optional[str] = None) -> int:
         """Clear command history, optionally for a specific command only."""
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             if command:
                 cursor = conn.execute(
                     "DELETE FROM command_results WHERE command = ?", (command,)

@@ -286,14 +286,19 @@ class MCPServer:
         # We need to create a function with a specific signature so FastMCP
         # can correctly introspect it and generate the JSON schema.
         # Using a closure and exec is the most reliable way to do this dynamically.
-        handler_name = f"handler_{metadata.name.replace('.', '_')}"
+        # Tool names (for example fencore-catalog) are not Python identifiers.
+        # Each handler has its own namespace, so a fixed internal name is safe.
+        handler_name = "command_handler"
         namespace = {
             "func": func,
+            "execute_command": self.execute,
+            "command_name": metadata.name,
             "json": json,
             "input_schema": input_schema,
             "CommandResult": CommandResult,
             "Context": Context,
             "Any": Any,
+            "factory_defaults": {},
         }
 
         arg_list = []
@@ -311,46 +316,56 @@ class MCPServer:
                 namespace[type_key] = field.annotation
 
                 # Handle defaults
-                if field.default is not None and field.default != ...:
+                if field.is_required():
+                    arg_list.append(f"{name}: {type_key}")
+                elif field.default_factory is not None:
+                    # FastMCP accepts FieldInfo defaults and evaluates their
+                    # factories for every request rather than at registration.
+                    namespace[f"default_{name}"] = field
+                    namespace["factory_defaults"][name] = field
+                    arg_list.append(f"{name}: {type_key} = default_{name}")
+                else:
                     namespace[f"default_{name}"] = field.default
                     arg_list.append(f"{name}: {type_key} = default_{name}")
-                elif field.default_factory is not None:
-                    arg_list.append(f"{name}: {type_key} = None")
-                else:
-                    # Check if required
-                    is_required = True
-                    try:
-                        is_required = field.is_required()
-                    except AttributeError:
-                        is_required = field.default == ...
-
-                    if is_required:
-                        arg_list.append(f"{name}: {type_key}")
-                    else:
-                        arg_list.append(f"{name}: {type_key} = None")
 
             field_names = list(fields.keys())
             dict_construction = ", ".join([f"'{name}': {name}" for name in field_names])
+            input_dict_code = f"{{{dict_construction}}}"
+            if namespace["factory_defaults"]:
+                # Direct calls bypass FastMCP validation. Omit untouched factory
+                # defaults so the input model evaluates them for this call too.
+                input_dict_code = (
+                    f"{{key: value for key, value in {input_dict_code}.items() "
+                    "if key not in factory_defaults or value is not factory_defaults[key]}"
+                )
             if metadata.input_schema:
-                call_args_code = f"input_schema(**{{{dict_construction}}})"
+                call_args_code = f"input_schema(**{input_dict_code})"
             else:
-                call_args_code = f"{{{dict_construction}}}"
+                call_args_code = input_dict_code
 
         # Add context if needed
         has_context = _accepts_context(func)
         if has_context:
-            arg_list.append("context: Context = None")
+            if "**kwargs" in arg_list:
+                arg_list.insert(0, "context: Context = None")
+            else:
+                arg_list.append("context: Context = None")
+
+        # Pydantic permits required fields after optional fields. Keyword-only
+        # arguments preserve that ordering without an invalid Python signature.
+        if arg_list and arg_list[0] != "**kwargs":
+            arg_list.insert(0, "*")
 
         signature = ", ".join(arg_list)
 
         if has_context:
-            final_call = f"await func({call_args_code}, context=context)"
+            final_call = f"await execute_command(command_name, {call_args_code}, context=context)"
         else:
-            final_call = f"await func({call_args_code})"
+            final_call = f"await execute_command(command_name, {call_args_code})"
 
         exec_code = f"""
 async def {handler_name}({signature}) -> str:
-    \"\"\"MCP tool handler for {metadata.name}\"\"\"
+    \"\"\"Execute the registered MCP command.\"\"\"
     result = {final_call}
     return json.dumps(result.model_dump(), default=str)
 """
@@ -358,9 +373,14 @@ async def {handler_name}({signature}) -> str:
         handler = namespace[handler_name]
 
         # Register with FastMCP
-        self._mcp_server.tool(name=metadata.name, description=metadata.description)(
-            handler
-        )
+        self._mcp_server.tool(
+            name=metadata.name,
+            description=metadata.description,
+            annotations={
+                "readOnlyHint": not metadata.mutation,
+                "destructiveHint": metadata.mutation,
+            },
+        )(handler)
 
     def run(self, transport: str = "stdio") -> None:
         """Run the server with the specified transport.

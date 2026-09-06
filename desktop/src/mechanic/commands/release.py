@@ -386,10 +386,55 @@ def register_commands(server):
 
         if result.returncode != 0:
             if "already exists" in result.stderr.lower():
-                return success(
-                    data=GitTagResult(addon=input.addon, tag=tag_name, created=False),
-                    reasoning=f"Tag {tag_name} already exists",
-                    confidence=1.0,
+                try:
+                    existing = await asyncio.to_thread(
+                        subprocess.run,
+                        [
+                            "git",
+                            "rev-parse",
+                            "--verify",
+                            f"refs/tags/{tag_name}^{{commit}}",
+                        ],
+                        cwd=str(addon_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    intended = await asyncio.to_thread(
+                        subprocess.run,
+                        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                        cwd=str(addon_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    return error(
+                        code="TAG_CHECK_FAILED",
+                        message=str(exc),
+                        suggestion="Inspect the existing tag and HEAD before retrying",
+                    )
+                if (
+                    existing.returncode == 0
+                    and intended.returncode == 0
+                    and existing.stdout.strip() == intended.stdout.strip()
+                ):
+                    return success(
+                        data=GitTagResult(
+                            addon=input.addon, tag=tag_name, created=False
+                        ),
+                        reasoning=f"Tag {tag_name} already points to the intended commit",
+                        confidence=1.0,
+                    )
+                return error(
+                    code="TAG_CONFLICT",
+                    message=f"Tag {tag_name} does not point to HEAD",
+                    suggestion="Choose a new version or inspect the existing tag; it was not changed",
+                    details={
+                        "tag": tag_name,
+                        "existing_commit": existing.stdout.strip(),
+                        "intended_commit": intended.stdout.strip(),
+                    },
                 )
             return error(
                 code="GIT_ERROR",
@@ -421,86 +466,177 @@ def register_commands(server):
         message: str = Field(..., description="Changelog entry and release description")
         category: str = Field("Changed", description="Changelog category")
         path: Optional[str] = Field(None, description="Override path")
+        dry_run: bool = Field(
+            False,
+            description="Validate and preview without changing files, index, commits or tags",
+        )
+
+    class ReleaseStep(BaseModel):
+        command: str
+        target: str
+        description: str
 
     class ReleaseAllResult(BaseModel):
         addon: str
         version: str
-        steps_completed: List[str]
-        commit_hash: Optional[str]
+        dry_run: bool = False
+        steps_planned: List[ReleaseStep] = Field(default_factory=list)
+        steps_completed: List[str] = Field(default_factory=list)
+        commit_hash: Optional[str] = None
+        failed_step: Optional[str] = None
+        recovery: List[str] = Field(default_factory=list)
 
     @server.command(
         name="release.all",
-        description="Run version bump, changelog, commit, and tag as one release workflow",
+        description="Preflight and run version bump, changelog, commit and tag; supports dry_run",
         input_schema=ReleaseAllInput,
         output_schema=ReleaseAllResult,
     )
     async def release_all(
         input: ReleaseAllInput, context: Any = None
     ) -> CommandResult[ReleaseAllResult]:
-        steps = []
-
-        # 1. Bump Version
-        bump_res = await bump_version(
-            VersionBumpInput(addon=input.addon, version=input.version, path=input.path)
-        )
-        if not bump_res.success:
+        addon_path = find_addon_path(input.addon, input.path)
+        if not addon_path:
             return error(
-                code="BUMP_FAILED",
-                message=f"Version bump failed: {bump_res.error.message}",
+                code="ADDON_NOT_FOUND",
+                message=f"Addon '{input.addon}' not found",
+                suggestion="Check the addon name or provide an explicit path",
             )
-        steps.append(f"Bumped version to {input.version}")
-
-        # 2. Update Changelog
-        log_res = await add_changelog(
-            ChangelogAddInput(
-                addon=input.addon,
-                version=input.version,
-                message=input.message,
-                category=input.category,
-                path=input.path,
-            )
-        )
-        if not log_res.success:
+        tocs = sorted(addon_path.glob("*.toc"))
+        if not tocs:
             return error(
-                code="CHANGELOG_FAILED",
-                message=f"Changelog update failed: {log_res.error.message}",
+                code="NO_TOC",
+                message="No .toc file found",
+                suggestion="Provide the addon folder containing its TOC",
             )
-        steps.append("Updated CHANGELOG.md")
+        tag = input.version if input.version.startswith("v") else f"v{input.version}"
 
-        # 3. Git Commit
-        commit_msg = f"chore(release): v{input.version}\n\n{input.message}"
-        commit_res = await git_commit(
-            GitCommitInput(addon=input.addon, message=commit_msg, path=input.path)
-        )
-        if not commit_res.success:
+        async def git(*args):
+            return await asyncio.to_thread(
+                subprocess.run,
+                ["git", *args],
+                cwd=str(addon_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+        try:
+            valid_tag = await git("check-ref-format", f"refs/tags/{tag}")
+            head = await git("rev-parse", "--verify", "HEAD^{commit}")
+            existing = await git("show-ref", "--verify", "--quiet", f"refs/tags/{tag}")
+            staged = await git("diff", "--cached", "--name-only")
+            if valid_tag.returncode or head.returncode or staged.returncode:
+                return error(
+                    code="PREFLIGHT_FAILED",
+                    message="Invalid release tag or Git repository without a readable HEAD/index",
+                    suggestion="Use a valid version and a repository with an initial commit",
+                )
+            if existing.returncode not in (0, 1):
+                return error(
+                    code="PREFLIGHT_FAILED",
+                    message="Unable to inspect existing release tags",
+                    suggestion="Resolve the Git reference error before releasing",
+                )
+            if existing.returncode == 0:
+                return error(
+                    code="TAG_CONFLICT",
+                    message=f"Release tag {tag} already exists",
+                    suggestion="Choose a new version; release.all creates a new release commit and never moves existing tags",
+                )
+            if staged.stdout.strip():
+                return error(
+                    code="STAGED_CHANGES",
+                    message="The repository already contains staged changes",
+                    suggestion="Commit or unstage existing changes before release.all so its commit scope is clear",
+                )
+        except (OSError, subprocess.TimeoutExpired) as exc:
             return error(
-                code="COMMIT_FAILED",
-                message=f"Git commit failed: {commit_res.error.message}",
+                code="PREFLIGHT_FAILED",
+                message=f"Git preflight failed: {exc}",
+                suggestion="Check Git availability and repository access",
             )
-        steps.append(f"Committed changes ({commit_res.data.commit_hash or 'dry-run'})")
-
-        # 4. Git Tag
-        tag_res = await git_tag(
-            GitTagInput(
-                addon=input.addon,
-                version=input.version,
-                message=f"Release v{input.version}: {input.message}",
-                path=input.path,
-            )
+        toc = next((item for item in tocs if item.stem == input.addon), tocs[0])
+        data = ReleaseAllResult(
+            addon=input.addon,
+            version=input.version,
+            dry_run=input.dry_run,
+            steps_planned=[
+                ReleaseStep(
+                    command="version.bump",
+                    target=str(toc),
+                    description=f"Set version to {input.version}",
+                ),
+                ReleaseStep(
+                    command="changelog.add",
+                    target=str(addon_path / "CHANGELOG.md"),
+                    description=input.message,
+                ),
+                ReleaseStep(
+                    command="git.commit",
+                    target=str(addon_path),
+                    description="Stage all addon changes and create release commit",
+                ),
+                ReleaseStep(
+                    command="git.tag",
+                    target=tag,
+                    description="Tag the new release commit",
+                ),
+            ],
         )
-        if not tag_res.success:
-            return error(
-                code="TAG_FAILED", message=f"Git tag failed: {tag_res.error.message}"
+        if input.dry_run:
+            return success(
+                data,
+                reasoning="Release preflight passed; no files, index, commits or tags changed",
             )
-        steps.append(f"Created tag v{input.version}")
-
-        return success(
-            data=ReleaseAllResult(
-                addon=input.addon,
-                version=input.version,
-                steps_completed=steps,
-                commit_hash=commit_res.data.commit_hash,
+        common = {"addon": input.addon, "path": input.path}
+        calls = [
+            ("version.bump", {**common, "version": input.version}),
+            (
+                "changelog.add",
+                {
+                    **common,
+                    "version": input.version,
+                    "message": input.message,
+                    "category": input.category,
+                },
             ),
-            reasoning=f"Successfully released v{input.version}",
-            confidence=1.0,
-        )
+            (
+                "git.commit",
+                {**common, "message": f"chore(release): {tag}\n\n{input.message}"},
+            ),
+            (
+                "git.tag",
+                {
+                    **common,
+                    "version": input.version,
+                    "message": f"Release {tag}: {input.message}",
+                },
+            ),
+        ]
+        for command, params in calls:
+            result = await server.execute(command, params, context=context)
+            if not result.success:
+                data.failed_step = command
+                data.recovery = [
+                    "Inspect git status and git diff (including --cached) before changing or retrying the release.",
+                    f"Resolve the {command} error, then resume that command and the remaining steps individually.",
+                    "Completed steps were not rolled back; rerunning release.all may duplicate the changelog entry.",
+                ]
+                failure = error(
+                    code="RELEASE_PARTIAL_FAILURE",
+                    message=f"Release stopped at {command}: {result.error.message}",
+                    suggestion=data.recovery[0],
+                    details={
+                        "failed_step": command,
+                        "steps_completed": data.steps_completed,
+                        "recovery": data.recovery,
+                        "cause": result.error.model_dump(),
+                    },
+                )
+                failure.data = data
+                return failure
+            data.steps_completed.append(command)
+            if command == "git.commit":
+                data.commit_hash = result.data.commit_hash
+        return success(data, reasoning=f"Successfully released {tag}", confidence=1.0)

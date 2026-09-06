@@ -1,3 +1,10 @@
+from ..targets import (
+    DiagnosticTarget,
+    SelectedTarget,
+    TargetError,
+    select_target,
+    targets_for_file,
+)
 from afd import CommandResult, success, error
 from afd.server import create_server
 from afd.core.metadata import create_source
@@ -17,10 +24,12 @@ server = create_server(name="mechanic-desktop", version=__version__)
 
 
 class ParseInput(BaseModel):
+    target: DiagnosticTarget | None = None
     file_path: str = Field(..., description="Absolute path to the !Mechanic.lua file")
 
 
 class SavedVariables(BaseModel):
+    target: SelectedTarget | None = None
     addons: Dict[str, Any] = Field(..., description="Dictionary of addon data")
 
 
@@ -82,15 +91,19 @@ async def parse_sv(
 
         addon_data = data[matched_var]
 
-        # Flatten AceDB-3.0 profiles
-        if (
-            isinstance(addon_data, dict)
-            and "profileKeys" in addon_data
-            and "profiles" in addon_data
-        ):
-            profile_name = "Default"
-            if "profiles" in addon_data and profile_name in addon_data["profiles"]:
-                addon_data = addon_data["profiles"][profile_name]
+        selected = None
+        if isinstance(addon_data, dict) and "profiles" in addon_data:
+            try:
+                resolved = select_target(
+                    input.target, targets_for_file(file_path_obj, addon_data)
+                )
+            except TargetError as exc:
+                return exc.result()
+            addon_data = addon_data["profiles"].get(resolved.profile, {})
+            # Generic sv.parse supports unrelated addon files; only Mechanic
+            # SavedVariables carry diagnostic client/account identity.
+            if matched_var == "MechanicDB" and file_path_obj.name == "!Mechanic.lua":
+                selected = resolved
 
         # Map key 'testResults' to 'tests' - preserve test ID as 'name'
         if isinstance(addon_data, dict):
@@ -111,7 +124,7 @@ async def parse_sv(
         )
 
         return success(
-            data=SavedVariables(addons={var_name: addon_data}),
+            data=SavedVariables(target=selected, addons={var_name: addon_data}),
             reasoning=f"Successfully identified and normalized {var_name} data",
             sources=[src],
             confidence=0.95,
@@ -131,9 +144,28 @@ async def parse_sv(
 async def get_metrics(
     input: Dict[str, Any], context: Any = None
 ) -> CommandResult[Dict[str, Any]]:
-    from ..server import storage
+    import sys
+    import sqlite3
+    from ..config import get_data_dir
+    from ..storage import Storage
 
-    metrics = storage.get_latest_metrics()
+    # Reuse an already running HTTP host's configured history without importing
+    # that module, whose startup initializes the database.
+    http = sys.modules.get("mechanic.server")
+    storage = getattr(http, "storage", None)
+    path = (
+        storage.db_path
+        if storage is not None
+        else get_data_dir(create=False) / "mechanic.db"
+    )
+    try:
+        metrics = Storage.read_latest_metrics(path)
+    except (sqlite3.Error, OSError) as exc:
+        return error(
+            code="HISTORY_READ_FAILED",
+            message=f"Unable to read history: {exc}",
+            suggestion="Inspect the configured history database and its permissions",
+        )
 
     if not metrics:
         return error(
@@ -331,6 +363,20 @@ def get_server():
 
         complexity.register_commands(server)
 
+        from . import catalog
+
+        catalog.register_commands(server)
+
+        from . import targets
+
+        targets.register_commands(server)
+        from . import diagnostics
+
+        diagnostics.register_commands(server)
+        catalog.apply_mutation_audit(server)
+        from ..telemetry import instrument_server
+
+        instrument_server(server)
         _commands_registered = True
 
     return server

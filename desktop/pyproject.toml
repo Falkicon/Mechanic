@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools==83.0.0", "wheel==0.46.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -61,6 +61,7 @@ all = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "httpx>=0.27",
     "ruff>=0.4",
 ]
 
@@ -74,9 +75,20 @@ mechanic = "mechanic.cli:main"
 mech = "mechanic.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["mechanic", "mechanic.commands", "afd", "afd.core", "afd.server", "afd.testing", "afd.transports"]
+package-dir = {"" = "src", "mechanic.dashboard" = "dashboard"}
+packages = ["mechanic", "mechanic.commands", "mechanic.dashboard", "afd", "afd.core", "afd.server", "afd.testing", "afd.transports"]
+
+[tool.setuptools.package-data]
+"mechanic.dashboard" = ["*.html", "*.js"]
 
 [tool.ruff]
 extend-exclude = ["src/_afd_OLD"]
+
+# CI deliberately gates the stable correctness baseline while the broader
+# modernization/style cleanup is handled separately.  The 2026-09-05 review
+# baseline recorded 962 findings under its default rule set (mostly UP, I,
+# and RUF modernization rules); that deferred inventory is recorded in
+# docs/quality-review-2026-09-05.md rather than silently discarded.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 
