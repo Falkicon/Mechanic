@@ -28,6 +28,7 @@ The [original quality review](../docs/quality-review-2026-09-05.md) contains the
 
 ## Product ideas to evaluate
 
+- [Blizzard API compatibility workbench](compatibility-workbench.prd.md): proposed baseline inspection, guided native API checks, and evidence reports, extending the existing command and diagnostic workflow.
 - A consolidated `mech doctor` health check (currently use `env.status` and `tools.status`).
 - Richer desktop performance charts and lint-result presentation.
 - Editor integration and additional addon templates.

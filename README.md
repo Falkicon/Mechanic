@@ -172,6 +172,7 @@ In WoW's Key Bindings settings, assign **Reload UI (Dev)** and **Toggle Mechanic
 | [Quality improvements](docs/quality-improvements.md) | Targets, schema forms, previews, metrics, and validation |
 | [Contributing](CONTRIBUTING.md) | Development and PR guidance |
 | [Roadmap](PLAN/ROADMAP.md) | Implemented capabilities and future work |
+| [Compatibility workbench PRD](PLAN/compatibility-workbench.prd.md) | Proposed API inspection, guided checks, and evidence reports; not yet implemented |
 | [Changelog](CHANGELOG.md) | Desktop history; links to the separate addon changelog |
 
 ## License
