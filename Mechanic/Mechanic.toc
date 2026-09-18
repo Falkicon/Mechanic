@@ -1,8 +1,8 @@
-## Interface: 120100
+## Interface: 120100, 16001
 ## Title: Mechanic
 ## Notes: In-game development hub for addon developers. Centralizes debugging, testing, error capture, and performance monitoring.
 ## Author: Fen (Falkicon)
-## Version: 1.3.5
+## Version: 1.3.6
 ## X-License: GPL-3.0
 ## X-Category: Development Tools
 ## X-Website: https://github.com/Falkicon/Mechanic

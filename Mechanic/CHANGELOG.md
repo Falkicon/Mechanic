@@ -2,6 +2,11 @@
 
 All notable changes to the Mechanic in-game addons will be documented in this file.
 
+## [1.4.5 / 1.3.6] - 2026-09-18
+
+### Added
+- WoW: Forever support. Both TOCs now declare Interface 16001 alongside Retail 120100.
+
 ## [1.4.4 / 1.3.5] - 2026-09-06
 
 ### Fixed

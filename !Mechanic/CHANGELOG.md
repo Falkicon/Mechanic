@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to !Mechanic will be documented in this file.
+## [1.4.5] - 2026-09-18
+
+- Add WoW: Forever support (Interface 16001 alongside Retail 120100), bundled with main addon 1.3.6.
+
 ## [1.4.4] - 2026-09-06
 
 - Bundle main addon 1.3.5 with the Performance-tab sorting crash fix.
