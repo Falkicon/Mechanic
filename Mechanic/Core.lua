@@ -707,12 +707,13 @@ function Mechanic:CreateSelfToolsPanel(parent)
 	}
 
 	-- Title
-	local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	local title = parent:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontTitle"))
+	title:SetTextColor(FenUI:GetColorRGB("textHeading"))
 	title:SetPoint("TOPLEFT", 16, -16)
 	title:SetText("!Mechanic " .. (L["Tools"] or "Tools"))
 
 	-- Subtitle with health log count
-	local subtitle = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local subtitle = parent:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
 	local logCount = #(self.db.profile.healthLog or {})
 	subtitle:SetText(string.format("Health Log: %d entries", logCount))
@@ -735,7 +736,8 @@ function Mechanic:CreateSelfToolsPanel(parent)
 		lastButton = btn
 
 		-- Description label
-		local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+		local desc = parent:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+		desc:SetTextColor(FenUI:GetColorRGB("textMuted"))
 		desc:SetPoint("LEFT", btn, "RIGHT", 12, 0)
 		desc:SetText(tool.description)
 		desc:SetWidth(350)

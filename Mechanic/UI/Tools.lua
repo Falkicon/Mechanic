@@ -154,7 +154,8 @@ function ToolsModule:OnAddonSelected(addonName)
 		local contentFrame = self.layout:GetContentFrame("_empty")
 		local emptyText = contentFrame.emptyText
 		if not emptyText then
-			emptyText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableLarge")
+			emptyText = contentFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontTitle"))
+			emptyText:SetTextColor(FenUI:GetColorRGB("textDisabled"))
 			emptyText:SetPoint("CENTER")
 			emptyText:SetText(
 				L["No addons have registered diagnostic tools.\n\nAddons can register tools via:\nMechanicLib:Register(name, { tools = { ... } })"]

@@ -18,8 +18,9 @@ function MultiLineEditBoxMixin:Init(config)
 
 	-- Create scroll panel
 	local scrollBarWidth = FenUI:GetLayout("scrollBarWidth") or 20
+	local padding = FenUI:GetSpacing("spacingTight")
 	self.scrollPanel = FenUI:CreateScrollPanel(self, {
-		padding = 4,
+		padding = padding,
 		showScrollBar = true,
 	})
 	self.scrollPanel:SetAllPoints()
@@ -56,8 +57,12 @@ function MultiLineEditBoxMixin:Init(config)
 	local font, size, flags = self.editBox:GetFont()
 	if font then
 		self.measureFS:SetFont(font, size, flags)
+		-- Match line spacing too, or wrapped text measures short and clips
+		if self.editBox.GetSpacing then
+			self.measureFS:SetSpacing(self.editBox:GetSpacing() or 0)
+		end
 	end
-	self.measureFS:SetWidth(self.scrollFrame:GetWidth())
+	self.measureFS:SetWidth(math.max(1, self.scrollFrame:GetWidth()))
 
 	-- Helper to get text height
 	function self:GetTextHeight()
@@ -81,14 +86,33 @@ function MultiLineEditBoxMixin:Init(config)
 
 	-- Handle size changes
 	self:HookScript("OnSizeChanged", function(_, width, height)
-		local editBoxWidth = width - 30
+		-- Match the scroll frame's real viewport (padding on both sides + scrollbar)
+		local editBoxWidth = math.max(1, width - padding * 2 - scrollBarWidth)
 		self.editBox:SetWidth(editBoxWidth)
 		self.measureFS:SetWidth(editBoxWidth)
 
 		-- Ensure editBox is at least as tall as the scroll frame so it's clickable
 		-- and can handle text selection in empty space.
-		if height and height > 8 then
-			self.editBox:SetHeight(math.max(height - 8, self:GetTextHeight()))
+		if height and height > padding * 2 then
+			self.editBox:SetHeight(math.max(height - padding * 2, self:GetTextHeight()))
+		end
+	end)
+
+	-- Keep the cursor in view when navigating with arrow keys or typing
+	-- past the visible area
+	self.editBox:SetScript("OnCursorChanged", function(eb, _, y, _, h)
+		if not eb:HasFocus() then
+			return
+		end
+		local sf = self.scrollFrame
+		local top = -y
+		local bottom = top + h
+		local scroll = sf:GetVerticalScroll()
+		local viewHeight = sf:GetHeight()
+		if top < scroll then
+			sf:SetVerticalScroll(top)
+		elseif bottom > scroll + viewHeight then
+			sf:SetVerticalScroll(bottom - viewHeight)
 		end
 	end)
 
@@ -107,17 +131,28 @@ function MultiLineEditBoxMixin:Init(config)
 	self.editBox:SetScript("OnTextChanged", function(eb, userInput)
 		-- Read-only enforcement: revert user changes but allow programmatic updates
 		if self.readOnly and userInput then
+			-- Revert without jumping the view or losing the caret
+			local scroll = self.scrollFrame:GetVerticalScroll()
+			local cursor = eb:GetCursorPosition()
+			self.reverting = true
 			eb:SetText(self.currentText or "")
+			self.reverting = false
+			eb:SetCursorPosition(math.min(cursor, eb:GetNumLetters()))
+			self.scrollFrame:SetVerticalScroll(scroll)
 			return
 		end
 
-		if not self.paused then
+		if not self.paused and not self.reverting then
 			self.scrollFrame:SetVerticalScroll(self.scrollFrame:GetVerticalScrollRange())
 		end
 	end)
 
 	-- Tab behavior
 	self.editBox:SetScript("OnTabPressed", function(eb)
+		-- Insert() is not user input, so the read-only revert wouldn't catch it
+		if self.readOnly then
+			return
+		end
 		eb:Insert("    ")
 	end)
 
@@ -137,7 +172,8 @@ function MultiLineEditBoxMixin:GetText()
 end
 
 function MultiLineEditBoxMixin:Clear()
-	self.editBox:SetText("")
+	-- Go through SetText so read-only mode doesn't restore the old text
+	self:SetText("")
 end
 
 function MultiLineEditBoxMixin:SelectAll()
@@ -216,7 +252,7 @@ end
 
 function MultiLineEditBoxMixin:SetLabel(text)
 	if not self.label then
-		self.label = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		self.label = self:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 		self.label:SetPoint("BOTTOMLEFT", self, "TOPLEFT", 0, 2)
 	end
 	self.label:SetText(text)

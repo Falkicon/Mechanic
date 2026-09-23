@@ -33,10 +33,10 @@ local function GetDropShadowTextures()
 	if not DROP_SHADOW_TEXTURES then
 		local basePath = (FenUI.ADDON_PATH or "Interface\\AddOns\\FenUI") .. "\\Assets\\"
 		DROP_SHADOW_TEXTURES = {
-			soft = basePath .. "shadow-soft-64",
-			hard = basePath .. "shadow-hard-64",
-			glowSoft = basePath .. "glow-soft-64",
-			glowHard = basePath .. "glow-hard-24",
+			soft = basePath .. "shadow-soft-64.png", -- Explicit extensions: some clients only resolve extensionless .blp/.tga
+			hard = basePath .. "shadow-hard-64.png",
+			glowSoft = basePath .. "glow-soft-64.png",
+			glowHard = basePath .. "glow-hard-24.png",
 		}
 	end
 	return DROP_SHADOW_TEXTURES
@@ -222,7 +222,7 @@ function LayoutMixin:CreateBackgroundLayer()
 	self.bgFrame:SetFrameLevel(math.max(0, parentLevel - 1))
 
 	-- Create the background texture on bgFrame (not self)
-	self.bgTexture = self.bgFrame:CreateTexture(nil, "BACKGROUND", nil, -8)
+	self.bgTexture = self.bgFrame:CreateTexture(nil, "BACKGROUND", nil, -6) -- Above the drop shadow (-8)
 	self.bgTexture:SetAllPoints(self.bgFrame)
 	self.bgTexture:Hide()
 
@@ -294,6 +294,10 @@ end
 function LayoutMixin:SetBackground(bgConfig)
 	if not bgConfig or bgConfig == false then
 		self.bgTexture:Hide()
+		self.lastBgColor = nil
+		if self.roundBox then
+			self.roundBox:SetFillColor(0, 0, 0, 0)
+		end
 		if self.bgImageFrame then
 			self.bgImageFrame:Hide()
 		end
@@ -335,6 +339,16 @@ function LayoutMixin:ApplyColorBackground(values)
 	-- If a specific alpha was provided in the config, it overrides the token's alpha.
 	if values.alpha then
 		a = values.alpha
+	end
+
+	-- Remember the color so a rounded border (set before or after) can own the fill
+	self.lastBgColor = { r, g, b, a }
+
+	-- Rounded corners: the rounded box draws the fill; the square texture stays hidden
+	if self.roundBox and self.cornerRadius then
+		self.roundBox:SetFillColor(r, g, b, a)
+		self.bgTexture:Hide()
+		return
 	end
 
 	-- Applying the final color to the dedicated bgFrame texture.
@@ -530,10 +544,12 @@ function LayoutMixin:SetShadow(shadowConfig)
 
 	local shadowType = config.type or "inner"
 
+	-- Clear any previous shadow so switching inner <-> drop doesn't leave both
+	self:HideShadow()
+
 	if shadowType == "inner" then
 		self:ApplyInnerShadow(config)
-	elseif shadowType == "soft" or shadowType == "hard" or shadowType == "glow" then
-		-- Drop shadows - requires custom textures (placeholder for now)
+	elseif shadowType == "soft" or shadowType == "hard" or shadowType == "glow" or shadowType == "glowHard" then
 		self:ApplyDropShadow(config)
 	end
 
@@ -542,22 +558,27 @@ end
 
 function LayoutMixin:ApplyInnerShadow(config)
 	-- Create shadow textures if needed
+	-- Size and alpha are applied on every call (not just creation)
+	local size = config.size or FenUI:GetLayout("shadowSizeInner")
+	local alpha = config.alpha or FenUI.Tokens.semantic.shadowAlphaInner or 0.5
+
 	if not self.shadowTextures then
 		self.shadowTextures = {}
 
-		-- Create 8 textures: 4 corners + 4 edges
-		local size = config.size or INNER_SHADOW_SIZE
-		local alpha = config.alpha or 0.5
+		-- Create 8 textures: 4 corners + 4 edges.
+		-- They live on bgFrame so they sit inside the background inset and draw
+		-- beneath the border instead of darkening it.
+		local host = self.bgFrame or self
 
 		-- Top-left corner
-		self.shadowTextures.topLeft = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.topLeft = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.topLeft:SetTexture(INNER_SHADOW_TEXTURES.corner)
 		self.shadowTextures.topLeft:SetSize(size, size)
 		self.shadowTextures.topLeft:SetPoint("TOPLEFT")
 		self.shadowTextures.topLeft:SetAlpha(alpha)
 
 		-- Top-right corner (rotated)
-		self.shadowTextures.topRight = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.topRight = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.topRight:SetTexture(INNER_SHADOW_TEXTURES.corner)
 		self.shadowTextures.topRight:SetSize(size, size)
 		self.shadowTextures.topRight:SetPoint("TOPRIGHT")
@@ -565,7 +586,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.topRight:SetAlpha(alpha)
 
 		-- Bottom-left corner (rotated)
-		self.shadowTextures.bottomLeft = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.bottomLeft = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.bottomLeft:SetTexture(INNER_SHADOW_TEXTURES.corner)
 		self.shadowTextures.bottomLeft:SetSize(size, size)
 		self.shadowTextures.bottomLeft:SetPoint("BOTTOMLEFT")
@@ -573,7 +594,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.bottomLeft:SetAlpha(alpha)
 
 		-- Bottom-right corner (rotated)
-		self.shadowTextures.bottomRight = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.bottomRight = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.bottomRight:SetTexture(INNER_SHADOW_TEXTURES.corner)
 		self.shadowTextures.bottomRight:SetSize(size, size)
 		self.shadowTextures.bottomRight:SetPoint("BOTTOMRIGHT")
@@ -581,7 +602,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.bottomRight:SetAlpha(alpha)
 
 		-- Top edge
-		self.shadowTextures.top = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.top = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.top:SetTexture(INNER_SHADOW_TEXTURES.top)
 		self.shadowTextures.top:SetHeight(size)
 		self.shadowTextures.top:SetPoint("TOPLEFT", self.shadowTextures.topLeft, "TOPRIGHT")
@@ -589,7 +610,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.top:SetAlpha(alpha)
 
 		-- Bottom edge
-		self.shadowTextures.bottom = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.bottom = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.bottom:SetTexture(INNER_SHADOW_TEXTURES.bottom)
 		self.shadowTextures.bottom:SetHeight(size)
 		self.shadowTextures.bottom:SetPoint("BOTTOMLEFT", self.shadowTextures.bottomLeft, "BOTTOMRIGHT")
@@ -597,7 +618,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.bottom:SetAlpha(alpha)
 
 		-- Left edge
-		self.shadowTextures.left = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.left = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.left:SetTexture(INNER_SHADOW_TEXTURES.left)
 		self.shadowTextures.left:SetWidth(size)
 		self.shadowTextures.left:SetPoint("TOPLEFT", self.shadowTextures.topLeft, "BOTTOMLEFT")
@@ -605,7 +626,7 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.left:SetAlpha(alpha)
 
 		-- Right edge
-		self.shadowTextures.right = self:CreateTexture(nil, "OVERLAY")
+		self.shadowTextures.right = host:CreateTexture(nil, "ARTWORK")
 		self.shadowTextures.right:SetTexture(INNER_SHADOW_TEXTURES.right)
 		self.shadowTextures.right:SetWidth(size)
 		self.shadowTextures.right:SetPoint("TOPRIGHT", self.shadowTextures.topRight, "BOTTOMRIGHT")
@@ -613,8 +634,19 @@ function LayoutMixin:ApplyInnerShadow(config)
 		self.shadowTextures.right:SetAlpha(alpha)
 	end
 
+	local st = self.shadowTextures
+	st.topLeft:SetSize(size, size)
+	st.topRight:SetSize(size, size)
+	st.bottomLeft:SetSize(size, size)
+	st.bottomRight:SetSize(size, size)
+	st.top:SetHeight(size)
+	st.bottom:SetHeight(size)
+	st.left:SetWidth(size)
+	st.right:SetWidth(size)
+
 	-- Show all shadow textures
-	for _, tex in pairs(self.shadowTextures) do
+	for _, tex in pairs(st) do
+		tex:SetAlpha(alpha)
 		tex:Show()
 	end
 end
@@ -645,74 +677,74 @@ function LayoutMixin:ApplyDropShadow(config)
 	end
 
 	local alpha = config.alpha or (isGlow and 0.8 or 0.6)
-	local offsetX = config.offsetX or (isGlow and 0 or 4)
-	local offsetY = config.offsetY or (isGlow and 0 or -4)
+	local offsetX = config.offsetX or (isGlow and 0 or FenUI:GetLayout("shadowOffsetX"))
+	local offsetY = config.offsetY or (isGlow and 0 or FenUI:GetLayout("shadowOffsetY"))
 
-	-- Create shadow frame if needed (sits behind the main frame)
+	-- dropShadowFrame is only a positioning anchor. The textures live on bgFrame
+	-- at the lowest BACKGROUND sublevel, so they always draw beneath the
+	-- background/border regardless of frame levels (a separate frame one level
+	-- down can tie with bgFrame on low-level windows and draw over it).
 	if not self.dropShadowFrame then
-		self.dropShadowFrame = CreateFrame("Frame", nil, self:GetParent())
-		self.dropShadowFrame:SetFrameLevel(math.max(1, self:GetFrameLevel() - 1))
+		self.dropShadowFrame = CreateFrame("Frame", nil, self)
+		local host = self.bgFrame or self
 
 		-- Create 9 textures for proper scaling: 4 corners, 4 edges, 1 center
 		self.dropShadowTextures = {}
 
 		-- Corners (use full texture, positioned at corners)
 		for _, corner in ipairs({ "TopLeft", "TopRight", "BottomLeft", "BottomRight" }) do
-			local tex = self.dropShadowFrame:CreateTexture(nil, "BACKGROUND")
-			tex:SetBlendMode(isGlow and "ADD" or "BLEND")
+				local tex = host:CreateTexture(nil, "BACKGROUND", nil, -8)
 			self.dropShadowTextures[corner] = tex
 		end
 
 		-- Edges (stretched)
 		for _, edge in ipairs({ "Top", "Bottom", "Left", "Right" }) do
-			local tex = self.dropShadowFrame:CreateTexture(nil, "BACKGROUND")
-			tex:SetBlendMode(isGlow and "ADD" or "BLEND")
+			local tex = host:CreateTexture(nil, "BACKGROUND", nil, -8)
 			self.dropShadowTextures[edge] = tex
 		end
 
 		-- Center (optional, for very soft shadows)
-		self.dropShadowTextures.Center = self.dropShadowFrame:CreateTexture(nil, "BACKGROUND")
-		self.dropShadowTextures.Center:SetBlendMode(isGlow and "ADD" or "BLEND")
+		self.dropShadowTextures.Center = host:CreateTexture(nil, "BACKGROUND", nil, -8)
 	end
 
 	-- Update frame position relative to main frame
 	local m = self:GetMargin()
 	self.dropShadowFrame:ClearAllPoints()
-	self.dropShadowFrame:SetPoint("TOPLEFT", self, "TOPLEFT", m.left - size + offsetX, -(m.top - size + offsetY))
-	self.dropShadowFrame:SetPoint(
-		"BOTTOMRIGHT",
-		self,
-		"BOTTOMRIGHT",
-		-(m.right - size + offsetX),
-		m.bottom - size + offsetY
-	)
+	-- Outset by `size` on every side, then translate by (offsetX, offsetY)
+	self.dropShadowFrame:SetPoint("TOPLEFT", self, "TOPLEFT", m.left - size + offsetX, -m.top + size + offsetY)
+	self.dropShadowFrame:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -m.right + size + offsetX, m.bottom - size + offsetY)
 
 	-- Apply tint color for glows
-	local r, g, b = 0, 0, 0 -- Default black for shadows
+	local r, g, b = FenUI:GetColorRGB("shadowColor") -- Default black for shadows
 	if isGlow and config.color then
 		r, g, b = FenUI:GetColorRGB(config.color)
 	elseif isGlow then
-		r, g, b = FenUI:GetColorRGB("gold500") -- Default gold glow
+		r, g, b = FenUI:GetColorRGB("borderFocus") -- Default gold glow
 	end
 
-	-- Configure all textures
+	-- Configure all textures. Blend mode is set per call so switching between
+	-- shadow and glow works; alpha lives only in SetAlpha (not vertex alpha)
+	-- so it isn't applied twice.
 	for name, tex in pairs(self.dropShadowTextures) do
 		tex:SetTexture(texture)
-		tex:SetVertexColor(r, g, b, alpha)
+		tex:SetBlendMode(isGlow and "ADD" or "BLEND")
+		tex:SetVertexColor(r, g, b, 1)
+		tex:SetAlpha(name == "Center" and alpha * 0.3 or alpha)
 		tex:SetSize(size, size)
 	end
 
 	-- Position corners
-	self.dropShadowTextures.TopLeft:SetPoint("TOPLEFT", 0, 0)
+	local anchor = self.dropShadowFrame
+	self.dropShadowTextures.TopLeft:SetPoint("TOPLEFT", anchor, "TOPLEFT", 0, 0)
 	self.dropShadowTextures.TopLeft:SetTexCoord(0, 0.5, 0, 0.5)
 
-	self.dropShadowTextures.TopRight:SetPoint("TOPRIGHT", 0, 0)
+	self.dropShadowTextures.TopRight:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", 0, 0)
 	self.dropShadowTextures.TopRight:SetTexCoord(0.5, 1, 0, 0.5)
 
-	self.dropShadowTextures.BottomLeft:SetPoint("BOTTOMLEFT", 0, 0)
+	self.dropShadowTextures.BottomLeft:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT", 0, 0)
 	self.dropShadowTextures.BottomLeft:SetTexCoord(0, 0.5, 0.5, 1)
 
-	self.dropShadowTextures.BottomRight:SetPoint("BOTTOMRIGHT", 0, 0)
+	self.dropShadowTextures.BottomRight:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
 	self.dropShadowTextures.BottomRight:SetTexCoord(0.5, 1, 0.5, 1)
 
 	-- Position edges (stretched between corners)
@@ -739,10 +771,14 @@ function LayoutMixin:ApplyDropShadow(config)
 	-- Center fill (very subtle, optional)
 	self.dropShadowTextures.Center:SetPoint("TOPLEFT", self.dropShadowTextures.TopLeft, "BOTTOMRIGHT", 0, 0)
 	self.dropShadowTextures.Center:SetPoint("BOTTOMRIGHT", self.dropShadowTextures.BottomRight, "TOPLEFT", 0, 0)
-	self.dropShadowTextures.Center:SetTexCoord(0.45, 0.55, 0.45, 0.55) -- Center slice
-	self.dropShadowTextures.Center:SetAlpha(alpha * 0.3) -- Much more subtle
+	self.dropShadowTextures.Center:SetTexCoord(0.45, 0.55, 0.45, 0.55) -- Center slice (alpha set above, more subtle)
 
 	self.dropShadowFrame:Show()
+	-- The center piece is skipped: the frame covers it, and with an offset it would
+	-- poke out below the frame as a hard-edged band (and square off rounded corners)
+	for name, tex in pairs(self.dropShadowTextures) do
+		tex:SetShown(name ~= "Center")
+	end
 end
 
 function LayoutMixin:HideShadow()
@@ -752,9 +788,14 @@ function LayoutMixin:HideShadow()
 			tex:Hide()
 		end
 	end
-	-- Hide drop shadow frame
+	-- Hide drop shadow (textures live on bgFrame, so hide them explicitly)
 	if self.dropShadowFrame then
 		self.dropShadowFrame:Hide()
+	end
+	if self.dropShadowTextures then
+		for _, tex in pairs(self.dropShadowTextures) do
+			tex:Hide()
+		end
 	end
 	self.shadowType = nil
 end
@@ -1222,7 +1263,7 @@ function FenUI:CreateCard(parent, config)
 	return self:CreateLayout(parent, {
 		width = config.width,
 		height = config.height,
-		border = config.border or "Inset", -- Use our custom Inset border pack
+		border = config.border or "Card", -- Rounded card border pack
 		background = config.background or "surfaceInset", -- Use inset (recessed) background
 		shadow = config.shadow,
 		padding = config.padding or 0,

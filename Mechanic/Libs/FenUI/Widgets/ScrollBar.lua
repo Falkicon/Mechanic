@@ -7,13 +7,11 @@
 
 local FenUI = FenUI
 
--- Thumb padding from track edges (creates visual separation)
-local THUMB_PADDING = 2
-
 local ScrollBarMixin = {}
 
 function ScrollBarMixin:Init(config)
-	self.config = config or {}
+	config = config or {}
+	self.config = config
 
 	local scrollBarWidth = config.width or FenUI:GetLayout("scrollBarWidth")
 
@@ -27,8 +25,9 @@ function ScrollBarMixin:Init(config)
 	local r, g, b, a = FenUI:GetColor(config.trackToken or "surfaceScrollTrack")
 	self.track:SetColorTexture(r, g, b, a)
 
-	-- 2. Thumb - narrower than track for visual padding
-	local thumbWidth = scrollBarWidth - (THUMB_PADDING * 2)
+	-- 2. Thumb - a thin bar centered in the gutter (modern overlay style)
+	local thumbWidth = math.min(scrollBarWidth, config.thumbWidth or FenUI:GetLayout("scrollThumbWidth"))
+	thumbWidth = FenUI:GetPixelSize(self, thumbWidth)
 	local thumb = self:CreateTexture(nil, "ARTWORK")
 	local tr, tg, tb, ta = FenUI:GetColor(config.thumbToken or "interactiveScrollThumb")
 	thumb:SetColorTexture(tr, tg, tb, ta)
@@ -37,15 +36,23 @@ function ScrollBarMixin:Init(config)
 	self.thumb = thumb
 	self.thumbWidth = thumbWidth
 
-	-- 3. Scripts for hover state
-	self:SetScript("OnEnter", function()
-		local hr, hg, hb, ha = FenUI:GetColor(config.thumbHoverToken or "interactiveScrollThumbHover")
-		self.thumb:SetColorTexture(hr, hg, hb, ha)
-	end)
+	-- 3. Scripts for hover state (held while dragging, even off the bar)
+	local function UpdateThumbColor()
+		local active = self.isDragging or self:IsMouseOver()
+		local token = active and (config.thumbHoverToken or "interactiveScrollThumbHover")
+			or (config.thumbToken or "interactiveScrollThumb")
+		self.thumb:SetColorTexture(FenUI:GetColor(token))
+	end
 
-	self:SetScript("OnLeave", function()
-		local nr, ng, nb, na = FenUI:GetColor(config.thumbToken or "interactiveScrollThumb")
-		self.thumb:SetColorTexture(nr, ng, nb, na)
+	self:SetScript("OnEnter", UpdateThumbColor)
+	self:SetScript("OnLeave", UpdateThumbColor)
+	self:SetScript("OnMouseDown", function()
+		self.isDragging = true
+		UpdateThumbColor()
+	end)
+	self:SetScript("OnMouseUp", function()
+		self.isDragging = false
+		UpdateThumbColor()
 	end)
 end
 
@@ -55,6 +62,10 @@ function ScrollBarMixin:UpdateThumbSize(visibleHeight, totalHeight)
 		if self.thumb then
 			self.thumb:SetHeight(0.1)
 		end -- Use minimal height instead of 0
+		-- Collapse the range so mouse-wheel input can't scroll into blank space
+		-- (SetValue still fires OnValueChanged on a hidden slider).
+		self:SetMinMaxValues(0, 0)
+		self:SetValue(0)
 		self:Hide()
 		return
 	end
@@ -69,7 +80,7 @@ function ScrollBarMixin:UpdateThumbSize(visibleHeight, totalHeight)
 
 	local ratio = visibleHeight / totalHeight
 	-- Account for padding in minimum thumb height
-	local thumbHeight = math.max(20, trackHeight * ratio)
+	local thumbHeight = math.floor(math.max(20, trackHeight * ratio) + 0.5)
 
 	-- Update thumb size (width already set in Init, respecting padding)
 	self.thumb:SetSize(self.thumbWidth, thumbHeight)

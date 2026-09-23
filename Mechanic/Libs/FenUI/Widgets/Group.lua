@@ -17,11 +17,6 @@ function GroupMixin:Init(config)
 	self.config = config or {}
 	self.cells = {}
 
-	-- Apply name for inspector UI identification
-	if config.name then
-		self:SetName(config.name)
-	end
-
 	-- Apply size (supports responsive strings like "50%" and "auto", and constraints)
 	if
 		config.width

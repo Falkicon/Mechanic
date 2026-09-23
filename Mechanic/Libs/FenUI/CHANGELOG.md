@@ -5,6 +5,65 @@ All notable changes to FenUI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [Unreleased]
+
+Visual polish and quality pass, then the Obsidian aesthetic pass.
+
+### Changed (Obsidian)
+- **New default palette "Obsidian"** - neutral near-black surfaces (new `obsidian*` primitives) with gold as the single accent. Semantic tokens were repointed, so existing widgets and consumer addons pick it up automatically. The old warm-grey values remain as primitives and as the new `Classic` theme. The Default theme no longer overrides tokens.
+- New semantic tokens: `surfaceHeader`, `surfaceControl`/`Hover`/`Pressed`, `textStrong`, `textTitle`, `borderInteractiveHover`, `surfaceRowSelectedHover`, `accentBar`. `textHeading` is now neutral (gold is reserved for `textTitle`); `surfaceRowSelected` is a translucent gold wash.
+- **Buttons** - neutral secondary style by default (light label on a control surface); new `variant = "primary"` (gold fill, dark label) and `Button:SetVariant()`.
+- **Tabs** - muted labels at rest, hover wash, gold label + underline only for the selected tab, on a hairline baseline across the strip (`showBaseline = false` to hide).
+- **Rows** (Tree, Grid, VirtualList) - selection is a gold wash with a 2px gold leading edge.
+- **Panel** - raised title strip with a hairline divider, soft drop shadow by default (`shadow = false` to opt out), gold title.
+- **ScrollBar** - thin 6px thumb floating in a 14px gutter on a transparent track (`scrollBarWidth` 20 → 14, new `scrollThumbWidth`).
+- **Input** - control border at rest, lighter on hover, gold on focus; token text/placeholder colors.
+- **Checkbox** - recessed box, gold edge when checked. **Dropdown** - left-aligned value label and a chevron.
+- **Fonts** - `fontBody`/`fontSmall`/`fontHeading` now use Blizzard's white `GameFontHighlight*` family (gold `GameFontNormal*` is kept for `fontTitle` and the Classic theme via new `bodyGold`/`bodySmallGold`/`headingGold` primitives). Labels that relied on the gold default, such as Grid cells and MultiLineEditBox text, now render white.
+- **SplitLayout** nav items use the row selection style (gold wash + leading edge) with neutral labels instead of gold.
+
+- **Type scale** - new `FenUIFont*` font objects (caption 10, small 11, body 12, heading 14, title 16, display 20) back the font tokens; new `fontCaption`, `fontWindowTitle`, `fontDisplay` tokens; `fontTitle` is now the 16px page title (the window title uses `fontWindowTitle`, 14px).
+- **Rounded corners** - buttons, inputs, dropdowns and checkboxes use `radiusControl` (3px); `ModernDark` windows and the new `Card` border pack (now the `CreateCard` default) use `radiusContainer` (6px). The Panel title strip follows the rounded top corners. Rows, tabs and dividers stay square.
+
+- **Asset paths** - `FenUI.ADDON_PATH` kept a leading `[` on clients whose `debugstack` uses the `[path]:line` format (e.g. WoW: Forever), and extensionless asset paths only resolve `.blp`/`.tga` there. FenUI's PNG assets (shadows, glows, corners) now load: path detection handles that format and asset paths include `.png`.
+- **Drop shadow** - redrawn `shadow-soft-64.png` (fully transparent border, smooth falloff); shadow textures now draw on the background frame's lowest sublevel so they can't tie with or cover the window on low frame levels; the center piece is no longer drawn; Panel's default shadow is a centered ambient shadow (size 24, alpha 0.55).
+
+### Added (Obsidian)
+- `FenUI:CreateRoundedShape`, `FenUI:CreateRoundedBox`, `FenUI:GetRadius`, and the `Assets/corner-disc-64.png` corner asset. **New asset: restart the WoW client once** (a `/reload` can't see files added while the game is running).
+- `FenUI:SkinScrollFrame(scrollFrame, { offset })` restyles a Blizzard `UIPanelScrollFrameTemplate` to match (arrow buttons removed, thin token thumb, thumb hidden when nothing scrolls).
+
+### Fixed
+- **Token chains resolved to white** - Semantic tokens that point at other semantic tokens (`textEmptyTitle`, `textEmptySubtitle`, all `background*` tokens) fell through to pure white. `GetColor`/`GetSpacing`/`GetFont` now follow the chain (with a cycle guard), so EmptyState text renders in its intended muted colors.
+- **Crisp 1px borders** - The border engine, Button, Checkbox, Input, Toolbar/StatusRow dividers and the SplitLayout separator snap hairlines to whole physical pixels (`PixelUtil`); border-engine frames re-snap on UI scale/resolution changes.
+- **Drop shadows** - Offset math shrank the shadow instead of shifting it; the shadow now hides/fades with its frame, switches blend mode correctly between shadow and glow, supports `"glowHard"`, and no longer applies alpha twice. Switching shadow types clears the previous one.
+- **Inner shadow** drew over the border and margin; it now sits inside the background, under the border, and honors `size`/`alpha` on every call.
+- **Stack** initialized its Layout twice (duplicate background frame, doubled inner-shadow opacity).
+- **Group** errored when given a `name` (called a nonexistent `SetName`).
+- **Scrolling** - Hidden scrollbars kept their old range, so the mouse wheel scrolled lists into blank space; ScrollPanel no longer runs an endless 0.1s retry timer when its content is empty; thumb held its hover color while dragging; nil config no longer errors.
+- **VirtualList** reserved 12px for a 20px scrollbar (rows ran under it); header rows no longer show hover.
+- **Tree** kept selection on the pooled row frame, so a different node could appear selected after `SetData`; hover painted over the selection; clicking a value-less group node called `onSelect(nil)`. Added `Tree:Select(value, silent)` / `GetSelected()`.
+- **Grid** rows carried a stale selection after re-binding.
+- **Panel** subtitle used a nonexistent `textSubtle` token (rendered white); close button used DIALOG strata (floated above other windows) and hardcoded colors; `SetPadding` ignored token strings; long titles now truncate before the close button.
+- **Tabs** - `GetBadge()` errored for texture badges; icon badges were tinted green; badges could spill past the tab edge; disabling the selected tab left stale selection state (selection now moves to the first enabled tab); default group height matches `tabHeight`.
+- **MultiLineEditBox** - Read-only text could be edited with Tab; `Clear()` was undone on the next keypress in read-only mode; the view now follows the cursor; read-only reverts keep scroll position and caret; width matches the real viewport.
+- **Dropdown** menus opened at the cursor instead of under the control (and didn't close with it); nil config no longer errors.
+- **Checkbox** checkmark used a "✓" glyph missing from WoW fonts; now an atlas (FontString calls like `SetFontObject`/`SetTextColor` on it are still accepted for compatibility). The label row is clickable and shares the hover state.
+- **Buttons** with a fixed width truncate long labels instead of overflowing; auto-sized widgets round to whole pixels.
+- **Toolbar** force-showed every item on each layout (items couldn't be hidden); it now skips hidden items and reflows when items show/hide/resize.
+- **EmptyState** sized itself from the parent's width at creation (usually 0); it now stretches with its container and re-measures wrapped text.
+- **InfoPanel** reserved the close-button space twice; **SplitLayout** `GetContentFrame()` without a key errored inside Layout internals.
+- `/fenui debug` errored when FenUI is embedded (`FenUIDB` was never initialized); `FenUI.VERSION` now matches the TOC; the saved theme's token overrides are re-applied on load; `Utils:Colorize` accepts 6-digit hex from `GetColorHex`.
+
+### Changed
+- `borderSubtle` is now `gray950` (was `gray800`, identical to `surfacePanel`, so Inset borders and dividers were invisible on panels).
+- `surfaceRowHover` is now a translucent white overlay (`whiteOverlay08`) so row hover reads on any surface and over the selection.
+- `textMuted` is now `gray400` (was ~3:1 contrast on `surfacePanel`).
+- Input shows a hover border; Tree/VirtualList rows use `rowHeight`, `fontSmall`, truncation and token-based indents.
+- Hardcoded fonts/spacing in Section, SectionHeader, StatusRow, Tree, VirtualList, Grid, Tabs and MultiLineEditBox replaced with tokens.
+- Registered themes default to the `ModernDark` border pack.
+
+### Added
+- `FenUI:GetPixelSize(frame, size)` and `FenUI:GetDB()`.
 
 ## [3.0.0] - 2026-01-03
 

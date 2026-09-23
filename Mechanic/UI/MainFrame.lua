@@ -54,6 +54,16 @@ function Mechanic:CreateMainFrame()
 	statusBar:SetPoint("BOTTOMRIGHT", 0, 0)
 	frame.statusBar = statusBar
 
+	-- Raised footer: header surface plus a hairline, mirroring the title strip
+	local statusBg = statusBar:CreateTexture(nil, "BACKGROUND", nil, -7)
+	statusBg:SetAllPoints()
+	statusBg:SetColorTexture(FenUI:GetColor("surfaceHeader"))
+	local statusDivider = statusBar:CreateTexture(nil, "BORDER")
+	statusDivider:SetPoint("TOPLEFT")
+	statusDivider:SetPoint("TOPRIGHT")
+	statusDivider:SetHeight(FenUI.GetPixelSize and FenUI:GetPixelSize(statusBar) or 1)
+	statusDivider:SetColorTexture(FenUI:GetColor("borderSubtle"))
+
 	-- Content container for modules
 	local contentFrame = CreateFrame("Frame", nil, frame.safeZone)
 	frame.moduleContent = contentFrame
@@ -103,13 +113,13 @@ function Mechanic:CreateMainFrame()
 	})
 
 	-- Match status bar font and color
-	registerSelfCheckbox.label:SetFontObject("GameFontNormalSmall")
-	registerSelfCheckbox.label:SetTextColor(FenUI:GetColorRGB("gray300"))
-	registerSelfCheckbox.checkmark:SetFontObject("GameFontNormalSmall")
+	registerSelfCheckbox.label:SetFontObject(FenUI:GetFont("fontSmall"))
+	registerSelfCheckbox.label:SetTextColor(FenUI:GetColorRGB("textMuted"))
+	registerSelfCheckbox.checkmark:SetFontObject(FenUI:GetFont("fontSmall"))
 
 	-- Lighten the checkbox textures
 	if registerSelfCheckbox.boxBg then
-		registerSelfCheckbox.boxBg:SetVertexColor(FenUI:GetColor("gray200"))
+		registerSelfCheckbox.boxBg:SetVertexColor(FenUI:GetColor("textMuted"))
 	end
 
 	-- Anchor to the last status item for a unified left-aligned look

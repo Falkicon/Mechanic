@@ -20,6 +20,29 @@ function WidgetMixin:Init(config)
 	button:SetAllPoints()
 	self.button = button
 
+	-- Chevron glyph
+	local pad = FenUI:GetSpacing("spacingElement")
+	local chevron = FenUI:CreateChevron(button, "down")
+	chevron:SetPoint("RIGHT", button, "RIGHT", -pad, 0)
+	self.chevron = chevron
+
+	-- Label reads as a value: left-aligned, clear of the chevron
+	button.text:ClearAllPoints()
+	button.text:SetPoint("LEFT", button, "LEFT", pad, 0)
+	button.text:SetPoint("RIGHT", chevron, "LEFT", -FenUI:GetSpacing("spacingTight"), 0)
+	button.text:SetJustifyH("LEFT")
+	button.text:SetWordWrap(false)
+
+	-- Chevron follows the label color through hover/pressed/disabled
+	hooksecurefunc(button, "UpdateVisual", function()
+		if button.currentState == "hover" then
+			chevron:SetColor(button.text:GetTextColor())
+		else
+			chevron:SetColor(FenUI:GetColor("textMuted"))
+		end
+	end)
+	button:UpdateVisual(button:IsEnabled() and "normal" or "disabled")
+
 	button:SetScript("OnClick", function()
 		self:ToggleMenu()
 	end)
@@ -102,8 +125,9 @@ end
 
 -- Factory function
 function FenUI:CreateDropdown(parent, config)
+	config = config or {}
 	local frame = CreateFrame("Frame", nil, parent)
-	frame:SetSize(config.width or 150, config.height or 24)
+	frame:SetSize(config.width or 150, config.height or FenUI:GetLayout("buttonHeight"))
 
 	FenUI.Mixin(frame, WidgetMixin)
 	frame:Init(config)

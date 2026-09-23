@@ -7,7 +7,37 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
+
 local InspectModule = {}
+
+--- Shared column header: raised strip, hairline divider, neutral title.
+--- Every Inspect column uses it so the four columns line up.
+InspectModule.COLUMN_HEADER_HEIGHT = 24
+
+function InspectModule:CreateColumnHeader(parent, titleText)
+	local header = CreateFrame("Frame", nil, parent)
+	header:SetPoint("TOPLEFT", 0, 0)
+	header:SetPoint("TOPRIGHT", 0, 0)
+	header:SetHeight(self.COLUMN_HEADER_HEIGHT)
+
+	local bg = header:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(FenUI:GetColor("surfaceHeader"))
+
+	local divider = header:CreateTexture(nil, "BORDER")
+	divider:SetPoint("BOTTOMLEFT")
+	divider:SetPoint("BOTTOMRIGHT")
+	divider:SetHeight(FenUI:GetPixelSize(header))
+	divider:SetColorTexture(FenUI:GetColor("borderSubtle"))
+
+	local title = header:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+	title:SetTextColor(FenUI:GetColorRGB("textHeading"))
+	title:SetPoint("LEFT", 8, 0)
+	title:SetText(titleText)
+	header.title = title
+
+	return header
+end
 Mechanic.Inspect = InspectModule
 
 InspectModule.frame = nil
@@ -33,7 +63,7 @@ function Mechanic:InitializeInspect()
 
 	local toolbarBg = toolbar:CreateTexture(nil, "BACKGROUND")
 	toolbarBg:SetAllPoints()
-	toolbarBg:SetColorTexture(0, 0, 0, 0.2)
+	toolbarBg:SetColorTexture(FenUI:GetColor("surfaceHeader"))
 
 	-- Pick Button
 	local pickBtn = FenUI:CreateImageButton(toolbar, {
@@ -110,7 +140,7 @@ function Mechanic:InitializeInspect()
 
 	local treeBg = treeFrame:CreateTexture(nil, "BACKGROUND")
 	treeBg:SetAllPoints()
-	treeBg:SetColorTexture(0, 0, 0, 0.3)
+	treeBg:SetColorTexture(FenUI:GetColor("surfaceInset"))
 
 	-- 2. Properties (Edit) - New
 	local propertiesFrame = CreateFrame("Frame", nil, content)
@@ -121,7 +151,7 @@ function Mechanic:InitializeInspect()
 
 	local propBg = propertiesFrame:CreateTexture(nil, "BACKGROUND")
 	propBg:SetAllPoints()
-	propBg:SetColorTexture(0, 0, 0, 0.2)
+	propBg:SetColorTexture(FenUI:GetColor("surfaceInset"))
 
 	-- 3. Watch List (Control) - Far Right, Narrower
 	local watchFrame = CreateFrame("Frame", nil, content)
@@ -132,7 +162,7 @@ function Mechanic:InitializeInspect()
 
 	local watchBg = watchFrame:CreateTexture(nil, "BACKGROUND")
 	watchBg:SetAllPoints()
-	watchBg:SetColorTexture(0, 0, 0, 0.3)
+	watchBg:SetColorTexture(FenUI:GetColor("surfaceInset"))
 
 	-- 4. Details (Understand) - Fills the middle gap between Properties and Watch
 	local detailsFrame = CreateFrame("Frame", nil, content)
@@ -194,7 +224,7 @@ function InspectModule:GetOrCreateHighlight()
 	local edgeSize = 3
 	for _, edge in ipairs({ "Top", "Bottom", "Left", "Right" }) do
 		local tex = highlight:CreateTexture(nil, "OVERLAY")
-		tex:SetColorTexture(1, 0.82, 0, 1) -- Gold color
+		tex:SetColorTexture(FenUI:GetColor("borderFocus"))
 		highlight[edge .. "Edge"] = tex
 	end
 
@@ -211,7 +241,7 @@ function InspectModule:GetOrCreateHighlight()
 	highlight.RightEdge:SetPoint("TOPRIGHT", highlight.TopEdge, "BOTTOMRIGHT")
 	highlight.RightEdge:SetPoint("BOTTOMRIGHT", highlight.BottomEdge, "TOPRIGHT")
 
-	local label = highlight:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local label = highlight:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	label:SetPoint("TOP", highlight, "BOTTOM", 0, -4)
 	highlight.label = label
 
@@ -291,9 +321,10 @@ function InspectModule:StartPicking()
 
 		local bg = bar:CreateTexture(nil, "BACKGROUND")
 		bg:SetAllPoints()
-		bg:SetColorTexture(0, 0, 0, 0.9)
+		local r, g, b = FenUI:GetColorRGB("surfaceOverlay")
+		bg:SetColorTexture(r, g, b, 0.95)
 
-		local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		local text = bar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontTitle"))
 		text:SetPoint("CENTER")
 		text:SetText("|cffFFD100PICK MODE|r - Click any frame to select")
 

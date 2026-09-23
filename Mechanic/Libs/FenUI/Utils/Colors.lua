@@ -42,10 +42,13 @@ Utils.Colors.Categories = {
 
 --- Wraps a string in a color hex code.
 ---@param text string The text to colorize
----@param hex string The hex color code (e.g., "ff00ff00")
+---@param hex string The hex color code: "ff00ff00" (AARRGGBB) or "00ff00" (RRGGBB, e.g. from FenUI:GetColorHex)
 ---@return string colorized
 function Utils:Colorize(text, hex)
 	if not hex:find("|c") then
+		if #hex == 6 then
+			hex = "ff" .. hex -- |c escapes require an alpha byte
+		end
 		hex = "|c" .. hex
 	end
 	return hex .. text .. "|r"

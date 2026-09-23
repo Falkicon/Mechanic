@@ -272,8 +272,7 @@ function APIModule:BuildLayout(parent)
 	-- Nav background
 	local navBg = navPanel:CreateTexture(nil, "BACKGROUND")
 	navBg:SetAllPoints()
-	local r, g, b = FenUI:GetColorRGB("surfaceInset")
-	navBg:SetColorTexture(r, g, b, 0.6)
+	navBg:SetColorTexture(FenUI:GetColor("surfaceInset"))
 
 	-- Nav separator
 	local navSep = navPanel:CreateTexture(nil, "BORDER")
@@ -358,34 +357,44 @@ function APIModule:BuildLayout(parent)
 	-- Background
 	local toggleBg = safeToggle:CreateTexture(nil, "BACKGROUND")
 	toggleBg:SetAllPoints()
-	toggleBg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
+	toggleBg:SetColorTexture(FenUI:GetColor("surfaceControl"))
 	safeToggle.bg = toggleBg
 
 	-- Border
-	local toggleBorder = safeToggle:CreateTexture(nil, "BORDER")
+	-- Drawn below the fill and 1px larger, so only a hairline edge shows
+	local toggleBorder = safeToggle:CreateTexture(nil, "BACKGROUND", nil, -8)
 	toggleBorder:SetPoint("TOPLEFT", -1, 1)
 	toggleBorder:SetPoint("BOTTOMRIGHT", 1, -1)
-	toggleBorder:SetColorTexture(0.3, 0.3, 0.3, 1)
+	toggleBorder:SetColorTexture(FenUI:GetColor("borderInteractive"))
 	safeToggle.border = toggleBorder
 
+	-- Rounded chip (FenUI box); the square textures above stay as hidden legacy fields
+	toggleBg:Hide()
+	toggleBorder:Hide()
+	safeToggle.box = FenUI:CreateRoundedBox(safeToggle, safeToggle, "radiusControl")
+
 	-- Label
-	local toggleText = safeToggle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	local toggleText = safeToggle:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	toggleText:SetPoint("CENTER", 0, 0)
 	toggleText:SetText(L["Safe"] or "Safe")
 	safeToggle.label = toggleText
 
 	-- Update visual state
+	-- On: quiet green status chip (tinted fill, green edge and label). Off: neutral control.
 	local function UpdateToggleVisual()
+		safeToggle.label:SetText(L["Safe"] or "Safe")
 		if APIModule.hideRestricted then
-			safeToggle.bg:SetColorTexture(0.2, 0.5, 0.2, 0.9)
-			safeToggle.border:SetColorTexture(0.3, 0.7, 0.3, 1)
-			safeToggle.label:SetText(L["Safe"] or "Safe")
-			safeToggle.label:SetTextColor(1, 1, 1)
+			-- Control surface blended 16% toward green (opaque, so rounded corners stay clean)
+			local r, g, b = FenUI:GetColorRGB("feedbackSuccess")
+			local cr, cg, cb = FenUI:GetColorRGB("surfaceControl")
+			local t = 0.16
+			safeToggle.box:SetFillColor(cr + (r - cr) * t, cg + (g - cg) * t, cb + (b - cb) * t, 1)
+			safeToggle.box:SetBorderColor(FenUI:GetColor("feedbackSuccessSubtle"))
+			safeToggle.label:SetTextColor(FenUI:GetColorRGB("feedbackSuccess"))
 		else
-			safeToggle.bg:SetColorTexture(0.15, 0.15, 0.15, 0.9)
-			safeToggle.border:SetColorTexture(0.3, 0.3, 0.3, 1)
-			safeToggle.label:SetText(L["Safe"] or "Safe")
-			safeToggle.label:SetTextColor(0.5, 0.5, 0.5)
+			safeToggle.box:SetFillColor(FenUI:GetColor("surfaceControl"))
+			safeToggle.box:SetBorderColor(FenUI:GetColor("borderInteractive"))
+			safeToggle.label:SetTextColor(FenUI:GetColorRGB("textMuted"))
 		end
 	end
 
@@ -397,7 +406,9 @@ function APIModule:BuildLayout(parent)
 
 	-- Tooltip
 	safeToggle:SetScript("OnEnter", function(self)
-		self.bg:SetColorTexture(0.25, 0.25, 0.25, 0.9)
+		if not APIModule.hideRestricted then
+			self.box:SetFillColor(FenUI:GetColor("surfaceControlHover"))
+		end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:SetText(L["Safe APIs Only"] or "Safe APIs Only", 1, 1, 1)
 		GameTooltip:AddLine(" ")
@@ -417,7 +428,8 @@ function APIModule:BuildLayout(parent)
 	self.safeToggle = safeToggle
 
 	-- Stats label
-	local statsLabel = navPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	local statsLabel = navPanel:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontCaption"))
+	statsLabel:SetTextColor(FenUI:GetColorRGB("textMuted"))
 	statsLabel:SetPoint("TOPLEFT", filterRow, "BOTTOMLEFT", 2, -4)
 	statsLabel:SetJustifyH("LEFT")
 	self.statsLabel = statsLabel
@@ -627,12 +639,15 @@ end
 
 function APIModule:RenderNavItem(row, item, isSelected)
 	-- Update selection highlight
+	-- Keep the token's alpha: the selection is a translucent gold wash
 	if isSelected then
-		local selR, selG, selB = FenUI:GetColorRGB("surfaceRowSelected")
-		row.bg:SetColorTexture(selR, selG, selB, 1)
+		row.bg:SetColorTexture(FenUI:GetColor("surfaceRowSelected"))
 		row.bg:Show()
 	else
 		row.bg:Hide()
+	end
+	if row.accent then
+		row.accent:SetShown(isSelected and not (item.isHeader or item.isCategory))
 	end
 
 	if item.isHeader or item.isCategory then
@@ -653,12 +668,7 @@ function APIModule:RenderNavItem(row, item, isSelected)
 		row.text:ClearAllPoints()
 		row.text:SetPoint("LEFT", indent, 0)
 
-		if isSelected then
-			local r, g, b = FenUI:GetColorRGB("textDefault")
-			row.text:SetTextColor(r, g, b)
-		else
-			row.text:SetTextColor(1, 1, 1)
-		end
+		row.text:SetTextColor(FenUI:GetColorRGB(isSelected and "textStrong" or "textDefault"))
 		row:Enable()
 	end
 end
@@ -737,7 +747,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Header: API name and path
 	local nameLabel = Mechanic.Utils:GetOrCreateWidget(parent, "nameLabel", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontDisplay"))
+		fs:SetTextColor(FenUI:GetColorRGB("textHeading"))
+		return fs
 	end)
 	nameLabel:SetPoint("TOPLEFT", 8, yOffset)
 	nameLabel:SetText(apiDef.funcPath)
@@ -746,7 +758,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Namespace and category
 	local infoLabel = Mechanic.Utils:GetOrCreateWidget(parent, "infoLabel", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		return p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	end)
 	infoLabel:SetPoint("TOPLEFT", 8, yOffset)
 	local nsName = apiDef.category or "Unknown"
@@ -757,7 +769,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	-- Midnight impact
 	local impactColor = self:GetImpactColor(apiDef.midnightImpact)
 	local impactLabel = Mechanic.Utils:GetOrCreateWidget(parent, "impactLabel", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		return p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	end)
 	impactLabel:SetPoint("TOPLEFT", 8, yOffset)
 	impactLabel:SetText(
@@ -774,7 +786,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	local impactExplanation = IMPACT_EXPLANATIONS[apiDef.midnightImpact]
 	if impactExplanation then
 		local explainLabel = Mechanic.Utils:GetOrCreateWidget(parent, "impactExplainLabel", function(p)
-			local label = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			local label = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 			label:SetJustifyH("LEFT")
 			label:SetWordWrap(true)
 			return label
@@ -796,7 +808,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	local secretExplanations = ParseSecretBehavior(apiDef.midnightNote)
 	if secretExplanations and #secretExplanations > 0 then
 		local secretLabel = Mechanic.Utils:GetOrCreateWidget(parent, "secretExplainLabel", function(p)
-			local label = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			local label = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 			label:SetJustifyH("LEFT")
 			label:SetWordWrap(true)
 			return label
@@ -817,7 +829,8 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	-- Raw midnight note (collapsed/smaller, for reference)
 	if apiDef.midnightNote then
 		local noteLabel = Mechanic.Utils:GetOrCreateWidget(parent, "noteLabel", function(p)
-			local label = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			local label = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+			label:SetTextColor(FenUI:GetColorRGB("textMuted"))
 			label:SetJustifyH("LEFT")
 			label:SetWordWrap(true)
 			return label
@@ -839,7 +852,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	local sep1 = Mechanic.Utils:GetOrCreateWidget(parent, "sep1", function(p)
 		local sep = p:CreateTexture(nil, "BACKGROUND")
 		sep:SetHeight(1)
-		sep:SetColorTexture(1, 1, 1, 0.2)
+		sep:SetColorTexture(FenUI:GetColor("borderSubtle"))
 		return sep
 	end)
 	sep1:SetPoint("TOPLEFT", 8, yOffset)
@@ -849,7 +862,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Parameters section
 	local paramsHeader = Mechanic.Utils:GetOrCreateWidget(parent, "paramsHeader", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+		fs:SetTextColor(FenUI:GetColorRGB("textMuted"))
+		return fs
 	end)
 	paramsHeader:SetPoint("TOPLEFT", 8, yOffset)
 	paramsHeader:SetText(L["Parameters:"])
@@ -911,8 +926,8 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Namespace run status (shows result of Run Namespace)
 	local nsStatusLabel = Mechanic.Utils:GetOrCreateWidget(buttonRow, "nsStatusLabel", function(p)
-		local label = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		label:SetTextColor(0.7, 0.7, 0.7)
+		local label = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+		label:SetTextColor(FenUI:GetColorRGB("textMuted"))
 		return label
 	end)
 	nsStatusLabel:SetPoint("LEFT", copyBtn, "RIGHT", 16, 0)
@@ -926,7 +941,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	local sep2 = Mechanic.Utils:GetOrCreateWidget(parent, "sep2", function(p)
 		local sep = p:CreateTexture(nil, "BACKGROUND")
 		sep:SetHeight(1)
-		sep:SetColorTexture(1, 1, 1, 0.2)
+		sep:SetColorTexture(FenUI:GetColor("borderSubtle"))
 		return sep
 	end)
 	sep2:SetPoint("TOPLEFT", 8, yOffset)
@@ -936,7 +951,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Results section
 	local resultsHeader = Mechanic.Utils:GetOrCreateWidget(parent, "resultsHeader", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+		fs:SetTextColor(FenUI:GetColorRGB("textMuted"))
+		return fs
 	end)
 	resultsHeader:SetPoint("TOPLEFT", 8, yOffset)
 	resultsHeader:SetText(L["Results:"])
@@ -945,7 +962,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Status line
 	local statusLabel = Mechanic.Utils:GetOrCreateWidget(parent, "statusLabel", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		return p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	end)
 	statusLabel:SetPoint("TOPLEFT", 8, yOffset)
 	statusLabel:SetText(L["Not yet run"])
@@ -968,7 +985,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 
 	-- Notes section (at bottom)
 	local notesHeader = Mechanic.Utils:GetOrCreateWidget(parent, "notesHeader", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+		fs:SetTextColor(FenUI:GetColorRGB("textMuted"))
+		return fs
 	end)
 	notesHeader:SetPoint("BOTTOMLEFT", 8, 70)
 	notesHeader:SetText(L["Notes:"])
@@ -1011,7 +1030,7 @@ function APIModule:CreateParamInput(parent, param, index, yOffset)
 	row:Show()
 
 	local label = Mechanic.Utils:GetOrCreateWidget(row, "label", function(p)
-		local fs = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 		fs:SetWidth(120)
 		fs:SetJustifyH("LEFT")
 		return fs
@@ -1040,7 +1059,9 @@ function APIModule:CreateParamInput(parent, param, index, yOffset)
 	input:Show()
 
 	local typeLabel = Mechanic.Utils:GetOrCreateWidget(row, "typeLabel", function(p)
-		return p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		local fs = p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontCaption"))
+		fs:SetTextColor(FenUI:GetColorRGB("textMuted"))
+		return fs
 	end)
 	typeLabel:SetPoint("LEFT", input, "RIGHT", 8, 0)
 	typeLabel:SetText(string.format("(%s)", param.type))

@@ -13,9 +13,10 @@ function SectionHeaderMixin:Init(config)
 	self.config = config
 
 	-- 1. FontString Setup
-	local fs = self:CreateFontString(nil, "OVERLAY", config.font or "GameFontNormalLarge")
+	local fs = self:CreateFontString(nil, "OVERLAY", config.font or FenUI:GetFont("fontHeading"))
 	fs:SetText(config.text or "")
 	fs:SetJustifyH(config.align or "LEFT")
+	fs:SetWordWrap(false) -- Single line; long headers truncate instead of growing upward
 
 	-- Apply muted color by default (gray)
 	local r, g, b = FenUI:GetColorRGB(config.color or "textMuted")
@@ -26,14 +27,14 @@ function SectionHeaderMixin:Init(config)
 	-- 2. Layout & Spacing
 	local topMargin = FenUI:GetSpacing(config.spacing or "md")
 	local bottomMargin = FenUI:GetSpacing(config.bottomMargin or "xs") -- 4px breathing room
-	local leftIndent = config.indent or 8 -- Indent to match nav buttons
+	local leftIndent = config.indent or FenUI:GetSpacing("spacingElement") -- Indent to match nav buttons
 
 	-- We anchor the text relative to the container
 	fs:SetPoint("LEFT", leftIndent, 0)
 	fs:SetPoint("RIGHT", 0, 0)
 
 	-- Set frame height based on font string + margins
-	self:SetHeight(fs:GetHeight() + topMargin + bottomMargin)
+	self:SetHeight(math.ceil(fs:GetStringHeight() + topMargin + bottomMargin))
 
 	-- Anchor text to the bottom of the frame (with its own margin)
 	-- so the frame's total height creates the top spacing

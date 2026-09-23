@@ -188,17 +188,17 @@ function Mechanic:InitializePerformance()
 	metricsRow:SetPoint("TOPLEFT", generalContent, "TOPLEFT", 8, -40)
 	metricsRow:SetPoint("TOPRIGHT", generalContent, "TOPRIGHT", -8, -40)
 
-	local fpsLabel = metricsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local fpsLabel = metricsRow:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	fpsLabel:SetPoint("LEFT", 0, 0)
 	fpsLabel:SetText(L["FPS: --"])
 	PerformanceModule.fpsLabel = fpsLabel
 
-	local latencyLabel = metricsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local latencyLabel = metricsRow:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	latencyLabel:SetPoint("LEFT", fpsLabel, "RIGHT", 32, 0)
 	latencyLabel:SetText(L["Latency: --ms / --ms"])
 	PerformanceModule.latencyLabel = latencyLabel
 
-	local memoryLabel = metricsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local memoryLabel = metricsRow:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	memoryLabel:SetPoint("LEFT", latencyLabel, "RIGHT", 32, 0)
 	memoryLabel:SetText(L["Lua Memory: -- MB"])
 	PerformanceModule.memoryLabel = memoryLabel
@@ -209,7 +209,7 @@ function Mechanic:InitializePerformance()
 	footerBar:SetPoint("BOTTOMLEFT", generalContent, "BOTTOMLEFT", 8, 4)
 	footerBar:SetPoint("BOTTOMRIGHT", generalContent, "BOTTOMRIGHT", -8, 4)
 
-	local footerLabel = footerBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local footerLabel = footerBar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	footerLabel:SetPoint("LEFT", 0, 0)
 	footerLabel:SetText(
 		string.format(L["Tracking: %s | Total Memory: %s"] or "Tracking: %s | Total Memory: %s", "0m 0s", "0 KB")
@@ -228,6 +228,7 @@ function Mechanic:InitializePerformance()
 	local scrollFrame = CreateFrame("ScrollFrame", nil, generalContent, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -4)
 	scrollFrame:SetPoint("BOTTOMRIGHT", footerBar, "TOPRIGHT", -27, 4) -- Adjusted for scrollbar
+	FenUI:SkinScrollFrame(scrollFrame, { offset = 6 })
 	PerformanceModule.scrollFrame = scrollFrame
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
@@ -613,7 +614,8 @@ function PerformanceModule:ShowAddonDetails(addonName)
 	if not self.addonDetailFrames[addonName] then
 		self.addonDetailFrames[addonName] = detailFrame
 
-		local title = detailFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		local title = detailFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontTitle"))
+		title:SetTextColor(FenUI:GetColorRGB("textHeading"))
 		title:SetPoint("TOPLEFT", 8, -40)
 		title:SetText(
 			string.format(
@@ -622,7 +624,7 @@ function PerformanceModule:ShowAddonDetails(addonName)
 			)
 		)
 
-		local infoText = detailFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		local infoText = detailFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 		infoText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
 		infoText:SetText(L["No sub-metrics available for this addon."])
 		detailFrame.infoText = infoText
@@ -638,6 +640,7 @@ function PerformanceModule:ShowAddonDetails(addonName)
 		local scrollFrame = CreateFrame("ScrollFrame", nil, detailFrame, "UIPanelScrollFrameTemplate")
 		scrollFrame:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -4)
 		scrollFrame:SetPoint("BOTTOMRIGHT", -27, 8) -- Adjusted for scrollbar
+		FenUI:SkinScrollFrame(scrollFrame, { offset = 6 })
 		detailFrame.scrollFrame = scrollFrame
 
 		local content = CreateFrame("Frame", nil, scrollFrame)
@@ -651,7 +654,7 @@ function PerformanceModule:ShowAddonDetails(addonName)
 			content:SetWidth(w)
 		end)
 
-		detailFrame.totalLabel = detailFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		detailFrame.totalLabel = detailFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 		detailFrame.totalLabel:SetPoint("BOTTOMLEFT", 8, 8)
 	end
 

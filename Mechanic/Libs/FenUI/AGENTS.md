@@ -51,8 +51,8 @@ This directory (`_dev_/Libs/FenUI/`) is the **primary source of truth** for FenU
 - **Enforcement**: Consuming addons have Libs/ ignored by agents to prevent accidental direct edits.
 - **Independence**: FenUI is standalone with no external dependencies (does not require FenCore).
 
-- Must work on Retail 11.0+
-- **Interface Version**: Currently targeting **120001** (Midnight expansion, due January 20th, 2026)
+- Must work on Retail 12.0+
+- **Interface Version**: Currently targeting **120001** (Midnight expansion, released January 20th, 2026)
 - No external dependencies (standalone library)
 - Addons consuming FenUI must remain functional if FenUI is missing
 

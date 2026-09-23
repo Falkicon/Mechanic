@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to !Mechanic will be documented in this file.
+## [1.4.6] - 2026-09-23
+
+- Bundle main addon 1.3.7: FenUI Obsidian visual refresh (palette, type scale, rounded corners) and Inspect improvements.
+
 ## [1.4.5] - 2026-09-18
 
 - Add WoW: Forever support (Interface 16001 alongside Retail 120100), bundled with main addon 1.3.6.

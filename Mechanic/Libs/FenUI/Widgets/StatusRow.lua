@@ -35,13 +35,13 @@ function StatusRowMixin:SetValues(valuesTable)
 		local entry = {}
 
 		-- Label
-		local labelFS = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		local labelFS = self:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 		labelFS:SetFormattedText("%s:", item.label)
 		labelFS:SetTextColor(FenUI:GetColorRGB("textMuted"))
 		entry.labelFS = labelFS
 
 		-- Value
-		local valueFS = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		local valueFS = self:CreateFontString(nil, "OVERLAY", FenUI:GetFont("highlightSmall"))
 		valueFS:SetText(item.value)
 		entry.valueFS = valueFS
 
@@ -49,7 +49,7 @@ function StatusRowMixin:SetValues(valuesTable)
 		if i < #valuesTable then
 			local divider = self:CreateTexture(nil, "ARTWORK")
 			divider:SetColorTexture(FenUI:GetColorRGB("borderSubtle"))
-			divider:SetSize(1, self:GetHeight() * 0.6)
+			divider:SetSize(FenUI:GetPixelSize(self), math.floor(self:GetHeight() * 0.6 + 0.5))
 			entry.divider = divider
 		end
 
@@ -87,7 +87,7 @@ end
 function StatusRowMixin:UpdateLayout()
 	local xOffset = 8
 	local gap = self.config.gap or 12
-	local internalGap = 4
+	local internalGap = FenUI:GetSpacing("spacingTight")
 
 	for i, item in ipairs(self.items) do
 		item.labelFS:ClearAllPoints()
@@ -103,7 +103,8 @@ function StatusRowMixin:UpdateLayout()
 		if item.divider then
 			xOffset = xOffset + (gap / 2)
 			item.divider:ClearAllPoints()
-			item.divider:SetPoint("LEFT", self, "LEFT", xOffset, 0)
+			-- Whole-pixel x so the 1px divider doesn't blur or drop out
+			item.divider:SetPoint("LEFT", self, "LEFT", math.floor(xOffset + 0.5), 0)
 			item.divider:Show()
 			xOffset = xOffset + (gap / 2)
 		end

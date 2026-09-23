@@ -53,35 +53,27 @@ function TabButtonMixin:UpdateVisual(state)
 		end
 	end
 
-	local textColor, bgAlpha, showHighlight
+	-- Quiet at rest, gold only for the selected tab (label + underline)
+	local textColor, bgToken, showHighlight
 
 	if state == "disabled" then
-		textColor = "interactiveDisabled"
-		bgAlpha = 0
-		showHighlight = false
+		textColor, bgToken, showHighlight = "textDisabled", nil, false
 	elseif state == "selected" then
-		textColor = "interactiveSelected"
-		bgAlpha = 1.0 -- Full background for selected
-		showHighlight = true
+		textColor, bgToken, showHighlight = "interactiveSelected", nil, true
 	elseif state == "hover" then
-		textColor = "interactiveHover"
-		bgAlpha = 0.5 -- Semi-transparent background for hover
-		showHighlight = false
+		textColor, bgToken, showHighlight = "textStrong", "surfaceRowHover", false
 	else -- normal
-		textColor = "textDefault"
-		bgAlpha = 0
-		showHighlight = false
+		textColor, bgToken, showHighlight = "textMuted", nil, false
 	end
 
 	-- Apply text color
 	local r, g, b = FenUI:GetColorRGB(textColor)
 	self.text:SetTextColor(r, g, b)
 
-	-- Apply background
+	-- Apply background (translucent wash on hover only)
 	if self.bg then
-		if bgAlpha > 0 then
-			local bgR, bgG, bgB = FenUI:GetColorRGB("surfaceElevated")
-			self.bg:SetColorTexture(bgR, bgG, bgB, bgAlpha)
+		if bgToken then
+			self.bg:SetColorTexture(FenUI:GetColor(bgToken))
 			self.bg:Show()
 		else
 			self.bg:Hide()
@@ -95,12 +87,13 @@ function TabButtonMixin:UpdateVisual(state)
 
 	-- Update badge visual
 	if self.badge then
-		local br, bg, bb =
-			FenUI:GetColorRGB(self.isDisabled and "interactiveDisabled" or (self.badgeColorToken or "feedbackSuccess"))
-		if self.badge.SetTextColor then
-			self.badge:SetTextColor(br, bg, bb)
-		elseif self.badge.SetVertexColor then
-			self.badge:SetVertexColor(br, bg, bb)
+		if self.badge:GetObjectType() == "FontString" then
+			local token = self.isDisabled and "interactiveDisabled" or (self.badgeColorToken or "feedbackSuccess")
+			self.badge:SetTextColor(FenUI:GetColorRGB(token))
+		else
+			-- Icon badges keep their own colors unless a tint is requested
+			local token = self.isDisabled and "imageTintMuted" or (self.badgeColorToken or "imageTintDefault")
+			self.badge:SetVertexColor(FenUI:GetColorRGB(token))
 		end
 	end
 end
@@ -114,13 +107,18 @@ function TabButtonMixin:UpdateWidth()
 	local textWidth = self.text:GetStringWidth()
 	local badgeWidth = 0
 	if self.badge and self.badge:IsShown() then
+		local gap = FenUI:GetSpacing("spacingTight")
 		if self.badge.GetStringWidth then
-			badgeWidth = self.badge:GetStringWidth() + 6
+			badgeWidth = self.badge:GetStringWidth() + gap
 		else
-			badgeWidth = self.badge:GetWidth() + 6
+			badgeWidth = self.badge:GetWidth() + gap
 		end
 	end
-	self:SetWidth(textWidth + badgeWidth + 24)
+	-- Center text + badge as one unit so the badge never spills past the edge
+	self.text:ClearAllPoints()
+	self.text:SetPoint("CENTER", -math.floor(badgeWidth / 2), 0)
+	-- Whole pixels keep the underline and neighbouring tabs crisp
+	self:SetWidth(math.ceil(textWidth + badgeWidth + FenUI:GetSpacing("reg") * 2))
 end
 
 function TabButtonMixin:SetBadge(content, colorToken)
@@ -147,11 +145,11 @@ function TabButtonMixin:SetBadge(content, colorToken)
 		if isTexture then
 			self.badge = self:CreateTexture(nil, "OVERLAY")
 			self.badge:SetSize(12, 12)
-			self.badge:SetPoint("LEFT", self.text, "RIGHT", 4, 0)
+			self.badge:SetPoint("LEFT", self.text, "RIGHT", FenUI:GetSpacing("spacingTight"), 0)
 		else
 			self.badge = self:CreateFontString(nil, "OVERLAY")
 			self.badge:SetFontObject(FenUI:GetFont("fontSmall"))
-			self.badge:SetPoint("LEFT", self.text, "RIGHT", 4, 0)
+			self.badge:SetPoint("LEFT", self.text, "RIGHT", FenUI:GetSpacing("spacingTight"), 0)
 		end
 	end
 
@@ -176,7 +174,10 @@ function TabButtonMixin:SetBadge(content, colorToken)
 end
 
 function TabButtonMixin:GetBadge()
-	return self.badge and self.badge:GetText()
+	-- Texture badges have no text
+	if self.badge and self.badge:GetObjectType() == "FontString" then
+		return self.badge:GetText()
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -244,7 +245,7 @@ function TabGroupMixin:AddTab(key, text, icon)
 	tab.highlight = tab:CreateTexture(nil, "ARTWORK")
 	local hr, hg, hb = FenUI:GetColorRGB("interactiveSelected")
 	tab.highlight:SetColorTexture(hr, hg, hb, 1)
-	tab.highlight:SetHeight(2)
+	tab.highlight:SetHeight(FenUI:GetPixelSize(tab, 2))
 
 	-- Position highlight based on group position
 	if self.config.position == "bottom" then
@@ -302,7 +303,22 @@ function TabGroupMixin:SetTabDisabled(key, disabled)
 	if tab then
 		tab:SetDisabled(disabled)
 		if disabled and self.selectedKey == key then
-			self.selectedKey = nil
+			-- Move selection to the first enabled tab so visuals, GetSelected()
+			-- and onChange stay in agreement
+			tab:SetSelected(false)
+			for _, k in ipairs(self.tabOrder) do
+				if not self.tabs[k].isDisabled then
+					self:Select(k) -- fires onChange(k, key)
+					break
+				end
+			end
+			if self.selectedKey == key then
+				-- No enabled tab left
+				self.selectedKey = nil
+				if self.hooks.onChange then
+					self.hooks.onChange(nil, key)
+				end
+			end
 		end
 	end
 end
@@ -402,9 +418,21 @@ function FenUI:CreateTabGroup(parent, config)
 	local tabGroup = CreateFrame("Frame", config.name, parent)
 	FenUI.Mixin(tabGroup, TabGroupMixin)
 
-	tabGroup:SetHeight(config.height or 32)
+	tabGroup:SetHeight(config.height or FenUI:GetLayout("tabHeight"))
 	if config.width then
 		tabGroup:SetWidth(config.width)
+	end
+
+	-- Hairline baseline under (or over, for bottom tabs) the whole strip; the
+	-- selected tab's underline sits on top of it
+	tabGroup.baseline = tabGroup:CreateTexture(nil, "BACKGROUND")
+	tabGroup.baseline:SetColorTexture(FenUI:GetColor("borderSubtle"))
+	tabGroup.baseline:SetHeight(FenUI:GetPixelSize(tabGroup))
+	local edge = config.position == "bottom" and "TOP" or "BOTTOM"
+	tabGroup.baseline:SetPoint(edge .. "LEFT")
+	tabGroup.baseline:SetPoint(edge .. "RIGHT")
+	if config.showBaseline == false then
+		tabGroup.baseline:Hide()
 	end
 
 	tabGroup:Init(config)

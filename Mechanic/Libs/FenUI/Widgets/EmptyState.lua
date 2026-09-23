@@ -50,9 +50,21 @@ function EmptyStateMixin:Init(config)
 
 	-- 2. Content Container (centered)
 	self.content = CreateFrame("Frame", nil, self)
-	self.content:SetPoint("CENTER")
-	local contentWidth = config.width or (self:GetParent() and self:GetParent():GetWidth()) or 300
-	self.content:SetSize(contentWidth, 200)
+	if config.width then
+		self.content:SetPoint("CENTER")
+		self.content:SetSize(config.width, 200)
+	else
+		-- Stretch with the container (its width is usually 0 at creation time),
+		-- vertically centered
+		local inset = FenUI:GetSpacing("spacingSection")
+		self.content:SetPoint("LEFT", self, "LEFT", inset, 0)
+		self.content:SetPoint("RIGHT", self, "RIGHT", -inset, 0)
+		self.content:SetHeight(200)
+	end
+	-- Re-measure wrapped text whenever the available width changes
+	self.content:SetScript("OnSizeChanged", function()
+		self:LayoutSlots()
+	end)
 
 	-- 3. Create slots container frames
 	self.topSlot = CreateFrame("Frame", nil, self.content)
@@ -61,7 +73,7 @@ function EmptyStateMixin:Init(config)
 	self.bottomSlot = CreateFrame("Frame", nil, self.content)
 
 	-- Gap between slots
-	local gap = config.gap or 16
+	local gap = config.gap or FenUI:GetSpacing("spacingSection")
 	if type(gap) == "string" then
 		gap = FenUI:GetSpacing(gap) or 16
 	end
@@ -123,8 +135,10 @@ function EmptyStateMixin:PopulateFromConfig(config)
 			self.titleText = self.bottomSlot:CreateFontString(nil, "OVERLAY")
 			self.titleText:SetFontObject(FenUI:GetFont("fontHeading"))
 			self.titleText:SetText(config.title)
-			self.titleText:SetPoint("TOP", self.bottomSlot, "TOP", 0, 0)
+			self.titleText:SetPoint("TOPLEFT", self.bottomSlot, "TOPLEFT", 0, 0)
+			self.titleText:SetPoint("TOPRIGHT", self.bottomSlot, "TOPRIGHT", 0, 0)
 			self.titleText:SetJustifyH("CENTER")
+			self.titleText:SetWordWrap(false)
 
 			local r, g, b = FenUI:GetColorRGB(config.titleToken or "textEmptyTitle")
 			self.titleText:SetTextColor(r, g, b)
@@ -138,26 +152,46 @@ function EmptyStateMixin:PopulateFromConfig(config)
 			self.subtitleText:SetFontObject(FenUI:GetFont("fontSmall"))
 			self.subtitleText:SetText(config.subtitle)
 			self.subtitleText:SetJustifyH("CENTER")
-			self.subtitleText:SetWidth(self.content:GetWidth() - 20)
 
 			local r, g, b = FenUI:GetColorRGB(config.subtitleToken or "textEmptySubtitle")
 			self.subtitleText:SetTextColor(r, g, b)
 
-			if self.titleText then
-				self.subtitleText:SetPoint("TOP", self.titleText, "BOTTOM", 0, -4)
-			else
-				self.subtitleText:SetPoint("TOP", self.bottomSlot, "TOP", 0, 0)
-			end
+			-- Span the slot width so long subtitles wrap instead of overflowing
+			local anchor = self.titleText or self.bottomSlot
+			local y = self.titleText and -FenUI:GetSpacing("spacingTight") or 0
+			local fromTop = self.titleText and "BOTTOM" or "TOP"
+			self.subtitleText:SetPoint("TOPLEFT", anchor, fromTop .. "LEFT", 0, y)
+			self.subtitleText:SetPoint("TOPRIGHT", anchor, fromTop .. "RIGHT", 0, y)
 
 			textHeight = textHeight + self.subtitleText:GetStringHeight() + 4
 		end
 
-		self.bottomSlot:SetSize(self.content:GetWidth(), textHeight)
+		self.bottomSlot:SetHeight(textHeight)
+		self.bottomIsText = true
 	end
+end
+
+--- Height of the built-in title/subtitle text block at the current width
+function EmptyStateMixin:MeasureText()
+	local height = 0
+	if self.titleText and self.titleText:GetText() then
+		height = height + self.titleText:GetStringHeight()
+	end
+	if self.subtitleText and self.subtitleText:GetText() then
+		if height > 0 then
+			height = height + FenUI:GetSpacing("spacingTight")
+		end
+		height = height + self.subtitleText:GetStringHeight()
+	end
+	return math.ceil(height)
 end
 
 --- Layout slots vertically with gap
 function EmptyStateMixin:LayoutSlots()
+	if self.bottomIsText and not self.slots.bottom then
+		self.bottomSlot:SetHeight(self:MeasureText())
+	end
+
 	local totalHeight = 0
 	local topHeight = self.topSlot:GetHeight() or 0
 	local bottomHeight = self.bottomSlot:GetHeight() or 0
@@ -180,12 +214,11 @@ function EmptyStateMixin:LayoutSlots()
 	self.topSlot:ClearAllPoints()
 	self.topSlot:SetPoint("TOP", self.content, "TOP", 0, 0)
 
+	-- Bottom slot spans the content width (text wraps/truncates within it)
+	local bottomY = topHeight > 0 and -(topHeight + self.slotGap) or 0
 	self.bottomSlot:ClearAllPoints()
-	if topHeight > 0 then
-		self.bottomSlot:SetPoint("TOP", self.topSlot, "BOTTOM", 0, -self.slotGap)
-	else
-		self.bottomSlot:SetPoint("TOP", self.content, "TOP", 0, 0)
-	end
+	self.bottomSlot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, bottomY)
+	self.bottomSlot:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", 0, bottomY)
 end
 
 --- Set content for a slot

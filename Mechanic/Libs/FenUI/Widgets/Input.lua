@@ -18,20 +18,24 @@ function WidgetMixin:Init(config)
 	local editBox = CreateFrame("EditBox", nil, self)
 	editBox:SetPoint("TOPLEFT", 2, -2)
 	editBox:SetPoint("BOTTOMRIGHT", -2, 2)
-	editBox:SetFontObject("ChatFontNormal")
+	editBox:SetFontObject(FenUI:GetFont("fontMono"))
+	editBox:SetTextColor(FenUI:GetColorRGB("textDefault"))
 	editBox:SetAutoFocus(false)
 	editBox:SetTextInsets(6, 6, 0, 0)
 
 	if self.config.placeholder then
-		local placeholder = editBox:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
+		local placeholder = editBox:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontMono"))
 		placeholder:SetPoint("LEFT", 6, 0)
+		placeholder:SetPoint("RIGHT", -6, 0)
+		placeholder:SetJustifyH("LEFT")
+		placeholder:SetWordWrap(false)
 
 		local U = FenUI.Utils
 		local placeholderText = U and U:SanitizeText(self.config.placeholder, "Enter text...")
 			or (self.config.placeholder == true and "Enter text..." or self.config.placeholder)
 
 		placeholder:SetText(placeholderText)
-		local pr, pg, pb = FenUI:GetColorRGB("textMuted")
+		local pr, pg, pb = FenUI:GetColorRGB("textDisabled")
 		placeholder:SetTextColor(pr, pg, pb)
 		self.placeholder = placeholder
 
@@ -53,6 +57,14 @@ function WidgetMixin:Init(config)
 		editBox:SetEnabled(false)
 	end
 
+	-- Hover handlers (focus takes precedence; see RefreshBorderState)
+	editBox:SetScript("OnEnter", function()
+		self:RefreshBorderState()
+	end)
+	editBox:SetScript("OnLeave", function()
+		self:RefreshBorderState()
+	end)
+
 	-- Focus handlers
 	editBox:SetScript("OnEditFocusGained", function(eb)
 		self:UpdateBorderState("focus")
@@ -62,7 +74,7 @@ function WidgetMixin:Init(config)
 	end)
 
 	editBox:SetScript("OnEditFocusLost", function(eb)
-		self:UpdateBorderState("normal")
+		self:UpdateBorderState(eb:IsMouseOver() and "hover" or "normal")
 		if self.config.onBlur then
 			self.config.onBlur(eb)
 		end
@@ -88,36 +100,14 @@ end
 
 --- Create the input's visual elements (background, border)
 function WidgetMixin:CreateVisuals()
-	-- Background texture
+	-- Rounded field: 1px border ring + recessed fill (radiusControl corners)
+	self.box = FenUI:CreateRoundedBox(self, self, "radiusControl")
+	self.box:SetFillColor(FenUI:GetColor("surfaceInset"))
+
+	-- Legacy fields kept for compatibility (hidden; the box draws the visuals)
 	self.bg = self:CreateTexture(nil, "BACKGROUND")
-	self.bg:SetPoint("TOPLEFT", 1, -1)
-	self.bg:SetPoint("BOTTOMRIGHT", -1, 1)
-	local bgR, bgG, bgB, bgA = FenUI:GetColor("surfaceInset")
-	self.bg:SetColorTexture(bgR, bgG, bgB, bgA)
-
-	-- Border textures (4 edges)
+	self.bg:Hide()
 	self.border = {}
-	self.border.Top = self:CreateTexture(nil, "BORDER")
-	self.border.Bottom = self:CreateTexture(nil, "BORDER")
-	self.border.Left = self:CreateTexture(nil, "BORDER")
-	self.border.Right = self:CreateTexture(nil, "BORDER")
-
-	-- Position borders
-	self.border.Top:SetPoint("TOPLEFT", 0, 0)
-	self.border.Top:SetPoint("TOPRIGHT", 0, 0)
-	self.border.Top:SetHeight(1)
-
-	self.border.Bottom:SetPoint("BOTTOMLEFT", 0, 0)
-	self.border.Bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-	self.border.Bottom:SetHeight(1)
-
-	self.border.Left:SetPoint("TOPLEFT", 0, -1)
-	self.border.Left:SetPoint("BOTTOMLEFT", 0, 1)
-	self.border.Left:SetWidth(1)
-
-	self.border.Right:SetPoint("TOPRIGHT", 0, -1)
-	self.border.Right:SetPoint("BOTTOMRIGHT", 0, 1)
-	self.border.Right:SetWidth(1)
 
 	-- Apply initial border color (normal state)
 	self:UpdateBorderState("normal")
@@ -129,13 +119,24 @@ function WidgetMixin:UpdateBorderState(state)
 	local borderColor
 	if state == "focus" then
 		borderColor = "borderFocus" -- gold500
+	elseif state == "hover" then
+		borderColor = "borderInteractiveHover"
 	else
-		borderColor = "borderSubtle"
+		borderColor = "borderInteractive"
 	end
 
-	local r, g, b, a = FenUI:GetColor(borderColor)
-	for _, edge in pairs(self.border) do
-		edge:SetColorTexture(r, g, b, a)
+	self.box:SetBorderColor(FenUI:GetColor(borderColor))
+end
+
+--- Re-derive the border state from focus and hover
+function WidgetMixin:RefreshBorderState()
+	local eb = self.editBox
+	if eb and eb:HasFocus() then
+		self:UpdateBorderState("focus")
+	elseif eb and eb:IsEnabled() and eb:IsMouseOver() then
+		self:UpdateBorderState("hover")
+	else
+		self:UpdateBorderState("normal")
 	end
 end
 
@@ -159,7 +160,7 @@ end
 function FenUI:CreateInput(parent, config)
 	config = config or {}
 	local frame = CreateFrame("Frame", nil, parent)
-	frame:SetSize(config.width or 200, config.height or 24)
+	frame:SetSize(config.width or 200, config.height or FenUI:GetLayout("buttonHeight"))
 
 	FenUI.Mixin(frame, WidgetMixin)
 	frame:Init(config)

@@ -31,14 +31,13 @@ function SplitLayoutMixin:InitSplit(config)
 	-- that matches modern Blizzard UI (e.g., Settings Panel) without needing an explicit border.
 	self.navBackground = navCell:CreateTexture(nil, "BACKGROUND")
 	self.navBackground:SetAllPoints()
-	local r, g, b, a = FenUI:GetColor("surfaceInset")
-	self.navBackground:SetColorTexture(r, g, b, 0.6)
+	self.navBackground:SetColorTexture(FenUI:GetColor("surfaceInset"))
 
 	-- Navigation Border (Right edge separator)
 	self.navSeparator = navCell:CreateTexture(nil, "BORDER")
 	self.navSeparator:SetPoint("TOPRIGHT")
 	self.navSeparator:SetPoint("BOTTOMRIGHT")
-	self.navSeparator:SetWidth(1)
+	self.navSeparator:SetWidth(FenUI:GetPixelSize(self))
 	self.navSeparator:SetColorTexture(FenUI:GetColorRGB("borderSubtle"))
 
 	-- Navigation Scroll Frame
@@ -159,22 +158,29 @@ function SplitLayoutMixin:GetOrCreateButton(index)
 	local btn = CreateFrame("Button", nil, self.navContent)
 	btn:SetHeight(24)
 
-	-- Background highlight (selected state)
+	-- Selected state: gold wash + 2px gold leading edge (matches FenUI list rows)
 	local highlight = btn:CreateTexture(nil, "BACKGROUND")
 	highlight:SetAllPoints()
-	local selR, selG, selB = FenUI:GetColorRGB("surfaceElevated")
-	highlight:SetColorTexture(selR, selG, selB, 0.8)
+	highlight:SetColorTexture(FenUI:GetColor("surfaceRowSelected"))
 	highlight:Hide()
 	btn.highlight = highlight
 
-	-- Hover highlight (stronger visibility)
+	local accent = btn:CreateTexture(nil, "ARTWORK")
+	accent:SetPoint("TOPLEFT")
+	accent:SetPoint("BOTTOMLEFT")
+	accent:SetWidth(FenUI:GetPixelSize(btn, 2))
+	accent:SetColorTexture(FenUI:GetColor("accentBar"))
+	accent:Hide()
+	btn.accent = accent
+
+	-- Hover wash (translucent, reads over the selection too)
 	local hover = btn:CreateTexture(nil, "HIGHLIGHT")
 	hover:SetAllPoints()
-	local hoverR, hoverG, hoverB = FenUI:GetColorRGB("surfaceElevated")
-	hover:SetColorTexture(hoverR, hoverG, hoverB, 0.4)
+	hover:SetColorTexture(FenUI:GetColor("surfaceRowHover"))
 
 	-- Text
-	local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	local text = btn:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+	text:SetWordWrap(false)
 	text:SetPoint("LEFT", 8, 0)
 	text:SetPoint("RIGHT", -8, 0)
 	text:SetJustifyH("LEFT")
@@ -213,15 +219,10 @@ end
 function SplitLayoutMixin:UpdateButtonStates()
 	for _, btn in ipairs(self.buttons) do
 		if btn:IsShown() then
-			if btn.key == self.selectedKey then
-				btn.highlight:Show()
-				local r, g, b = FenUI:GetColorRGB("textDefault")
-				btn.text:SetTextColor(r, g, b)
-			else
-				btn.highlight:Hide()
-				local r, g, b = FenUI:GetColorRGB("interactiveDefault")
-				btn.text:SetTextColor(r, g, b)
-			end
+			local selected = btn.key == self.selectedKey
+			btn.highlight:SetShown(selected)
+			btn.accent:SetShown(selected)
+			btn.text:SetTextColor(FenUI:GetColorRGB(selected and "textStrong" or "textDefault"))
 		end
 	end
 end
@@ -251,6 +252,11 @@ function SplitLayoutMixin:Select(key, force)
 end
 
 function SplitLayoutMixin:GetContentFrame(key)
+	-- Layout internals (SetContent, auto-sizing) call this without a key;
+	-- a nil table index would error, so hand back the content area itself.
+	if key == nil then
+		return self.contentArea
+	end
 	if not self.contentFrames[key] then
 		local frame = CreateFrame("Frame", nil, self.contentArea)
 		frame:SetAllPoints()

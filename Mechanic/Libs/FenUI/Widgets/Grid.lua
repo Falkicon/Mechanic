@@ -24,6 +24,15 @@ function GridRowMixin:Init(grid, index)
 	-- Background for alternating colors and hover
 	self.bg = self:CreateTexture(nil, "BACKGROUND")
 	self.bg:SetAllPoints()
+
+	-- Gold leading edge marks the selected row
+	self.accent = self:CreateTexture(nil, "ARTWORK")
+	self.accent:SetPoint("TOPLEFT")
+	self.accent:SetPoint("BOTTOMLEFT")
+	self.accent:SetWidth(FenUI:GetPixelSize(self, 2))
+	self.accent:SetColorTexture(FenUI:GetColor("accentBar"))
+	self.accent:Hide()
+
 	self:UpdateBackground()
 
 	-- Interaction
@@ -76,11 +85,14 @@ function GridRowMixin:CreateCells()
 		-- Convenience text/icon helpers
 		cell.SetText = function(_, text, fontToken)
 			if not cell.fontString then
+				local pad = FenUI:GetSpacing("spacingTight")
 				cell.fontString = cell:CreateFontString(nil, "OVERLAY")
 				cell.fontString:SetFontObject(FenUI:GetFont(fontToken or "fontBody"))
-				cell.fontString:SetPoint("LEFT", 4, 0)
-				cell.fontString:SetPoint("RIGHT", -4, 0)
+				cell.fontString:SetPoint("LEFT", pad, 0)
+				cell.fontString:SetPoint("RIGHT", -pad, 0)
 				cell.fontString:SetJustifyH("LEFT")
+				cell.fontString:SetWordWrap(false)
+				cell.fontString:SetMaxLines(1)
 			end
 			cell.fontString:SetText(text)
 			cell.fontString:Show()
@@ -109,7 +121,7 @@ function GridRowMixin:UpdateBackground()
 	local r, g, b, a = 0, 0, 0, 0
 
 	if self.isSelected then
-		r, g, b, a = FenUI:GetColor("surfaceRowSelected")
+		r, g, b, a = FenUI:GetColor(self.isHovered and "surfaceRowSelectedHover" or "surfaceRowSelected")
 	elseif self.isHovered then
 		r, g, b, a = FenUI:GetColor("surfaceRowHover")
 	elseif isAlt then
@@ -117,6 +129,9 @@ function GridRowMixin:UpdateBackground()
 	end
 
 	self.bg:SetColorTexture(r, g, b, a)
+	if self.accent then
+		self.accent:SetShown(self.isSelected and true or false)
+	end
 end
 
 function GridRowMixin:SetSelected(selected)
@@ -131,6 +146,9 @@ end
 function GridRowMixin:Bind(data, index)
 	self.data = data
 	self.index = index
+	-- Pooled rows must not carry selection over to new data; onRowBind
+	-- (called right after Bind) re-applies it for the bound item.
+	self.isSelected = false
 	self:UpdateBackground()
 	self:Show()
 end

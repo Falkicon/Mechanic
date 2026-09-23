@@ -34,6 +34,16 @@ function PanelMixin:Init(config)
 	-- Mark as supporting layouts for theme system
 	self.fenUISupportsLayout = true
 
+	-- Windows are toplevel: clicking raises them, and they raise when shown, so two
+	-- windows in the same strata stack as whole units instead of interleaving
+	-- (one window's content drawing over the other's background).
+	if config.toplevel ~= false then
+		self:SetToplevel(true)
+		self:HookScript("OnShow", function(panel)
+			panel:Raise()
+		end)
+	end
+
 	-- Size is handled by Layout component or factory, but apply if needed
 	if not self.config.usesLayout then
 		self:SetSize(config.width or 400, config.height or 300)
@@ -89,24 +99,83 @@ end
 -- Title
 --------------------------------------------------------------------------------
 
--- Header bar height for Panel border style (approximate)
-local HEADER_HEIGHT = 24
-
 function PanelMixin:SetTitle(text)
 	if not self.titleText then
 		self.titleText = self:CreateFontString(nil, "OVERLAY")
-		self.titleText:SetFontObject(FenUI:GetFont("fontTitle"))
+		self.titleText:SetFontObject(FenUI:GetFont("fontWindowTitle"))
+		self.titleText:SetWordWrap(false)
+		self.titleText:SetMaxLines(1)
 	end
 
 	self.titleText:SetText(text)
-	local r, g, b = FenUI:GetColor("textHeading")
+	local r, g, b = FenUI:GetColor("textTitle")
 	self.titleText:SetTextColor(r, g, b)
+	self:UpdateHeaderStrip()
 
 	-- NOTE: Title Positioning (WoW Coordinate System)
 	-- X: Positive = Right, Negative = Left
 	-- Y: Positive = Up, Negative = Down
+	-- Centered, 6px down from the top. Inset symmetrically so long titles
+	-- truncate before reaching the close button.
+	local closeClearance = FenUI:GetLayout("buttonHeight") + FenUI:GetSpacing("spacingElement")
 	self.titleText:ClearAllPoints()
-	self.titleText:SetPoint("TOP", self, "TOP", 0, -6) -- 0 = Centered, -12 = 12px down from top
+	self.titleText:SetPoint("TOPLEFT", self, "TOPLEFT", closeClearance, -6)
+	self.titleText:SetPoint("TOPRIGHT", self, "TOPRIGHT", -closeClearance, -6)
+	self.titleText:SetJustifyH("CENTER")
+end
+
+--- Raised title bar behind the title, separated from the body by a hairline
+function PanelMixin:UpdateHeaderStrip()
+	if self.config.headerStrip == false then
+		return
+	end
+	local host = self.bgFrame or self
+	if not self.headerStrip then
+		-- Above the drop shadow (-8) and the background/rounded box (-7/-6)
+		self.headerStrip = host:CreateTexture(nil, "BACKGROUND", nil, -5)
+		self.headerDivider = host:CreateTexture(nil, "BACKGROUND", nil, -4)
+	end
+	local height = (self.contentInset or 0) + FenUI:GetLayout("headerHeight")
+	local px = FenUI:GetPixelSize(self)
+	local divider = self.headerDivider
+	divider:ClearAllPoints()
+
+	if self.cornerRadius and FenUI.CreateRoundedShape then
+		-- Rounded window: the strip follows the top corners (square at the bottom)
+		self.headerStrip:Hide()
+		if not self.headerRegion then
+			self.headerRegion = CreateFrame("Frame", nil, self)
+			self.headerShape = FenUI:CreateRoundedShape(host, self.headerRegion, "BACKGROUND", -5)
+		end
+		self.headerRegion:ClearAllPoints()
+		self.headerRegion:SetPoint("TOPLEFT", self, "TOPLEFT")
+		self.headerRegion:SetPoint("TOPRIGHT", self, "TOPRIGHT")
+		self.headerRegion:SetHeight(height + px)
+		self.headerShape:SetLayout(math.max(0, self.cornerRadius - px), { left = px, right = px, top = px, bottom = 0 }, {
+			TopLeft = true,
+			TopRight = true,
+		})
+		self.headerShape:SetColor(FenUI:GetColor("surfaceHeader"))
+		self.headerShape:Show()
+		divider:SetPoint("TOPLEFT", self.headerRegion, "BOTTOMLEFT", px, 0)
+		divider:SetPoint("TOPRIGHT", self.headerRegion, "BOTTOMRIGHT", -px, 0)
+	else
+		if self.headerShape then
+			self.headerShape:Hide()
+		end
+		self.headerStrip:ClearAllPoints()
+		self.headerStrip:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+		self.headerStrip:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
+		self.headerStrip:SetHeight(height)
+		self.headerStrip:SetColorTexture(FenUI:GetColor("surfaceHeader"))
+		self.headerStrip:Show()
+		divider:SetPoint("TOPLEFT", self.headerStrip, "BOTTOMLEFT")
+		divider:SetPoint("TOPRIGHT", self.headerStrip, "BOTTOMRIGHT")
+	end
+
+	divider:SetHeight(px)
+	divider:SetColorTexture(FenUI:GetColor("borderSubtle"))
+	divider:Show()
 end
 
 function PanelMixin:GetTitle()
@@ -117,7 +186,7 @@ function PanelMixin:SetSubtitle(text)
 	if not self.subtitleText then
 		self.subtitleText = self:CreateFontString(nil, "OVERLAY")
 		self.subtitleText:SetFontObject(FenUI:GetFont("fontSmall"))
-		local r, g, b = FenUI:GetColor("textSubtle")
+		local r, g, b = FenUI:GetColor("textMuted")
 		self.subtitleText:SetTextColor(r, g, b)
 	end
 
@@ -177,9 +246,32 @@ function PanelMixin:MakeResizable()
 		self.resizeHandle:SetPoint("BOTTOMRIGHT")
 		self.resizeHandle:SetFrameLevel(self:GetFrameLevel() + 10)
 
-		local tex = self.resizeHandle:CreateTexture(nil, "OVERLAY")
-		tex:SetTexture([[Interface\ChatFrame\UI-ChatIM-SizeGrabber-Up]])
-		tex:SetAllPoints()
+		-- Flat grip: two diagonal lines (parallel to the corner) in token colors
+		local handle = self.resizeHandle
+		handle.lines = {}
+		for i, spec in ipairs({ { 9, -9 }, { 4, -6.5 } }) do -- Clear of the rounded corner
+			local line = handle:CreateTexture(nil, "OVERLAY")
+			line:SetSize(spec[1], FenUI:GetPixelSize(handle, 1))
+			line:SetPoint("CENTER", handle, "BOTTOMRIGHT", spec[2], -spec[2])
+			if line.SetSnapToPixelGrid then
+				line:SetSnapToPixelGrid(false)
+				line:SetTexelSnappingBias(0)
+			end
+			line:SetRotation(math.rad(45))
+			handle.lines[i] = line
+		end
+		local function ColorGrip(token)
+			for _, line in ipairs(handle.lines) do
+				line:SetColorTexture(FenUI:GetColor(token))
+			end
+		end
+		ColorGrip("textDisabled")
+		handle:SetScript("OnEnter", function()
+			ColorGrip("textStrong")
+		end)
+		handle:SetScript("OnLeave", function()
+			ColorGrip("textDisabled")
+		end)
 
 		self.resizeHandle:SetScript("OnMouseDown", function()
 			self:StartSizing("BOTTOMRIGHT")
@@ -216,7 +308,7 @@ function PanelMixin:CreateSafeZone()
 
 	-- If we have a title bar, the safe zone top should clear it
 	if self.config.title then
-		top = top + 24 -- Space for title text
+		top = top + FenUI:GetLayout("headerHeight") -- Space for title text
 	end
 
 	self.safeZone:SetPoint("TOPLEFT", self, "TOPLEFT", left, -top)
@@ -239,36 +331,59 @@ function PanelMixin:CreateCloseButton()
 		return
 	end
 
-	-- Create a visible close button frame
-	self.closeButton = CreateFrame("Button", nil, self)
-	self.closeButton:SetSize(24, 24)
-	self.closeButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -4, -4)
-	self.closeButton:SetFrameStrata("DIALOG")
-	self.closeButton:SetFrameLevel(self:GetFrameLevel() + 100)
+	local size = FenUI:GetLayout("buttonHeight")
+	local btn = CreateFrame("Button", nil, self)
+	btn:SetSize(size, size)
+	btn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -FenUI:GetSpacing("spacingTight"), -FenUI:GetSpacing("spacingTight"))
+	-- Stay above panel content without leaving the panel's strata
+	-- (a higher strata would float over other windows and dropdowns)
+	btn:SetFrameLevel(self:GetFrameLevel() + 100)
+	self.closeButton = btn
 
-	-- Add a background for visibility
-	local bg = self.closeButton:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints()
-	bg:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-	self.closeButton.bg = bg
+	-- Background: transparent at rest, error tint on hover
+	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+	btn.bg:SetAllPoints()
 
-	-- Create X text using a clear, visible font
-	local closeText = self.closeButton:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	closeText:SetPoint("CENTER", 0, 1)
-	closeText:SetText("x")
-	closeText:SetTextColor(1, 1, 1)
-	self.closeButton.text = closeText
+	-- Flat "X" glyph drawn from two rotated bars (font glyphs vary by locale)
+	local glyphSize = math.floor(size * 0.5 + 0.5)
+	btn.glyph = {}
+	for i, angle in ipairs({ 45, -45 }) do
+		local bar = btn:CreateTexture(nil, "ARTWORK")
+		bar:SetPoint("CENTER")
+		bar:SetSize(glyphSize * 1.3, 2)
+		bar:SetSnapToPixelGrid(false)
+		bar:SetTexelSnappingBias(0)
+		bar:SetRotation(math.rad(angle))
+		btn.glyph[i] = bar
+	end
 
-	-- Hover highlight
-	self.closeButton:SetScript("OnEnter", function(btn)
-		btn.bg:SetColorTexture(0.6, 0.2, 0.2, 0.9)
-		btn.text:SetTextColor(1, 1, 1)
+	local function SetState(state)
+		local bgToken = state == "hover" and "feedbackErrorSubtle" or (state == "pressed" and "feedbackError") or "transparent"
+		local glyphToken = state == "normal" and "textMuted" or "textDefault"
+		btn.bg:SetColorTexture(FenUI:GetColor(bgToken))
+		local r, g, b, a = FenUI:GetColor(glyphToken)
+		for _, bar in ipairs(btn.glyph) do
+			bar:SetColorTexture(r, g, b, a)
+		end
+	end
+	btn.UpdateVisual = function(_, state)
+		SetState(state or (btn:IsMouseOver() and "hover" or "normal"))
+	end
+	SetState("normal")
+
+	btn:SetScript("OnEnter", function()
+		SetState("hover")
 	end)
-	self.closeButton:SetScript("OnLeave", function(btn)
-		btn.bg:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-		btn.text:SetTextColor(1, 1, 1)
+	btn:SetScript("OnLeave", function()
+		SetState("normal")
 	end)
-	self.closeButton:SetScript("OnClick", function()
+	btn:SetScript("OnMouseDown", function()
+		SetState("pressed")
+	end)
+	btn:SetScript("OnMouseUp", function()
+		SetState(btn:IsMouseOver() and "hover" or "normal")
+	end)
+	btn:SetScript("OnClick", function()
 		self:Hide()
 	end)
 end
@@ -351,13 +466,14 @@ function PanelMixin:GetContentFrame()
 end
 
 function PanelMixin:SetPadding(padding)
-	if type(padding) == "number" then
-		self.padding = { left = padding, right = padding, top = padding, bottom = padding }
+	if type(padding) == "number" or type(padding) == "string" then
+		local value = FenUI:GetSpacing(padding)
+		self.padding = { left = value, right = value, top = value, bottom = value }
 	elseif type(padding) == "table" then
-		self.padding.left = padding.left or self.padding.left
-		self.padding.right = padding.right or self.padding.right
-		self.padding.top = padding.top or self.padding.top
-		self.padding.bottom = padding.bottom or self.padding.bottom
+		self.padding.left = padding.left and FenUI:GetSpacing(padding.left) or self.padding.left
+		self.padding.right = padding.right and FenUI:GetSpacing(padding.right) or self.padding.right
+		self.padding.top = padding.top and FenUI:GetSpacing(padding.top) or self.padding.top
+		self.padding.bottom = padding.bottom and FenUI:GetSpacing(padding.bottom) or self.padding.bottom
 	end
 
 	-- Apply individual side overrides from config
@@ -410,8 +526,15 @@ end
 function PanelMixin:OnFenUIThemeChanged(themeName, theme)
 	-- Update title color
 	if self.titleText then
-		local r, g, b = FenUI:GetColor("textHeading")
+		local r, g, b = FenUI:GetColor("textTitle")
 		self.titleText:SetTextColor(r, g, b)
+		self:UpdateHeaderStrip()
+	end
+	if self.subtitleText then
+		self.subtitleText:SetTextColor(FenUI:GetColorRGB("textMuted"))
+	end
+	if self.closeButton and self.closeButton.UpdateVisual then
+		self.closeButton:UpdateVisual()
 	end
 
 	-- Fire hook
@@ -471,7 +594,10 @@ function FenUI:CreatePanel(parent, config)
 			height = config.height or 300,
 			border = borderKey,
 			background = bgConfig,
-			shadow = config.shadow,
+			-- Windows float over the 3D world: a soft, centered ambient shadow lifts them off it
+			-- (no offset: an offset exposes the shadow's dark inner edge as a ledge)
+			shadow = (config.shadow == nil) and { type = "soft", offsetX = 0, offsetY = 0, size = 24, alpha = 0.55 }
+				or config.shadow,
 			padding = config.padding,
 			paddingTop = config.paddingTop,
 			paddingBottom = config.paddingBottom,

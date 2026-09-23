@@ -66,7 +66,7 @@ function Mechanic:InitializeErrors()
 	})
 	ErrorsModule.prevButton = prevBtn
 
-	local countLabel = toolbar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local countLabel = toolbar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	-- We'll add this via AddFrame to keep layout consistent
 	local countContainer = CreateFrame("Frame", nil, toolbar)
 	countContainer:SetSize(50, 20)

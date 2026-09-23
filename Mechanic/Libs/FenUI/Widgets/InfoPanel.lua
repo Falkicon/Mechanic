@@ -23,7 +23,6 @@ function InfoPanelMixin:InitInfoPanel(config)
 	local content = self:GetContentFrame()
 
 	-- Create scroll panel for content
-	local scrollBarWidth = FenUI:GetLayout("scrollBarWidth") or 20
 	local scrollPanel = FenUI:CreateScrollPanel(content, {
 		padding = 0,
 		showScrollBar = true,
@@ -52,11 +51,9 @@ function InfoPanelMixin:InitInfoPanel(config)
 				self:Hide()
 			end,
 		})
-		closeBtn:SetPoint("BOTTOM", 0, 8)
+		closeBtn:SetPoint("BOTTOM", 0, FenUI:GetSpacing("spacingElement"))
 		self.closeBtn = closeBtn
-
-		-- Adjust scroll frame to leave room for the button if it's shown
-		self.scrollFrame:SetPoint("BOTTOMRIGHT", -scrollBarWidth, 40)
+		-- (Room for the button is already reserved by raising scrollPanel above)
 	end
 
 	-- Initialize sections if provided

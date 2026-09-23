@@ -41,6 +41,25 @@ FenUI.Tokens = {
 		gray900 = { 0.17, 0.15, 0.14, 1 }, -- Approx #2B2724 - Inset/recessed areas
 		gray950 = { 0.12, 0.11, 0.10, 1 }, -- Approx #1F1C1A - Deep inset/alternating rows
 
+		-- Obsidian spectrum (neutral near-black, default FenUI palette)
+		obsidian950 = { 0.059, 0.067, 0.075, 1 }, -- #0F1113 Inset / recessed wells
+		obsidian900 = { 0.086, 0.094, 0.106, 1 }, -- #16181B Panel body
+		obsidian850 = { 0.114, 0.125, 0.141, 1 }, -- #1D2024 Header strips, raised bars
+		obsidian800 = { 0.133, 0.149, 0.165, 1 }, -- #22262A Controls (buttons, dropdowns)
+		obsidian750 = { 0.173, 0.188, 0.208, 1 }, -- #2C3035 Default borders, control hover
+		obsidian700 = { 0.200, 0.220, 0.243, 1 }, -- #33383E Interactive borders, scroll thumb
+		obsidian600 = { 0.290, 0.314, 0.345, 1 }, -- #4A5058 Hover borders, thumb hover
+		obsidian500 = { 0.431, 0.459, 0.486, 1 }, -- #6E757C Disabled text, placeholders
+		obsidian400 = { 0.608, 0.631, 0.659, 1 }, -- #9BA1A8 Secondary text
+		obsidian200 = { 0.800, 0.816, 0.831, 1 }, -- #CCD0D4 Strong secondary text
+		obsidian100 = { 0.894, 0.902, 0.910, 1 }, -- #E4E6E8 Body text
+		obsidian50 = { 0.957, 0.961, 0.965, 1 }, -- #F4F5F6 Headings, emphasized text
+
+		-- Accent washes and on-accent
+		goldWash10 = { 1.0, 0.82, 0, 0.10 }, -- Selected rows
+		goldWash18 = { 1.0, 0.82, 0, 0.18 }, -- Selected + hover
+		onGold = { 0.102, 0.078, 0, 1 }, -- #1A1400 Text on gold fills
+
 		-- Feedback colors
 		red400 = { 0.9, 0.4, 0.4, 1 },
 		red500 = { 0.8, 0.2, 0.2, 1 },
@@ -57,6 +76,11 @@ FenUI.Tokens = {
 		yellow400 = { 1.0, 0.9, 0.4, 1 },
 		yellow500 = { 0.9, 0.8, 0.2, 1 },
 		yellow600 = { 0.7, 0.6, 0.15, 1 },
+
+		-- Overlays (translucent, work on any surface)
+		whiteOverlay03 = { 1, 1, 1, 0.025 },
+		whiteOverlay05 = { 1, 1, 1, 0.05 },
+		whiteOverlay08 = { 1, 1, 1, 0.08 },
 
 		-- Special
 		white = { 1, 1, 1, 1 },
@@ -76,14 +100,33 @@ FenUI.Tokens = {
 		xxl = 48,
 	},
 
+	-- Radius primitives (corner radius in UI units)
+	radius = {
+		none = 0,
+		sm = 3,
+		md = 6,
+	},
+
 	-- Font primitives (WoW font object names)
+	-- The FenUIFont* objects are the type scale, created in Core/Fonts.lua
+	-- (Friz Quadrata, white, drop shadow; widgets tint them with text tokens):
+	--   caption 10 · small 11 · body 12 · heading 14 · title 16 · display 20
 	fonts = {
-		heading = "GameFontNormalLarge",
-		headingMed = "GameFontNormal",
-		body = "GameFontNormal",
-		bodySmall = "GameFontNormalSmall",
-		highlight = "GameFontHighlight",
-		highlightSmall = "GameFontHighlightSmall",
+		caption = "FenUIFontCaption",
+		small = "FenUIFontSmall",
+		body = "FenUIFontBody",
+		heading = "FenUIFontHeading",
+		title = "FenUIFontTitle",
+		display = "FenUIFontDisplay",
+		-- Legacy primitive names (kept for compatibility)
+		headingMed = "FenUIFontHeading",
+		bodySmall = "FenUIFontSmall",
+		-- Gold variants (used by the Classic theme)
+		headingGold = "GameFontNormalLarge",
+		bodyGold = "GameFontNormal",
+		bodySmallGold = "GameFontNormalSmall",
+		highlight = "FenUIFontBody",
+		highlightSmall = "FenUIFontSmall",
 		disabled = "GameFontDisable",
 		mono = "ChatFontNormal", -- Safe default (Arial Narrow), will be upgraded if available
 	},
@@ -95,40 +138,54 @@ FenUI.Tokens = {
 --------------------------------------------------------------------------------
 
 FenUI.Tokens.semantic = {
-	-- SURFACES (backgrounds) - Modern Blizzard Dark Mode Hierarchy
-	-- Based on 11.0+ Settings Panel and FlatPanelBackgroundTemplate
-	surfacePanel = "gray800", -- Main panel/window backgrounds (#3A3531)
-	surfaceElevated = "gray700", -- Elevated elements (dropdowns, tooltips)
-	surfaceInset = "gray900", -- Inset/recessed areas (#2B2724)
-	surfaceDeep = "gray950", -- Deep recessed areas, alternating rows (#1F1C1A)
-	surfaceOverlay = "gray800", -- Modal overlays
+	-- SURFACES (backgrounds) - "Obsidian": neutral near-black elevation steps.
+	-- Depth comes from lightness steps, not extra borders: inset < panel < header < control.
+	surfacePanel = "obsidian900", -- Main panel/window body (#16181B)
+	surfaceHeader = "obsidian850", -- Title bars, tab strips, toolbars (#1D2024)
+	surfaceElevated = "obsidian800", -- Elevated elements (dropdowns, tooltips, cards)
+	surfaceInset = "obsidian950", -- Inset/recessed wells: lists, inputs, scroll areas (#0F1113)
+	surfaceDeep = "obsidian950", -- Deepest recess
+	surfaceOverlay = "obsidian850", -- Modal overlays
+
+	-- CONTROLS (buttons, dropdowns)
+	surfaceControl = "obsidian800",
+	surfaceControlHover = "obsidian750",
+	surfaceControlPressed = "obsidian850",
 
 	-- TEXT
-	textDefault = "gray100", -- Primary readable text
-	textMuted = "gray500", -- Secondary/less important text
-	textDisabled = "gray600", -- Disabled state text
-	textOnAccent = "gray950", -- Text on accent-colored backgrounds
-	textHeading = "gold500", -- Headings and titles
+	textDefault = "obsidian100", -- Primary readable text
+	textStrong = "obsidian50", -- Emphasized text, hovered labels
+	textMuted = "obsidian400", -- Secondary/less important text
+	textDisabled = "obsidian500", -- Disabled state text, placeholders
+	textOnAccent = "onGold", -- Text on gold fills
+	textHeading = "obsidian50", -- Section headings (neutral; gold is reserved)
+	textTitle = "gold500", -- Window titles (the one heading that stays gold)
 	textLink = "blue400", -- Clickable links
+	textDanger = "red400", -- Destructive action labels (readable on dark surfaces)
 
 	-- BORDERS
-	borderDefault = "gray700", -- Standard borders
-	borderSubtle = "gray800", -- Subtle/decorative borders
+	borderDefault = "obsidian750", -- Window frames, cards
+	borderSubtle = "obsidian800", -- Dividers, inset edges (distinct from surfacePanel)
 	borderFocus = "gold500", -- Focus indicators
-	borderInteractive = "gray500", -- Interactive element borders
+	borderInteractive = "obsidian700", -- Control borders at rest
+	borderInteractiveHover = "obsidian600", -- Control borders on hover
 	borderSelected = "gold600", -- Selected state borders
 
-	-- INTERACTIVE ELEMENTS (buttons, tabs, etc.)
-	interactiveDefault = "gold500", -- Default interactive color
-	interactiveHover = "gold400", -- Hover state
-	interactiveActive = "gold600", -- Active/pressed state
-	interactiveDisabled = "gray600", -- Disabled state
+	-- INTERACTIVE ELEMENTS
+	-- Gold is the accent: use it for the one thing that matters (selection, focus,
+	-- primary action), not for every label.
+	interactiveDefault = "gold500", -- Accent (selected tab, checkmark, primary fill)
+	interactiveHover = "gold400", -- Accent hover
+	interactiveActive = "gold600", -- Accent pressed
+	interactiveDisabled = "obsidian500", -- Disabled state
 	interactiveSelected = "gold500", -- Selected state
 
 	-- GRID / LISTS
-	surfaceRowAlt = "gray950", -- Alternating row background (deep)
-	surfaceRowHover = "gray800", -- Row hover state (Panel level)
-	surfaceRowSelected = "gray700", -- Selected row state (Elevated level)
+	surfaceRowAlt = "whiteOverlay03", -- Alternating row tint (translucent)
+	surfaceRowHover = "whiteOverlay05", -- Row hover (translucent so it reads on any surface)
+	surfaceRowSelected = "goldWash10", -- Selected row wash (pair with accentBar)
+	surfaceRowSelectedHover = "goldWash18", -- Selected row under the cursor
+	accentBar = "gold500", -- 2px leading edge on selected rows
 
 	-- FEEDBACK STATES
 	feedbackSuccess = "green500", -- Success messages/states
@@ -146,8 +203,8 @@ FenUI.Tokens.semantic = {
 
 	-- IMAGE
 	imageTintDefault = "white", -- Default image tint (no tint)
-	imageTintMuted = "gray600", -- Muted/disabled image tint
-	imagePlaceholder = "gray800", -- Placeholder background color
+	imageTintMuted = "obsidian500", -- Muted/disabled image tint
+	imagePlaceholder = "obsidian800", -- Placeholder background color
 
 	-- BACKGROUND (Layout component)
 	backgroundDefault = "surfacePanel", -- Default container background
@@ -158,9 +215,9 @@ FenUI.Tokens.semantic = {
 	backgroundDialog = "surfacePanel", -- Dialog/modal windows
 
 	-- SCROLLBAR
-	surfaceScrollTrack = "gray950", -- Scroll track background
-	interactiveScrollThumb = "gray600", -- Scroll thumb (normal)
-	interactiveScrollThumbHover = "gray500", -- Scroll thumb (hover)
+	surfaceScrollTrack = "transparent", -- Scroll track background (thin thumb floats on the surface)
+	interactiveScrollThumb = "obsidian700", -- Scroll thumb (normal)
+	interactiveScrollThumbHover = "obsidian600", -- Scroll thumb (hover/drag)
 
 	-- SHADOW
 	shadowColor = "black", -- Shadow color (inner/drop)
@@ -181,13 +238,20 @@ FenUI.Tokens.semantic = {
 	-- INSETS (internal spacing)
 	insetContent = "sm", -- Standard internal padding for containers
 
-	-- FONTS (contextual)
-	fontHeading = "heading", -- Window/section headings
-	fontTitle = "headingMed", -- Panel title bar text (smaller than heading)
-	fontBody = "body", -- Normal body text
-	fontSmall = "bodySmall", -- Small/caption text
-	fontButton = "highlight", -- Button labels
-	fontMono = "mono", -- Monospaced text (console, code)
+	-- FONTS (type scale) - pick by role, not by size:
+	fontCaption = "caption", -- 10: metadata, counts, timestamps
+	fontSmall = "small", -- 11: dense lists, secondary text, form labels, status bars
+	fontBody = "body", -- 12: default text, inputs
+	fontButton = "body", -- 12: button and tab labels
+	fontHeading = "heading", -- 14: section headings, window title
+	fontWindowTitle = "heading", -- 14: panel title bar (gold via textTitle)
+	fontTitle = "title", -- 16: page/panel titles ("Select a test")
+	fontDisplay = "display", -- 20: hero text (an API name, a big number)
+	fontMono = "mono", -- Monospaced/data text (console, code)
+
+	-- RADIUS
+	radiusControl = "sm", -- Buttons, inputs, dropdowns, chips, checkboxes
+	radiusContainer = "md", -- Windows, cards, dialogs
 }
 
 --------------------------------------------------------------------------------
@@ -204,6 +268,17 @@ FenUI.Tokens.borders = {
 		contentInset = 2, -- Space between border edge and content
 		bgInset = 1, -- Space between border edge and background
 		colorToken = "borderDefault", -- Token for border color
+		radius = "radiusContainer", -- Rounded window/card corners
+	},
+
+	-- Rounded card (bordered container on a panel)
+	Card = {
+		colorOnly = true,
+		edgeSize = 1,
+		contentInset = 2,
+		bgInset = 1,
+		colorToken = "borderSubtle",
+		radius = "radiusContainer",
 	},
 
 	-- Recessed inset style (for inputs, scroll areas)
@@ -247,7 +322,8 @@ FenUI.Tokens.layout = {
 	marginInset = 8, -- Space between inset content and its border
 
 	-- Scroll
-	scrollBarWidth = 20, -- Scroll bar width
+	scrollBarWidth = 14, -- Scroll bar gutter width
+	scrollThumbWidth = 6, -- Visible thumb width (centered in the gutter)
 	scrollPadding = 5, -- Padding inside scroll areas
 
 	-- Buttons
@@ -310,6 +386,32 @@ local function ResolvePrimitiveFont(tokenName)
 	return "GameFontNormal"
 end
 
+--- Follow a token through theme overrides and semantic aliases until it names
+--- a primitive. Semantic tokens may point at other semantic tokens
+--- (e.g. textEmptyTitle -> textMuted -> gray500); themes override any link.
+---@param token string
+---@param primitives table The primitive table to resolve into (colors/spacing/fonts)
+---@return string|nil primitiveName
+local function ResolveTokenChain(token, primitives)
+	local overrides = FenUI.Tokens.currentOverrides
+	local semantic = FenUI.Tokens.semantic
+	local current = token
+	for _ = 1, 8 do -- Depth guard against accidental cycles
+		local nextToken = overrides[current] or semantic[current]
+		if nextToken == nil or type(nextToken) ~= "string" then
+			break
+		end
+		current = nextToken
+		if primitives[current] ~= nil and overrides[current] == nil and semantic[current] == nil then
+			break
+		end
+	end
+	if primitives[current] ~= nil then
+		return current
+	end
+	return nil
+end
+
 --------------------------------------------------------------------------------
 -- Public Token API
 --------------------------------------------------------------------------------
@@ -319,16 +421,9 @@ end
 ---@param semanticToken string The semantic token name (e.g., "surfacePanel")
 ---@return number, number, number, number r, g, b, a values
 function FenUI:GetColor(semanticToken)
-	-- Check for theme overrides first
-	local primitiveToken = self.Tokens.currentOverrides[semanticToken] or self.Tokens.semantic[semanticToken]
-
+	local primitiveToken = ResolveTokenChain(semanticToken, self.Tokens.colors)
 	if primitiveToken then
 		return ResolvePrimitiveColor(primitiveToken)
-	end
-
-	-- If it's already a primitive token name, resolve directly
-	if self.Tokens.colors[semanticToken] then
-		return ResolvePrimitiveColor(semanticToken)
 	end
 
 	FenUI:Debug("Unknown semantic color token:", semanticToken)
@@ -382,7 +477,7 @@ end
 ---@return string hexColor (e.g., "ff0000")
 function FenUI:GetColorHex(semanticToken)
 	local r, g, b = self:GetColor(semanticToken)
-	return string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+	return string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
 end
 
 --- Get spacing by semantic token name or raw value
@@ -393,19 +488,27 @@ function FenUI:GetSpacing(semanticToken)
 		return semanticToken
 	end
 
-	-- Check for theme overrides first
-	local primitiveToken = self.Tokens.currentOverrides[semanticToken] or self.Tokens.semantic[semanticToken]
-
+	local primitiveToken = ResolveTokenChain(semanticToken, self.Tokens.spacing)
 	if primitiveToken then
 		return ResolvePrimitiveSpacing(primitiveToken)
 	end
 
-	-- If it's already a primitive token name, resolve directly
-	if self.Tokens.spacing[semanticToken] then
-		return ResolvePrimitiveSpacing(semanticToken)
-	end
-
 	FenUI:Debug("Unknown semantic spacing token:", semanticToken)
+	return 0
+end
+
+--- Get a corner radius (UI units) by token or raw number
+---@param token string|number e.g. "radiusControl", "md", or 4
+---@return number
+function FenUI:GetRadius(token)
+	if type(token) == "number" then
+		return token
+	end
+	local primitiveToken = ResolveTokenChain(token, self.Tokens.radius)
+	if primitiveToken then
+		return self.Tokens.radius[primitiveToken]
+	end
+	FenUI:Debug("Unknown radius token:", token)
 	return 0
 end
 
@@ -425,16 +528,9 @@ end
 ---@param semanticToken string The semantic token name (e.g., "fontHeading")
 ---@return string fontObjectName
 function FenUI:GetFont(semanticToken)
-	-- Check for theme overrides first
-	local primitiveToken = self.Tokens.currentOverrides[semanticToken] or self.Tokens.semantic[semanticToken]
-
+	local primitiveToken = ResolveTokenChain(semanticToken, self.Tokens.fonts)
 	if primitiveToken then
 		return ResolvePrimitiveFont(primitiveToken)
-	end
-
-	-- If it's already a primitive token name, resolve directly
-	if self.Tokens.fonts[semanticToken] then
-		return ResolvePrimitiveFont(semanticToken)
 	end
 
 	FenUI:Debug("Unknown semantic font token:", semanticToken)
@@ -450,7 +546,11 @@ function FenUI:ApplyTokenOverrides(overrides)
 			self.Tokens.currentOverrides[semantic] = primitive
 		end
 	end
-	FenUI:Debug("Applied token overrides:", overrides and #overrides or 0, "tokens")
+	local count = 0
+	for _ in pairs(self.Tokens.currentOverrides) do
+		count = count + 1
+	end
+	FenUI:Debug("Applied token overrides:", count, "tokens")
 end
 
 --- Clear all token overrides

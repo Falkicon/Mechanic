@@ -108,29 +108,31 @@ function ImageButtonMixin:Init(config)
 end
 
 function ImageButtonMixin:UpdateStateVisuals()
+	-- Monochrome icons sit quiet (muted), brighten on hover, and use the gold
+	-- accent only when a toggle is on. Full-color images pass tint = "white".
 	if not self:IsEnabled() then
-		self:SetImageAlpha(0.3)
-		self:SetTint("interactiveDisabled")
+		self:SetImageAlpha(0.6)
+		self:SetTint(self.config.disabledTint or "textDisabled")
 		return
 	end
 
 	local alpha = 1.0
-	local tint = self.config.tint or "white"
+	local tint = self.config.tint or "textMuted"
 
 	-- Priority: Pressed > Active Toggle > Hover > Normal
 	if self.isPressed then
-		alpha = 0.5 -- Darker when pressed
-		tint = self.config.pressedTint or "interactiveActive"
+		alpha = 1.0
+		tint = self.config.pressedTint or "textDefault"
 		-- Slight texture shift effect for tactile feel
 		self.texture:SetPoint("TOPLEFT", 1, -1)
 		self.texture:SetPoint("BOTTOMRIGHT", 1, -1)
 	elseif self.isToggle and self.isActive then
 		alpha = 1.0
-		tint = self.config.activeTint or "interactiveActive"
+		tint = self.config.activeTint or "interactiveDefault"
 		self.texture:SetAllPoints()
 	elseif self.isHovered then
 		alpha = 1.0
-		tint = self.config.hoverTint or "interactiveHover"
+		tint = self.config.hoverTint or "textStrong"
 		self.texture:SetAllPoints()
 	else
 		self.texture:SetAllPoints()

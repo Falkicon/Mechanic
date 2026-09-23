@@ -15,7 +15,7 @@ FenUI = FenUI or {}
 -- Version and Metadata
 --------------------------------------------------------------------------------
 
-FenUI.VERSION = "2.4.0"
+FenUI.VERSION = "3.0.0"
 FenUI.AUTHOR = "Fen"
 FenUI.NAME = "FenUI"
 
@@ -34,12 +34,16 @@ local function DetectAddonPath()
 
 	-- Try multiple patterns to extract the file path
 	local path = stack:match('"@?(.-)"') -- From [string "..."] or [string "@..."]
+		or stack:match("%[@?([^%]]+)%]") -- From [path]:line format (e.g. WoW: Forever clients)
 		or stack:match("@([^:]+)") -- From @path:line format
 		or stack:match("^([^:]+)") -- From path:line format
 
 	if not path then
 		return "Interface\\AddOns\\FenUI"
 	end
+
+	-- Strip any leftover bracket/@ prefix so asset paths stay valid
+	path = path:gsub("^[%[@]+", "")
 
 	-- Remove trailing line number if present (e.g., "FenUI.lua:45" -> "FenUI.lua")
 	path = path:gsub(":%d+$", "")
@@ -175,20 +179,34 @@ end
 -- Initialization
 --------------------------------------------------------------------------------
 
+--- Ensure FenUIDB exists. When FenUI is embedded (the normal case), the host
+--- addon does not declare FenUIDB as a SavedVariable, so it starts out nil.
+---@return table
+function FenUI:GetDB()
+	FenUIDB = FenUIDB or {
+		globalTheme = "Default",
+		showValidationWarnings = false,
+		debugMode = false,
+	}
+	return FenUIDB
+end
+
 local initFrame = CreateFrame("Frame")
 initFrame:RegisterEvent("ADDON_LOADED")
 initFrame:SetScript("OnEvent", function(self, event, addonName)
 	if addonName == "FenUI" then
 		-- Initialize saved variables
-		FenUIDB = FenUIDB or {
-			globalTheme = "Default",
-			showValidationWarnings = false,
-			debugMode = false,
-		}
+		FenUI:GetDB()
 
 		-- Restore settings
 		FenUI.currentGlobalTheme = FenUIDB.globalTheme or "Default"
 		FenUI.debugMode = FenUIDB.debugMode or false
+
+		-- Re-apply the saved theme's token overrides (the name alone isn't enough)
+		local savedTheme = FenUI.Themes and FenUI.Themes[FenUI.currentGlobalTheme]
+		if savedTheme then
+			FenUI:ApplyTokenOverrides(savedTheme.tokens)
+		end
 
 		-- Run validation if available (loaded later in TOC)
 		if FenUI.Validation and FenUI.Validation.OnLoad then
@@ -234,7 +252,7 @@ SlashCmdList["FENUI"] = function(msg)
 		end
 	elseif cmd == "debug" then
 		FenUI:SetDebugMode(not FenUI.debugMode)
-		FenUIDB.debugMode = FenUI.debugMode
+		FenUI:GetDB().debugMode = FenUI.debugMode
 	elseif cmd == "version" then
 		FenUI:Print("Version", FenUI.VERSION, "by", FenUI.AUTHOR)
 	elseif cmd == "tokens" then
@@ -324,7 +342,7 @@ function FenUI:SetGlobalTheme(themeName)
 		self.ThemeManager:SetGlobalTheme(themeName)
 	else
 		self.currentGlobalTheme = themeName
-		FenUIDB.globalTheme = themeName
+		self:GetDB().globalTheme = themeName
 		FireThemeChangeCallbacks(themeName)
 		self:Print("Global theme set to:", themeName)
 	end

@@ -9,6 +9,7 @@
 # Core (load order matters)
 Core\FenUI.lua
 Core\Tokens.lua
+Core\Fonts.lua
 Core\BlizzardBridge.lua
 Core\Animation.lua
 Core\ThemeManager.lua

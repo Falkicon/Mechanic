@@ -160,11 +160,14 @@ function ScrollPanelMixin:UpdateScrollBar()
 	local visibleHeight = self.scrollFrame:GetHeight()
 	local totalHeight = self.scrollChild:GetHeight()
 
-	-- If height is 0, we might be in the first frame.
-	-- Retry in next frame to ensure layout is done.
-	if visibleHeight <= 0 or totalHeight <= 0 then
-		if not self.initRetry then
+	-- If the viewport has no height yet we are probably in the first frame.
+	-- Retry a few times to let layout settle; an empty scroll child is a real
+	-- state (e.g. an empty Tree) and must not keep a timer alive forever.
+	if visibleHeight <= 0 then
+		self.initRetries = self.initRetries or 0
+		if not self.initRetry and self.initRetries < 3 then
 			self.initRetry = true
+			self.initRetries = self.initRetries + 1
 			C_Timer.After(0.1, function()
 				self.initRetry = false
 				self:UpdateScrollBar()
@@ -172,6 +175,7 @@ function ScrollPanelMixin:UpdateScrollBar()
 		end
 		return
 	end
+	self.initRetries = 0
 
 	self.scrollBar:UpdateThumbSize(visibleHeight, totalHeight)
 end
@@ -299,3 +303,76 @@ end
 
 FenUI.InsetMixin = InsetMixin
 FenUI.ScrollPanelMixin = ScrollPanelMixin
+
+--------------------------------------------------------------------------------
+-- Skin a Blizzard UIPanelScrollFrameTemplate to match FenUI's scrollbar
+--------------------------------------------------------------------------------
+
+--- Restyle a ScrollFrame created from UIPanelScrollFrameTemplate so its
+--- scrollbar matches FenUI: arrow buttons removed, thin token-colored thumb,
+--- scrollbar pulled into a narrow gutter to the right of the frame.
+---@param scrollFrame ScrollFrame A frame inheriting UIPanelScrollFrameTemplate
+---@param config table|nil { offset = number (gap from the frame's right edge) }
+---@return boolean skinned
+function FenUI:SkinScrollFrame(scrollFrame, config)
+	config = config or {}
+	local bar = scrollFrame and scrollFrame.ScrollBar
+	if not bar or bar.fenUISkinned then
+		return false
+	end
+	bar.fenUISkinned = true
+
+	-- Remove the stock arrow buttons (keep them hidden if Blizzard code re-shows them)
+	for _, key in ipairs({ "ScrollUpButton", "ScrollDownButton" }) do
+		local btn = bar[key]
+		if btn then
+			btn:Hide()
+			btn:HookScript("OnShow", btn.Hide)
+		end
+	end
+
+	-- Narrow gutter hugging the frame's right edge, full height
+	local gutter = FenUI:GetLayout("scrollBarWidth")
+	local offset = config.offset or 0
+	bar:ClearAllPoints()
+	bar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", offset, 0)
+	bar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", offset, 0)
+	bar:SetWidth(gutter)
+
+	-- Thin flat thumb
+	local thumb = bar.ThumbTexture or bar:GetThumbTexture()
+	if thumb then
+		local thumbWidth = FenUI:GetPixelSize(bar, FenUI:GetLayout("scrollThumbWidth"))
+		thumb:SetSize(thumbWidth, 32)
+		thumb:SetColorTexture(FenUI:GetColor("interactiveScrollThumb"))
+
+		local function UpdateThumb()
+			local active = bar.fenUIDragging or bar:IsMouseOver()
+			thumb:SetColorTexture(
+				FenUI:GetColor(active and "interactiveScrollThumbHover" or "interactiveScrollThumb")
+			)
+		end
+		bar:HookScript("OnEnter", UpdateThumb)
+		bar:HookScript("OnLeave", UpdateThumb)
+		bar:HookScript("OnMouseDown", function()
+			bar.fenUIDragging = true
+			UpdateThumb()
+		end)
+		bar:HookScript("OnMouseUp", function()
+			bar.fenUIDragging = false
+			UpdateThumb()
+		end)
+	end
+
+	-- Hide the thumb when there is nothing to scroll (the template keeps it visible)
+	local function UpdateThumbVisibility()
+		local t = bar.ThumbTexture or bar:GetThumbTexture()
+		if t then
+			t:SetShown((scrollFrame:GetVerticalScrollRange() or 0) > 0.5)
+		end
+	end
+	scrollFrame:HookScript("OnScrollRangeChanged", UpdateThumbVisibility)
+	UpdateThumbVisibility()
+
+	return true
+end
