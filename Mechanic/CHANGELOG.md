@@ -2,7 +2,7 @@
 
 All notable changes to the Mechanic in-game addons will be documented in this file.
 
-## [Unreleased]
+## [1.4.6 / 1.3.7] - 2026-09-23
 
 ### Changed
 - Adopted FenUI's Obsidian look: Inspect columns, toolbar and property headers use FenUI surface tokens instead of black overlays; headings are neutral so gold marks only the title, active tab, selection and focus.
