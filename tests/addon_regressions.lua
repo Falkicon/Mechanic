@@ -5,6 +5,9 @@ local function newFrame()
     return setmetatable({ shown = true, scripts = {} }, { __index = function(_, key)
         if key == "HookScript" or key == "SetScript" then
             return function(self, event, fn) self.scripts[event] = fn end
+        elseif key == "CreateTexture" or key == "CreateFontString" then
+            -- Real regions support method calls; return a mock region, not nil
+            return function() return newFrame() end
         elseif key == "IsShown" then
             return function(self) return self.shown end
         elseif key == "Hide" or key == "Show" then
@@ -124,6 +127,8 @@ FenUI = {
     end,
     GetColorRGB = function() return 1, 1, 1 end,
     GetColor = function() return 1, 1, 1 end,
+    GetFont = function(_, token) return token end,
+    GetPixelSize = function() return 1 end,
 }
 assert(loadfile("Mechanic/UI/MainFrame.lua"))("Mechanic", {})
 addon.GetStatusItems = function() return {} end
