@@ -14,6 +14,7 @@ For the in-game addon changelog, see [Mechanic/CHANGELOG.md](./Mechanic/CHANGELO
 - Isolated test configuration, constrained CI tooling, and installed-wheel dashboard smoke validation.
 
 ### Fixed
+- TOC validation now accepts current Retail 12.1 (`120100`) and WoW: Forever (`16001`) interfaces, and its error lists the current targets instead of stale 12.0 versions. The addon template TOC declares both.
 - Generate valid positional-JSON CLI documentation with schema-derived types and escaped Markdown tables.
 - Correct MCP handler signatures, local dashboard request validation, SQLite connection cleanup, watcher shutdown, environment precedence, and dashboard wheel packaging.
 - Safely encode queue parameters/labels, constrain performance baseline filenames, and treat API search patterns as wildcards rather than regular expressions.

@@ -45,8 +45,12 @@ class ValidationResult(BaseModel):
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Current valid interface versions for WoW 12.0 (Midnight)
-VALID_INTERFACE_VERSIONS = ["120001", "120000", "110105", "110100"]
+# Interface versions for the game clients addons should currently target.
+# Update when a client patch changes its TOC interface number.
+VALID_INTERFACE_VERSIONS = {
+    "120100": "Retail 12.1",
+    "16001": "WoW: Forever 1.60.1",
+}
 
 # Required and recommended metadata fields
 REQUIRED_FIELDS = ["Title", "Version"]
@@ -134,7 +138,10 @@ def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
         has_valid = any(v in VALID_INTERFACE_VERSIONS for v in interface_versions)
         if not has_valid:
             result.errors.append(
-                f"Interface version outdated: {', '.join(interface_versions)}. Should include 120001 or 120000"
+                f"Interface version outdated: {', '.join(interface_versions)}. Should include one of: "
+                + ", ".join(
+                    f"{v} ({label})" for v, label in VALID_INTERFACE_VERSIONS.items()
+                )
             )
             result.valid = False
         else:
