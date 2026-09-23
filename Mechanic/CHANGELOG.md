@@ -2,6 +2,23 @@
 
 All notable changes to the Mechanic in-game addons will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Adopted FenUI's Obsidian look: Inspect columns, toolbar and property headers use FenUI surface tokens instead of black overlays; headings are neutral so gold marks only the title, active tab, selection and focus.
+- Blizzard scroll frames in Inspect and Performance are skinned with `FenUI:SkinScrollFrame` (thin thumb, no arrow buttons).
+- The Inspect frame tree's selected node uses the FenUI row selection (gold wash + leading edge); the API nav keeps its translucent selection instead of an opaque fill.
+- The Strata picker is a FenUI dropdown instead of Blizzard's stock menu button; the API "Safe" toggle is a quiet token-colored status chip.
+- The status bar is a raised footer mirroring the title strip.
+- All Blizzard font objects in Mechanic's UI now use FenUI's type scale (caption/small/body/title/display) instead of five ad-hoc sizes; muted helper text uses the muted text token instead of the grey "Disable" fonts. The Safe toggle is a rounded chip.
+- Remaining gold labels (Console source filters, Tests/Performance/Tools titles, API detail headers) are neutral; gold stays on the window title, active tab, selection, focus and pick mode.
+
+- Inspect columns (Hierarchy, Properties, Details, Watch List) share one header treatment; the empty Watch List explains how to add frames; Details labels are muted with bright values and lines have more air; collapse toggles are drawn chevrons; the tree's visibility icons use muted/dim tints instead of pure white.
+
+### Fixed
+- Inspect Properties stayed empty for the frame shown right after a reload (rows were built 0px wide before layout resolved).
+- Inspect Properties rows (Width, Height, Alpha, ...) could render 0px wide and invisible on a section's first build.
+
 ## [1.4.5 / 1.3.6] - 2026-09-18
 
 ### Added
