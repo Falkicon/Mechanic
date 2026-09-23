@@ -43,9 +43,12 @@ local function getDescriptiveName(target)
 end
 
 function InspectModule:InitializeDetails(parent)
+	self.detailsHeader = self:CreateColumnHeader(parent, L["Details"])
+
 	local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-	scrollFrame:SetPoint("TOPLEFT", 8, -8)
+	scrollFrame:SetPoint("TOPLEFT", 8, -(self.COLUMN_HEADER_HEIGHT + 8))
 	scrollFrame:SetPoint("BOTTOMRIGHT", -24, 8)
+	FenUI:SkinScrollFrame(scrollFrame, { offset = 5 })
 	self.detailsScroll = scrollFrame
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
@@ -183,7 +186,7 @@ function InspectModule:AddDetailHeader(frame, yOffset)
 				-- Visual hover feedback
 				local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
 				highlight:SetAllPoints()
-				highlight:SetColorTexture(1, 1, 1, 0.1)
+				highlight:SetColorTexture(FenUI:GetColor("surfaceRowHover"))
 
 				section.parentBtn = btn
 			end
@@ -781,15 +784,21 @@ function InspectModule:GetOrCreateDetailSection(name, yOffset)
 		toggle:SetSize(16, 16)
 		toggle:SetPoint("TOPLEFT", 0, 0)
 
-		local toggleText = toggle:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-		toggleText:SetPoint("CENTER")
-		toggleText:SetText("v")
-		toggle.text = toggleText
+		-- Drawn chevron (down = expanded, right = collapsed)
+		local chevron = FenUI:CreateChevron(toggle, "down")
+		chevron:SetPoint("CENTER")
+		toggle.chevron = chevron
+		toggle:SetScript("OnEnter", function()
+			chevron:SetColor(FenUI:GetColor("textStrong"))
+		end)
+		toggle:SetScript("OnLeave", function()
+			chevron:SetColor(FenUI:GetColor("textMuted"))
+		end)
 
 		s.isCollapsed = false
 		toggle:SetScript("OnClick", function()
 			s.isCollapsed = not s.isCollapsed
-			toggleText:SetText(s.isCollapsed and ">" or "v")
+			chevron:SetDirection(s.isCollapsed and "right" or "down")
 			if s.isCollapsed then
 				s.content:Hide()
 				if s.parentBtn then
@@ -806,7 +815,8 @@ function InspectModule:GetOrCreateDetailSection(name, yOffset)
 		end)
 		s.toggle = toggle
 
-		s.title = s:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		s.title = s:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+		s.title:SetTextColor(FenUI:GetColorRGB("textHeading"))
 		s.title:SetPoint("TOPLEFT", 18, 0)
 
 		local font = FenUI:GetFont("fontMono")
@@ -821,8 +831,29 @@ function InspectModule:GetOrCreateDetailSection(name, yOffset)
 			s.content:SetFont(fontPath, fontSize - 1, fontFlags)
 		end
 
-		s.content:SetPoint("TOPLEFT", 18, -16)
+		s.content:SetPoint("TOPLEFT", 18, -18)
 		s.content:SetJustifyH("LEFT")
+		s.content:SetSpacing(2) -- A little air between data lines
+
+		-- Muted labels, bright values: color each line's leading "Label:" so
+		-- rows scan faster. Lines that don't start with a plain label (anchor
+		-- chains, region lists, pre-colored text) pass through unchanged.
+		local labelHex = "ff" .. FenUI:GetColorHex("textMuted")
+		local rawSetText = s.content.SetText
+		s.content.SetText = function(fs, text)
+			if type(text) == "string" then
+				text = text:gsub("[^\n]+", function(line)
+					local label, rest = line:match("^([%w][%w %-/%%%(%)%.]-):(%s.*)$")
+					if label and #label <= 28 then
+						-- Also mute inline labels in combined rows ("Type: Frame | Level: 0")
+						rest = rest:gsub("(|%s)(%a[%w ]-):(%s)", "%1|c" .. labelHex .. "%2:|r%3")
+						return "|c" .. labelHex .. label .. ":|r" .. rest
+					end
+					return line
+				end)
+			end
+			rawSetText(fs, text)
+		end
 		s.content:SetWidth(p:GetWidth() - 20)
 
 		return s

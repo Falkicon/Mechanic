@@ -3,6 +3,7 @@
 
 local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
+local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local InspectModule = Mechanic.Inspect
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
@@ -45,9 +46,12 @@ local function GetDescriptiveName(frame)
 end
 
 function InspectModule:InitializeTree(parent)
+	self.treeHeader = self:CreateColumnHeader(parent, L["Hierarchy"])
+
 	local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-	scrollFrame:SetPoint("TOPLEFT", 4, -4)
+	scrollFrame:SetPoint("TOPLEFT", 4, -(self.COLUMN_HEADER_HEIGHT + 4))
 	scrollFrame:SetPoint("BOTTOMRIGHT", -24, 4)
+	FenUI:SkinScrollFrame(scrollFrame, { offset = 5 })
 	self.treeScroll = scrollFrame
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
@@ -127,14 +131,17 @@ function InspectModule:UpdateTree(selectedFrame)
 		node.fullPath = fullPath
 
 		if nodeData.type == "selected" then
-			node.text:SetTextColor(1, 0.8, 0)
+			node.text:SetTextColor(FenUI:GetColorRGB("textStrong"))
 			node.bg:Show()
+			node.accent:Show()
 		elseif nodeData.type == "ancestor" then
-			node.text:SetTextColor(0.6, 0.6, 0.6)
+			node.text:SetTextColor(FenUI:GetColorRGB("textMuted"))
 			node.bg:Hide()
+			node.accent:Hide()
 		else
-			node.text:SetTextColor(1, 1, 1)
+			node.text:SetTextColor(FenUI:GetColorRGB("textDefault"))
 			node.bg:Hide()
+			node.accent:Hide()
 		end
 
 		node.frame = nodeData.frame
@@ -144,10 +151,13 @@ function InspectModule:UpdateTree(selectedFrame)
 			local ok, isVisible = pcall(nodeData.frame.IsVisible, nodeData.frame)
 			if ok then
 				node.visBtn:SetTexture(ICON_PATH .. (isVisible and "icon-visibility-on" or "icon-visibility-off"))
-				node.visBtn:SetTint(isVisible and "white" or "interactiveDisabled")
+				-- Resting tint encodes the state (visible = muted, hidden = dim); hover still brightens
+				node.visBtn.config.tint = isVisible and "textMuted" or "textDisabled"
+				node.visBtn:UpdateStateVisuals()
 			else
 				node.visBtn:SetTexture(ICON_PATH .. "icon-visibility-off")
-				node.visBtn:SetTint("interactiveDisabled")
+				node.visBtn.config.tint = "textDisabled"
+				node.visBtn:UpdateStateVisuals()
 			end
 		end
 
@@ -174,9 +184,18 @@ function InspectModule:GetOrCreateTreeNode(index)
 
 	local bg = node:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(1, 1, 1, 0.1)
+	bg:SetColorTexture(FenUI:GetColor("surfaceRowSelected"))
 	bg:Hide()
 	node.bg = bg
+
+	-- Gold leading edge on the selected node (matches FenUI list rows)
+	local accent = node:CreateTexture(nil, "ARTWORK")
+	accent:SetPoint("TOPLEFT")
+	accent:SetPoint("BOTTOMLEFT")
+	accent:SetWidth(FenUI.GetPixelSize and FenUI:GetPixelSize(node, 2) or 2)
+	accent:SetColorTexture(FenUI:GetColor("accentBar"))
+	accent:Hide()
+	node.accent = accent
 
 	-- Pin button (assign to _G.f for console access)
 	local pinBtn = FenUI:CreateImageButton(node, {
@@ -229,7 +248,7 @@ function InspectModule:GetOrCreateTreeNode(index)
 	visBtn:SetPoint("RIGHT", pinBtn, "LEFT", -2, 0)
 	node.visBtn = visBtn
 
-	local text = node:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local text = node:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	text:SetPoint("LEFT", 4, 0)
 	text:SetPoint("RIGHT", visBtn, "LEFT", -2, 0)
 	text:SetJustifyH("LEFT")

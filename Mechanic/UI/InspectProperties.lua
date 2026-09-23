@@ -48,15 +48,23 @@ function Properties:Initialize(parent)
 
 	local headerBg = header:CreateTexture(nil, "BACKGROUND")
 	headerBg:SetAllPoints()
-	headerBg:SetColorTexture(0, 0, 0, 0.4)
+	headerBg:SetColorTexture(FenUI:GetColor("surfaceHeader"))
 
-	local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	-- Hairline divider (matches InspectModule:CreateColumnHeader)
+	local headerDivider = header:CreateTexture(nil, "BORDER")
+	headerDivider:SetPoint("BOTTOMLEFT")
+	headerDivider:SetPoint("BOTTOMRIGHT")
+	headerDivider:SetHeight(FenUI:GetPixelSize(header))
+	headerDivider:SetColorTexture(FenUI:GetColor("borderSubtle"))
+
+	local title = header:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
+	title:SetTextColor(FenUI:GetColorRGB("textHeading"))
 	title:SetPoint("LEFT", 8, 0)
 	title:SetText(L and L["Properties"] or "Properties")
 	self.title = title
 
 	-- FenUI Badge
-	local badge = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	local badge = header:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	badge:SetPoint("LEFT", title, "RIGHT", 8, 0)
 	badge:SetText("|cff00ccff[FenUI]|r")
 	badge:Hide()
@@ -96,6 +104,7 @@ function Properties:Initialize(parent)
 	local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
 	scrollFrame:SetPoint("TOPLEFT", 0, -HEADER_HEIGHT)
 	scrollFrame:SetPoint("BOTTOMRIGHT", -24, 0)
+	FenUI:SkinScrollFrame(scrollFrame, { offset = 5 })
 	self.scrollFrame = scrollFrame
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
@@ -149,6 +158,10 @@ function Properties:Update(frame, isRefresh)
 		if config.shouldShow(frame) then
 			local sectionFrame = self:GetOrCreateSectionFrame(entry.key, config.title)
 			sectionFrame:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, yOffset)
+			-- Give the section a real height before populating: its inner frame is
+			-- anchored top-to-bottom, and with a zero-height section it has no valid
+			-- rect, so rows sized from inner:GetWidth() came out 0px wide (invisible).
+			sectionFrame:SetHeight(1000)
 			sectionFrame:Show()
 
 			-- Populate section
@@ -261,14 +274,18 @@ function Properties:GetOrCreateSectionFrame(key, title)
 		local f = CreateFrame("Frame", nil, self.content)
 		f:SetWidth(self.content:GetWidth() - 8)
 
-		local t = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		local t = f:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+		t:SetTextColor(FenUI:GetColorRGB("textMuted"))
 		t:SetPoint("TOPLEFT", 0, 0)
 		t:SetText(title)
 		f.title = t
 
 		local inner = CreateFrame("Frame", nil, f)
+		-- Explicit size (not a TOPLEFT/BOTTOMRIGHT pair): rows read inner:GetWidth()
+		-- while building, and an anchor-derived width is 0 until layout resolves,
+		-- which left the first build after a reload with invisible 0px rows.
 		inner:SetPoint("TOPLEFT", 0, -16)
-		inner:SetPoint("BOTTOMRIGHT", 0, 0)
+		inner:SetSize(f:GetWidth(), 1000)
 		f.inner = inner
 
 		self.sectionCache[key] = f
@@ -336,7 +353,7 @@ function Properties.inputs:CreateLabel(container, label, onReset)
 	btn:SetSize(LABEL_WIDTH, INPUT_HEIGHT)
 	btn:SetPoint("LEFT", 0, 0)
 
-	local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local lbl = btn:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	lbl:SetAllPoints()
 	lbl:SetJustifyH("LEFT")
 	lbl:SetText(label)
@@ -434,7 +451,7 @@ function Properties.inputs:Checkbox(parent, label, value, key, onChange, onReset
 		end,
 	})
 	cb:SetPoint("LEFT", 0, 0)
-	cb.label:SetFontObject("GameFontHighlightSmall")
+	cb.label:SetFontObject(FenUI:GetFont("fontSmall"))
 
 	if onReset then
 		cb.labelBtn = CreateFrame("Button", nil, container)
@@ -459,28 +476,18 @@ function Properties.inputs:Dropdown(parent, label, options, selected, key, onCha
 
 	local lblBtn, lbl = self:CreateLabel(container, label, onReset)
 
-	local btn = CreateFrame("Button", nil, container, "UIMenuButtonStretchTemplate")
-	btn:SetPoint("LEFT", lblBtn, "RIGHT", 4, 0)
-	btn:SetPoint("RIGHT", onReset and -RESET_BTN_SIZE - 4 or 0, 0)
-	btn:SetHeight(INPUT_HEIGHT)
-
-	local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	btnText:SetPoint("CENTER")
-	btnText:SetText(selected or "Select...")
-	btn.text = btnText
-
-	btn:SetScript("OnClick", function()
-		if MenuUtil and MenuUtil.CreateContextMenu then
-			MenuUtil.CreateContextMenu(btn, function(owner, rootDescription)
-				for _, opt in ipairs(options) do
-					rootDescription:CreateButton(opt, function()
-						btn.text:SetText(opt)
-						onChange(opt)
-					end)
-				end
-			end)
-		end
-	end)
+	-- FenUI dropdown (flat control + chevron; menu opens anchored beneath it)
+	local dropdown = FenUI:CreateDropdown(container, {
+		items = options,
+		defaultText = selected or "Select...",
+		height = INPUT_HEIGHT - 2,
+		onSelect = function(opt)
+			onChange(opt)
+		end,
+	})
+	dropdown:SetPoint("LEFT", lblBtn, "RIGHT", 4, 0)
+	dropdown:SetPoint("RIGHT", onReset and -RESET_BTN_SIZE - 4 or 0, 0)
+	dropdown.button.text:SetFontObject(FenUI:GetFont("fontSmall"))
 
 	self:AddExtras(container, lbl, key, onReset, tooltip)
 	return container

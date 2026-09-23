@@ -8,9 +8,8 @@ local InspectModule = Mechanic.Inspect
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
 function InspectModule:InitializeWatch(parent)
-	local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	title:SetPoint("TOPLEFT", 8, -12)
-	title:SetText(L["Watch List"])
+	local header = self:CreateColumnHeader(parent, L["Watch List"])
+	self.watchHeader = header
 
 	-- Clear All Button
 	local clearAllBtn = FenUI:CreateImageButton(parent, {
@@ -33,7 +32,7 @@ function InspectModule:InitializeWatch(parent)
 			end
 		end,
 	})
-	clearAllBtn:SetPoint("TOPRIGHT", -8, -12)
+	clearAllBtn:SetPoint("RIGHT", header, "RIGHT", -8, 0)
 	self.clearAllBtn = clearAllBtn
 
 	-- Watch Button (moved from toolbar to watch list header)
@@ -49,14 +48,25 @@ function InspectModule:InitializeWatch(parent)
 	self.watchBtn = watchBtn
 
 	local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-	scrollFrame:SetPoint("TOPLEFT", 4, -40)
+	scrollFrame:SetPoint("TOPLEFT", 4, -(self.COLUMN_HEADER_HEIGHT + 4))
 	scrollFrame:SetPoint("BOTTOMRIGHT", -24, 4)
+	FenUI:SkinScrollFrame(scrollFrame, { offset = 5 })
 	self.watchScroll = scrollFrame
 
 	local content = CreateFrame("Frame", nil, scrollFrame)
 	content:SetWidth(parent:GetWidth() - 28)
 	scrollFrame:SetScrollChild(content)
 	self.watchContent = content
+
+	-- Empty state: say how to fill the list instead of showing a blank column
+	local empty = parent:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+	empty:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 10, -12)
+	empty:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -10, -12)
+	empty:SetJustifyH("LEFT")
+	empty:SetSpacing(3)
+	empty:SetTextColor(FenUI:GetColorRGB("textMuted"))
+	empty:SetText(L["No watched frames"])
+	self.watchEmpty = empty
 
 	self.watchNodes = {}
 	for i = 1, 20 do
@@ -92,6 +102,10 @@ function InspectModule:RefreshWatchList()
 	end
 	table.sort(sortedKeys)
 
+	if self.watchEmpty then
+		self.watchEmpty:SetShown(#sortedKeys == 0)
+	end
+
 	-- Update Clear All button state
 	if self.clearAllBtn then
 		if hasManual then
@@ -119,8 +133,8 @@ function InspectModule:RefreshWatchList()
 
 		-- Show source (Addon or Manual)
 		if not node.source then
-			node.source = node:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			node.source:SetTextColor(0.5, 0.5, 0.5)
+			node.source = node:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+			node.source:SetTextColor(FenUI:GetColorRGB("textMuted"))
 			node.source:SetJustifyH("LEFT")
 		end
 		node.source:SetText(data.source or "Manual")
@@ -244,17 +258,18 @@ function InspectModule:GetOrCreateWatchNode(index)
 
 	local bg = node:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
-	bg:SetColorTexture(1, 1, 1, 0.05)
+	bg:SetColorTexture(FenUI:GetColor("surfaceControl"))
 	node.bg = bg
 
-	local label = node:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	local label = node:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+	label:SetTextColor(FenUI:GetColorRGB("textDefault"))
 	label:SetPoint("TOPLEFT", 0, -4)
 	label:SetPoint("TOPRIGHT", -4, -4)
 	label:SetJustifyH("LEFT")
 	node.label = label
 
-	local value = node:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	value:SetTextColor(1, 1, 1) -- Keep it white
+	local value = node:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
+	value:SetTextColor(FenUI:GetColorRGB("textStrong"))
 	value:SetPoint("BOTTOMLEFT", 4, 4)
 	value:SetPoint("BOTTOMRIGHT", -4, 4)
 	value:SetJustifyH("RIGHT")
