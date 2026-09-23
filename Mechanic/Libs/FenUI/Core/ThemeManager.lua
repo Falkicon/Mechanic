@@ -12,15 +12,41 @@ local FenUI = FenUI
 --------------------------------------------------------------------------------
 
 FenUI.Themes = {
-	-- Default theme - Modern dark style matching 11.0+ Blizzard Settings
+	-- Default theme - "Obsidian": the semantic token defaults in Tokens.lua
 	Default = {
 		name = "Default",
-		description = "Modern dark UI style",
+		description = "Obsidian: modern near-black with gold accents",
 		layout = "ModernDark", -- Uses custom BorderPack
+		tokens = {},
+	},
+
+	-- Classic theme - the pre-3.1 warm grey palette
+	Classic = {
+		name = "Classic",
+		description = "Warm grey panels with gold labels",
+		layout = "ModernDark",
 		tokens = {
 			surfacePanel = "gray800",
+			surfaceHeader = "gray800",
+			surfaceElevated = "gray700",
 			surfaceInset = "gray900",
+			surfaceDeep = "gray950",
+			surfaceControl = "gray900",
+			surfaceControlHover = "gray700",
+			surfaceControlPressed = "gray950",
+			textDefault = "gray100",
+			textMuted = "gray400",
+			textDisabled = "gray600",
 			textHeading = "gold500",
+			borderDefault = "gray700",
+			borderSubtle = "gray950",
+			borderInteractive = "gray500",
+			borderInteractiveHover = "gray400",
+			interactiveScrollThumb = "gray600",
+			interactiveScrollThumbHover = "gray500",
+			fontHeading = "headingGold",
+			fontBody = "bodyGold",
+			fontSmall = "bodySmallGold",
 		},
 	},
 }
@@ -43,7 +69,7 @@ function FenUI.ThemeManager:Register(name, config)
 		name = config.name or name,
 		description = config.description or "",
 		textureKit = config.textureKit,
-		layout = config.layout or "Panel",
+		layout = config.layout or "ModernDark", -- FenUI border pack (not the legacy Blizzard "Panel" NineSlice)
 		tokens = config.tokens or {},
 	}
 

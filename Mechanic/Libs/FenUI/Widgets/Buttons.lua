@@ -49,6 +49,13 @@ function ButtonMixin:Init(config)
 		hooksecurefunc(self, "SetText", function()
 			self:UpdateDynamicSize()
 		end)
+	else
+		-- Fixed width: keep the label inside the padding and truncate with "..."
+		-- instead of spilling past the border
+		local pad = self:GetPadding()
+		self.text:SetPoint("LEFT", self, "LEFT", pad.left, 0)
+		self.text:SetPoint("RIGHT", self, "RIGHT", -pad.right, 0)
+		self.text:SetWordWrap(false)
 	end
 
 	-- Apply initial visual
@@ -57,33 +64,13 @@ end
 
 --- Create the button's visual elements (background, border, text)
 function ButtonMixin:CreateVisuals()
-	-- Background texture
+	-- Rounded control: 1px border ring + fill (radiusControl corners)
+	self.box = FenUI:CreateRoundedBox(self, self, "radiusControl")
+
+	-- Legacy fields kept for compatibility (hidden; the box draws the visuals)
 	self.bg = self:CreateTexture(nil, "BACKGROUND")
-	self.bg:SetAllPoints()
-
-	-- Border textures (4 edges)
+	self.bg:Hide()
 	self.border = {}
-	self.border.Top = self:CreateTexture(nil, "BORDER")
-	self.border.Bottom = self:CreateTexture(nil, "BORDER")
-	self.border.Left = self:CreateTexture(nil, "BORDER")
-	self.border.Right = self:CreateTexture(nil, "BORDER")
-
-	-- Position borders
-	self.border.Top:SetPoint("TOPLEFT", 0, 0)
-	self.border.Top:SetPoint("TOPRIGHT", 0, 0)
-	self.border.Top:SetHeight(1)
-
-	self.border.Bottom:SetPoint("BOTTOMLEFT", 0, 0)
-	self.border.Bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-	self.border.Bottom:SetHeight(1)
-
-	self.border.Left:SetPoint("TOPLEFT", 0, -1)
-	self.border.Left:SetPoint("BOTTOMLEFT", 0, 1)
-	self.border.Left:SetWidth(1)
-
-	self.border.Right:SetPoint("TOPRIGHT", 0, -1)
-	self.border.Right:SetPoint("BOTTOMRIGHT", 0, 1)
-	self.border.Right:SetWidth(1)
 
 	-- Text (FontString)
 	self.text = self:CreateFontString(nil, "OVERLAY")
@@ -99,40 +86,60 @@ function ButtonMixin:UpdateVisual(state)
 	state = state or "normal"
 
 	local bgColor, borderColor, textColor
+	local isPrimary = self.config.variant == "primary"
+	local isDanger = self.config.variant == "danger"
 
 	if state == "disabled" or not self:IsEnabled() then
-		bgColor = "surfaceInset"
+		bgColor = "surfacePanel"
 		borderColor = "borderSubtle"
-		textColor = "interactiveDisabled"
-	elseif state == "pressed" then
-		bgColor = "surfaceDeep"
-		borderColor = "interactiveActive"
-		textColor = "interactiveActive"
-	elseif state == "hover" then
-		bgColor = "surfaceElevated"
-		borderColor = "interactiveHover"
-		textColor = "interactiveHover"
-	else -- normal
-		bgColor = "surfaceInset"
-		borderColor = "borderInteractive"
-		textColor = "interactiveDefault"
+		textColor = "textDisabled"
+	elseif isDanger then
+		-- Danger: neutral control with a red label and edge (destructive actions)
+		if state == "pressed" then
+			bgColor, borderColor = "surfaceControlPressed", "feedbackError"
+		elseif state == "hover" then
+			bgColor, borderColor = "surfaceControlHover", "feedbackError"
+		else
+			bgColor, borderColor = "surfaceControl", "feedbackErrorSubtle"
+		end
+		textColor = "textDanger"
+	elseif isPrimary then
+		-- Primary: gold fill, dark label. One per view.
+		if state == "pressed" then
+			bgColor, borderColor = "interactiveActive", "interactiveActive"
+		elseif state == "hover" then
+			bgColor, borderColor = "interactiveHover", "interactiveHover"
+		else
+			bgColor, borderColor = "interactiveDefault", "interactiveDefault"
+		end
+		textColor = "textOnAccent"
+	else
+		-- Secondary (default): neutral control, light label
+		if state == "pressed" then
+			bgColor, borderColor, textColor = "surfaceControlPressed", "borderInteractive", "textDefault"
+		elseif state == "hover" then
+			bgColor, borderColor, textColor = "surfaceControlHover", "borderInteractiveHover", "textStrong"
+		else
+			bgColor, borderColor, textColor = "surfaceControl", "borderInteractive", "textDefault"
+		end
 	end
 
-	-- Apply background
-	local bgR, bgG, bgB, bgA = FenUI:GetColor(bgColor)
-	self.bg:SetColorTexture(bgR, bgG, bgB, bgA)
-
-	-- Apply border
-	local brR, brG, brB, brA = FenUI:GetColor(borderColor)
-	for _, edge in pairs(self.border) do
-		edge:SetColorTexture(brR, brG, brB, brA)
-	end
+	-- Apply fill and border ring
+	self.box:SetFillColor(FenUI:GetColor(bgColor))
+	self.box:SetBorderColor(FenUI:GetColor(borderColor))
 
 	-- Apply text color
 	local tR, tG, tB = FenUI:GetColor(textColor)
 	self.text:SetTextColor(tR, tG, tB)
 
 	self.currentState = state
+end
+
+--- Switch between "secondary" (default), "primary" (gold fill) and "danger" styles
+---@param variant string|nil
+function ButtonMixin:SetVariant(variant)
+	self.config.variant = variant
+	self:UpdateVisual(self:IsEnabled() and (self:IsMouseOver() and "hover" or "normal") or "disabled")
 end
 
 --- Override SetText to use our custom text element
@@ -182,7 +189,8 @@ function ButtonMixin:GetContentFrame()
 end
 
 function ButtonMixin:GetPadding()
-	return { left = 12, right = 12, top = 0, bottom = 0 }
+	local pad = FenUI:GetSpacing("reg")
+	return { left = pad, right = pad, top = 0, bottom = 0 }
 end
 
 function ButtonMixin:GetMargin()
@@ -366,15 +374,12 @@ function CheckboxMixin:SetChecked(checked, silent)
 		self.boxBg:SetTexture(checked and self.config.checkedTexture or self.config.uncheckedTexture)
 		-- In texture mode, we hide the default checkmark and border
 		self.checkmark:Hide()
-		for _, edge in pairs(self.boxBorder) do
-			edge:Hide()
-		end
+		self.roundBox:Hide()
 		self.boxBg:SetVertexColor(1, 1, 1, 1) -- Reset any tinting for the texture
 	else
 		self.checkmark:SetShown(checked)
-		for _, edge in pairs(self.boxBorder) do
-			edge:Show()
-		end
+		self.roundBox:Show()
+		self:UpdateVisual(self:IsMouseOver() and "hover" or "normal")
 	end
 
 	if not silent and self.hooks.onChange then
@@ -394,24 +399,22 @@ function CheckboxMixin:UpdateVisual(state)
 	-- Update checkmark visibility
 	self.checkmark:SetShown(self.checked)
 
-	-- Determine colors based on state
+	-- Determine colors based on state: gold edge when checked, lighter edge on hover
 	local borderColor
-	if state == "hover" then
-		borderColor = "interactiveHover"
+	if self.checked then
+		borderColor = state == "hover" and "interactiveHover" or "interactiveDefault"
+	elseif state == "hover" then
+		borderColor = "borderInteractiveHover"
 	else
 		borderColor = "borderInteractive"
 	end
 
 	-- Apply border color
-	local r, g, b, a = FenUI:GetColor(borderColor)
-	for _, edge in pairs(self.boxBorder) do
-		edge:SetColorTexture(r, g, b, a)
-	end
+	self.roundBox:SetBorderColor(FenUI:GetColor(borderColor))
 
 	-- Update checkmark color when checked
 	if self.checked then
-		local cr, cg, cb = FenUI:GetColor("interactiveDefault")
-		self.checkmark:SetTextColor(cr, cg, cb)
+		self.checkmark:SetVertexColor(FenUI:GetColorRGB(state == "hover" and "interactiveHover" or "interactiveDefault"))
 	end
 end
 
@@ -455,62 +458,50 @@ function FenUI:CreateCheckbox(parent, config)
 	checkbox.boxBg:SetPoint("TOPLEFT", 1, -1)
 	checkbox.boxBg:SetPoint("BOTTOMRIGHT", -1, 1)
 
-	-- Box border (4 edges for clean 1px border)
-	checkbox.boxBorder = {}
-	checkbox.boxBorder.Top = checkbox.box:CreateTexture(nil, "BORDER")
-	checkbox.boxBorder.Bottom = checkbox.box:CreateTexture(nil, "BORDER")
-	checkbox.boxBorder.Left = checkbox.box:CreateTexture(nil, "BORDER")
-	checkbox.boxBorder.Right = checkbox.box:CreateTexture(nil, "BORDER")
+	-- Rounded box (1px ring + recessed fill) for the default look; boxBg is
+	-- used instead when checkedTexture/uncheckedTexture are provided
+	checkbox.roundBox = FenUI:CreateRoundedBox(checkbox.box, checkbox.box, "radiusControl")
+	checkbox.roundBox:SetFillColor(FenUI:GetColor("surfaceInset"))
+	checkbox.roundBox:SetBorderColor(FenUI:GetColor("borderInteractive"))
+	checkbox.boxBorder = {} -- Legacy field (square edges replaced by roundBox)
 
-	-- Position border edges
-	checkbox.boxBorder.Top:SetPoint("TOPLEFT", 0, 0)
-	checkbox.boxBorder.Top:SetPoint("TOPRIGHT", 0, 0)
-	checkbox.boxBorder.Top:SetHeight(1)
+	-- Checkmark (atlas, not a "✓" glyph: WoW's default fonts don't include it)
+	checkbox.checkmark = checkbox.box:CreateTexture(nil, "OVERLAY")
+	checkbox.checkmark:SetAtlas("common-icon-checkmark")
+	checkbox.checkmark:SetPoint("TOPLEFT", 2, -2)
+	checkbox.checkmark:SetPoint("BOTTOMRIGHT", -2, 2)
+	checkbox.checkmark:SetVertexColor(FenUI:GetColorRGB("interactiveDefault"))
 
-	checkbox.boxBorder.Bottom:SetPoint("BOTTOMLEFT", 0, 0)
-	checkbox.boxBorder.Bottom:SetPoint("BOTTOMRIGHT", 0, 0)
-	checkbox.boxBorder.Bottom:SetHeight(1)
-
-	checkbox.boxBorder.Left:SetPoint("TOPLEFT", 0, -1)
-	checkbox.boxBorder.Left:SetPoint("BOTTOMLEFT", 0, 1)
-	checkbox.boxBorder.Left:SetWidth(1)
-
-	checkbox.boxBorder.Right:SetPoint("TOPRIGHT", 0, -1)
-	checkbox.boxBorder.Right:SetPoint("BOTTOMRIGHT", 0, 1)
-	checkbox.boxBorder.Right:SetWidth(1)
-
-	-- Apply initial border color
-	local br, bg, bb, ba = FenUI:GetColor("borderInteractive")
-	for _, edge in pairs(checkbox.boxBorder) do
-		edge:SetColorTexture(br, bg, bb, ba)
+	-- Compatibility: the checkmark used to be a FontString, and consumers call
+	-- FontString methods on it (e.g. !Mechanic's status bar calls SetFontObject).
+	-- Keep those calls working on the texture.
+	local checkmark = checkbox.checkmark
+	checkmark.SetFontObject = function() end
+	checkmark.SetText = function() end
+	checkmark.SetTextColor = function(_, r, g, b, a)
+		checkmark:SetVertexColor(r, g, b, a or 1)
 	end
-
-	-- Checkmark
-	checkbox.checkmark = checkbox.box:CreateFontString(nil, "OVERLAY")
-	checkbox.checkmark:SetFontObject("GameFontNormal")
-	checkbox.checkmark:SetText("✓")
-	checkbox.checkmark:SetPoint("CENTER", 0, 1)
-	local cr, cg, cb = FenUI:GetColor("interactiveDefault")
-	checkbox.checkmark:SetTextColor(cr, cg, cb)
 
 	-- Initial visual state
 	if config.checkedTexture and config.uncheckedTexture then
 		checkbox.boxBg:SetTexture(checkbox.checked and config.checkedTexture or config.uncheckedTexture)
-		for _, edge in pairs(checkbox.boxBorder) do
-			edge:Hide()
-		end
+		checkbox.roundBox:Hide()
 		checkbox.checkmark:Hide()
 	else
-		-- Use surfaceDeep for the inner box background
-		local bgR, bgG, bgB, bgA = FenUI:GetColor("surfaceDeep")
-		checkbox.boxBg:SetColorTexture(bgR, bgG, bgB, bgA)
+		checkbox.boxBg:Hide()
 		checkbox.checkmark:SetShown(checkbox.checked)
 	end
 
 	-- Label
 	checkbox.label = checkbox:CreateFontString(nil, "OVERLAY")
 	checkbox.label:SetFontObject(FenUI:GetFont("fontBody"))
-	checkbox.label:SetPoint("LEFT", checkbox.box, "RIGHT", 8, 0)
+	checkbox.label:SetPoint("LEFT", checkbox.box, "RIGHT", FenUI:GetSpacing("spacingElement"), 0)
+	checkbox.label:SetJustifyH("LEFT")
+	checkbox.label:SetWordWrap(false)
+	if config.width then
+		-- Explicit width: truncate long labels instead of overflowing
+		checkbox.label:SetPoint("RIGHT", checkbox, "RIGHT", 0, 0)
+	end
 	local tr, tg, tb = FenUI:GetColor("textDefault")
 	checkbox.label:SetTextColor(tr, tg, tb)
 	if config.label then
@@ -525,20 +516,28 @@ function FenUI:CreateCheckbox(parent, config)
 		checkbox:SetWidth(200)
 	end
 
-	-- Click handler
+	-- Click handler (box or label row)
 	checkbox.box:SetScript("OnClick", function()
 		checkbox:Toggle()
 	end)
-
-	-- Hover effect
-	checkbox.box:SetScript("OnEnter", function()
-		checkbox:UpdateVisual("hover")
+	checkbox:EnableMouse(true)
+	checkbox:SetScript("OnMouseUp", function(_, button)
+		if button == "LeftButton" and checkbox:IsMouseOver() then
+			checkbox:Toggle()
+		end
 	end)
 
-	checkbox.box:SetScript("OnLeave", function()
-		checkbox:UpdateVisual("normal")
-	end)
+	-- Hover effect across the whole row. Moving between the row and the box
+	-- fires OnLeave on one and OnEnter on the other, so resolve from IsMouseOver.
+	local function UpdateHover()
+		checkbox:UpdateVisual(checkbox:IsMouseOver() and "hover" or "normal")
+	end
+	checkbox.box:SetScript("OnEnter", UpdateHover)
+	checkbox.box:SetScript("OnLeave", UpdateHover)
+	checkbox:SetScript("OnEnter", UpdateHover)
+	checkbox:SetScript("OnLeave", UpdateHover)
 
+	checkbox:UpdateVisual("normal")
 	return checkbox
 end
 

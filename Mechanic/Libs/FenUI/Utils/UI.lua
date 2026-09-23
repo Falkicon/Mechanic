@@ -106,25 +106,48 @@ function Utils:ShowMenu(menuList, anchor)
 	-- 1. Modern Client (11.0+) - MenuUtil
 	local mu = _G.MenuUtil
 	if mu and mu.CreateContextMenu then
-		mu.CreateContextMenu(UIParent, function(owner, rootDescription)
+		local function Generate(_, rootDescription)
 			for _, info in ipairs(menuList) do
 				if info.isTitle then
 					rootDescription:CreateTitle(info.text)
 				elseif info.hasArrow then
-					-- Submenu support (recursive)
-					local submenu = rootDescription:CreateButton(info.text)
-					-- Note: Minimal implementation for now, enough for basic needs
+					-- Submenu: minimal implementation, enough for basic needs
+					rootDescription:CreateButton(info.text)
 				elseif info.text == nil or info.text == "" then
 					rootDescription:CreateDivider()
 				else
-					local btn = rootDescription:CreateButton(info.text, info.func)
-					if info.notCheckable == false or info.checked ~= nil then
-						-- Checkbox/Radio support if needed
-						-- luacheck: ignore 542
-					end
+					rootDescription:CreateButton(info.text, info.func)
 				end
 			end
-		end)
+		end
+
+		-- Anchored to a frame (dropdowns): open directly beneath it, and let the
+		-- frame own the menu so it closes when the frame hides.
+		local menuApi = _G.Menu
+		local anchorUtil = _G.AnchorUtil
+		if
+			type(anchor) == "table"
+			and anchor.GetObjectType
+			and menuApi
+			and menuApi.GetManager
+			and menuApi.PopulateDescription
+			and mu.CreateRootMenuDescription
+			and anchorUtil
+			and anchorUtil.CreateAnchor
+			and _G.MenuVariants
+		then
+			local description = mu.CreateRootMenuDescription(_G.MenuVariants.GetDefaultMenuMixin())
+			menuApi.PopulateDescription(Generate, anchor, description)
+			local gap = FenUI:GetSpacing("xs") / 2
+			local point = anchorUtil.CreateAnchor("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+			local menu = menuApi.GetManager():OpenMenu(anchor, description, point)
+			if menu and _G.SOUNDKIT then
+				PlaySound(_G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) -- Same feedback as context menus
+			end
+			return
+		end
+
+		mu.CreateContextMenu(UIParent, Generate)
 		return
 	end
 
@@ -342,7 +365,8 @@ function Utils:UpdateDynamicSize(frame)
 			local content = frame:GetContentFrame()
 			local p = frame:GetPadding()
 			local m = frame:GetMargin()
-			finalW = content:GetWidth() + p.left + p.right + m.left + m.right
+			-- Whole pixels: fractional text widths make 1px borders blur
+			finalW = math.ceil(content:GetWidth() + p.left + p.right + m.left + m.right)
 		end
 	elseif frame.dynamicSize.width then
 		finalW = self:ParseSize(frame.dynamicSize.width, pW, false)
@@ -354,7 +378,7 @@ function Utils:UpdateDynamicSize(frame)
 			local content = frame:GetContentFrame()
 			local p = frame:GetPadding()
 			local m = frame:GetMargin()
-			finalH = content:GetHeight() + p.top + p.bottom + m.top + m.bottom
+			finalH = math.ceil(content:GetHeight() + p.top + p.bottom + m.top + m.bottom)
 		end
 	elseif frame.dynamicSize.height then
 		finalH = self:ParseSize(frame.dynamicSize.height, pH, true)

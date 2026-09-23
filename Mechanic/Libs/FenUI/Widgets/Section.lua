@@ -14,7 +14,7 @@ function SectionMixin:Init(config)
 	self.config = config
 
 	-- 1. Heading FontString
-	local heading = self:CreateFontString(nil, "OVERLAY", config.headingFont or "GameFontNormalLarge")
+	local heading = self:CreateFontString(nil, "OVERLAY", config.headingFont or FenUI:GetFont("fontHeading"))
 	heading:SetText(config.heading or "")
 	heading:SetJustifyH("LEFT")
 	heading:SetWordWrap(false)
@@ -27,7 +27,7 @@ function SectionMixin:Init(config)
 	self.heading = heading
 
 	-- 2. Body FontString
-	local body = self:CreateFontString(nil, "OVERLAY", config.bodyFont or "GameFontHighlight")
+	local body = self:CreateFontString(nil, "OVERLAY", config.bodyFont or FenUI:GetFont("highlight"))
 	body:SetText(config.body or "")
 	body:SetJustifyH("LEFT")
 	body:SetJustifyV("TOP")

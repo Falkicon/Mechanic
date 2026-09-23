@@ -45,10 +45,9 @@ function StackMixin:Init(config)
 	self.wrap = config.wrap or false
 	self.rowGap = config.rowGap or self.gap
 
-	-- Initialize Layout layers (inherited via factory)
-	if self.InitLayout then
-		self:InitLayout(config)
-	end
+	-- Layout layers (background, border, shadow) were already initialized by
+	-- CreateLayout in the factory. Initializing them again would stack a second
+	-- background frame and double the inner shadow's opacity.
 
 	-- Hook for layout updates
 	-- We use a wrapper to ensure we don't break Layout's own OnSizeChanged
@@ -574,11 +573,8 @@ function FenUI:CreateStack(parent, config)
 	-- Inherit from Layout for border/background support
 	local stack = self:CreateLayout(parent, config)
 
-	-- Mix in Stack properties
-	stack.InitLayout = stack.Init -- Save Layout:Init
+	-- Mix in Stack properties and initialize the stack behavior
 	FenUI.Mixin(stack, StackMixin)
-
-	-- Re-initialize as Stack
 	stack:Init(config)
 
 	return stack

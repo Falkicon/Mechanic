@@ -59,14 +59,28 @@ end
 function ToolbarMixin:AddFrame(frame)
 	frame:SetParent(self)
 	table.insert(self.items, { type = "frame", frame = frame })
+
+	-- Reflow when an item is shown/hidden or resizes (e.g. auto-width button text)
+	if not frame.fenUIToolbarHooked and frame.HookScript then
+		frame.fenUIToolbarHooked = true
+		local function Reflow()
+			if frame:GetParent() == self then
+				self:UpdateLayout()
+			end
+		end
+		frame:HookScript("OnShow", Reflow)
+		frame:HookScript("OnHide", Reflow)
+		frame:HookScript("OnSizeChanged", Reflow)
+	end
+
 	self:UpdateLayout()
 end
 
 function ToolbarMixin:AddDivider()
 	local divider = self:CreateTexture(nil, "ARTWORK")
 	divider:SetColorTexture(FenUI:GetColorRGB("borderSubtle"))
-	divider:SetWidth(1)
-	divider:SetHeight(self:GetHeight() * 0.6)
+	divider:SetWidth(FenUI:GetPixelSize(self))
+	divider:SetHeight(math.floor(self:GetHeight() * 0.6 + 0.5))
 	table.insert(self.items, { type = "divider", frame = divider })
 	self:UpdateLayout()
 end
@@ -99,6 +113,8 @@ function ToolbarMixin:UpdateLayout()
 	for _, item in ipairs(self.items) do
 		if item.type == "spacer" and item.width == "flex" then
 			flexCount = flexCount + 1
+		elseif item.frame and not item.frame:IsShown() then -- luacheck: ignore 542
+			-- Hidden items take no space
 		else
 			if item.frame then
 				fixedWidth = fixedWidth + item.frame:GetWidth()
@@ -119,21 +135,23 @@ function ToolbarMixin:UpdateLayout()
 	local align = self.config.align or "left"
 
 	-- Alignment adjustments
+	-- Whole pixels keep 1px borders and dividers crisp
 	if align == "right" and flexCount == 0 then
-		xOffset = width - fixedWidth - (padding.right or 0)
+		xOffset = math.floor(width - fixedWidth - (padding.right or 0) + 0.5)
 	elseif align == "center" and flexCount == 0 then
-		xOffset = (width - fixedWidth) / 2
+		xOffset = math.floor((padding.left or 0) + (availableWidth - fixedWidth) / 2 + 0.5)
 	end
 
 	for _, item in ipairs(self.items) do
 		if item.type == "spacer" and item.width == "flex" then
 			xOffset = xOffset + flexWidth + gap
+		elseif item.frame and not item.frame:IsShown() then -- luacheck: ignore 542
+			-- Respect hidden items (previously they were force-shown every layout)
 		else
 			local itemWidth = 0
 			if item.frame then
 				item.frame:ClearAllPoints()
-				item.frame:SetPoint("LEFT", self, "LEFT", xOffset, 0)
-				item.frame:Show()
+				item.frame:SetPoint("LEFT", self, "LEFT", math.floor(xOffset + 0.5), 0)
 				itemWidth = item.frame:GetWidth()
 			elseif item.type == "spacer" then
 				itemWidth = item.width or 0

@@ -277,11 +277,46 @@ FenUI uses a three-tier token system:
 
 | Category | Tokens |
 |----------|--------|
-| **Surfaces** | `surfacePanel`, `surfaceElevated`, `surfaceInset`, `surfaceRowAlt` |
-| **Text** | `textDefault`, `textMuted`, `textDisabled`, `textHeading`, `textOnAccent` |
-| **Borders** | `borderDefault`, `borderSubtle`, `borderFocus` |
+| **Surfaces** | `surfaceInset` < `surfacePanel` < `surfaceHeader` < `surfaceElevated`, plus `surfaceControl`/`Hover`/`Pressed` |
+| **Rows** | `surfaceRowAlt`, `surfaceRowHover`, `surfaceRowSelected`, `surfaceRowSelectedHover`, `accentBar` |
+| **Text** | `textDefault`, `textStrong`, `textMuted`, `textDisabled`, `textHeading`, `textTitle`, `textOnAccent` |
+| **Borders** | `borderDefault`, `borderSubtle`, `borderInteractive`, `borderInteractiveHover`, `borderFocus` |
 | **Interactive** | `interactiveDefault`, `interactiveHover`, `interactiveActive`, `interactiveDisabled` |
 | **Feedback** | `feedbackSuccess`, `feedbackError`, `feedbackWarning`, `feedbackInfo` |
+
+### Palette: Obsidian
+
+The default palette is **Obsidian**: neutral near-black surfaces (`obsidian950`–`obsidian50` primitives)
+with Blizzard gold as the single accent. Depth comes from lightness steps, not extra borders. Gold is
+reserved for what matters: the window title, the selected tab, selected rows (wash + 2px leading edge),
+focus, checkmarks, and the one `variant = "primary"` button per view. Everything else is neutral.
+The previous warm-grey look is available as the `Classic` theme (`/fenui theme Classic`).
+
+### Type scale
+
+Pick fonts by role, not size. The `FenUIFont*` objects (Friz Quadrata, white, drop shadow; tinted with text tokens) are:
+
+| Token | Size | Use for |
+|-------|------|---------|
+| `fontCaption` | 10 | Metadata, counts, timestamps |
+| `fontSmall` | 11 | Dense lists, secondary text, form labels, status bars |
+| `fontBody` / `fontButton` | 12 | Default text, inputs, buttons, tabs |
+| `fontHeading` / `fontWindowTitle` | 14 | Section headings, window title |
+| `fontTitle` | 16 | Page/panel titles |
+| `fontDisplay` | 20 | Hero text |
+| `fontMono` | — | Logs, code, data (ChatFontSmall) |
+
+### Corner radius
+
+`radiusControl` (3) rounds buttons, inputs, dropdowns, checkboxes and chips; `radiusContainer` (6) rounds
+windows (`ModernDark`) and cards (`Card` pack). Lists, rows, tabs and dividers stay square. Use
+`FenUI:CreateRoundedBox(host, anchor, radius)` for custom controls and `FenUI:GetRadius(token)` to read a value.
+
+Semantic tokens may reference other semantic tokens (e.g. `textEmptyTitle` → `textMuted` → `gray400`);
+`GetColor`, `GetSpacing` and `GetFont` follow the chain, and a theme can override any link in it.
+
+For hand-drawn hairlines, `FenUI:GetPixelSize(frame[, size])` returns a size snapped to whole physical
+pixels at the frame's effective scale, so 1px borders stay crisp and even at any UI scale.
 
 ## Graceful Degradation
 
