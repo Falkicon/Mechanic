@@ -80,7 +80,7 @@ function Console:Initialize(parent)
 	self.searchBox = searchBox
 
 	-- Line Count Label
-	self.lineCount = filterBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	self.lineCount = filterBar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	self.lineCount:SetPoint("RIGHT", -12, 0)
 	self.lineCount:SetTextColor(FenUI:GetColorRGB("textMuted"))
 	self.lineCount:SetText((L["Lines: %d"] or "Lines: %d"):format(0):gsub("(%d+)", "|cffffffff%1|r"))

@@ -381,7 +381,7 @@ function Utils:ShowExportDialog(title, content)
 		dialog:SetPoint("CENTER")
 
 		-- Add instructions
-		local help = dialog.safeZone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		local help = dialog.safeZone:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 		help:SetPoint("TOPLEFT", 8, -4)
 		help:SetText(L["Press Ctrl+C to copy the text below."])
 

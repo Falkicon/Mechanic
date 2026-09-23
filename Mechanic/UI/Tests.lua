@@ -85,7 +85,7 @@ function Mechanic:InitializeTests()
 	testSummaryBar:SetPoint("BOTTOMRIGHT", -8, 4)
 	TestsModule.summaryBar = testSummaryBar
 
-	local summaryLabel = testSummaryBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local summaryLabel = testSummaryBar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	summaryLabel:SetPoint("LEFT", 0, 0)
 	TestsModule.summaryLabel = summaryLabel
 
@@ -109,24 +109,25 @@ function Mechanic:InitializeTests()
 	detailsFrame:SetPoint("BOTTOMRIGHT", testSummaryBar, "TOPRIGHT", 0, 4)
 	TestsModule.detailsFrame = detailsFrame
 
-	local nameLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	local nameLabel = detailsFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontTitle"))
+	nameLabel:SetTextColor(FenUI:GetColorRGB("textHeading"))
 	nameLabel:SetPoint("TOPLEFT", 8, -8)
 	nameLabel:SetText(L["Select a test"])
 	TestsModule.nameLabel = nameLabel
 
-	local categoryLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local categoryLabel = detailsFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	categoryLabel:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -4)
 	TestsModule.categoryLabel = categoryLabel
 
-	local statusLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local statusLabel = detailsFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	statusLabel:SetPoint("TOPLEFT", categoryLabel, "BOTTOMLEFT", 0, -8)
 	TestsModule.statusLabel = statusLabel
 
-	local durationLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local durationLabel = detailsFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	durationLabel:SetPoint("LEFT", statusLabel, "RIGHT", 16, 0)
 	TestsModule.durationLabel = durationLabel
 
-	local descriptionLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local descriptionLabel = detailsFrame:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	descriptionLabel:SetPoint("TOPLEFT", statusLabel, "BOTTOMLEFT", 0, -8)
 	descriptionLabel:SetWidth(400)
 	descriptionLabel:SetJustifyH("LEFT")
