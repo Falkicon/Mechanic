@@ -259,6 +259,33 @@ async def shutdown_server(
 _commands_registered = False
 
 
+def _load_external_modules(server, catalog) -> List[str]:
+    """Import configured command modules and register their commands.
+
+    A module that fails to import or register is skipped with a warning, so a broken
+    add-on package cannot take the dashboard down.
+    """
+    import importlib
+    import logging
+
+    from ..config import get_config
+
+    loaded: List[str] = []
+    for name in get_config().command_modules:
+        try:
+            module = importlib.import_module(name)
+            catalog.declare_external(
+                getattr(module, "READ_ONLY", ()), getattr(module, "MUTATING", ())
+            )
+            module.register_commands(server)
+            loaded.append(name)
+        except Exception as exc:  # noqa: BLE001 - third-party code
+            logging.getLogger("mechanic").warning(
+                "Skipping command module %s: %s", name, exc
+            )
+    return loaded
+
+
 def get_server():
     global _commands_registered
 
@@ -373,6 +400,7 @@ def get_server():
         from . import diagnostics
 
         diagnostics.register_commands(server)
+        _load_external_modules(server, catalog)
         catalog.apply_mutation_audit(server)
         from ..telemetry import instrument_server
 
