@@ -182,7 +182,10 @@ class MechanicConfig:
         for root in get_common_wow_roots():
             if root.exists():
                 # Verify it's actually a WoW installation
-                if (root / "_retail_").exists() or (root / "_classic_").exists():
+                if any(
+                    (root / flavor).exists()
+                    for flavor in ("_retail_", "_classic_", "_classic_beta_")
+                ):
                     self._wow_root = root
                     return self._wow_root
 
@@ -217,7 +220,27 @@ class MechanicConfig:
     @property
     def flavors(self) -> List[str]:
         """Get WoW flavors to target (e.g., _retail_, _beta_, _ptr_)."""
-        return self._config.get("flavors", ["_retail_", "_beta_", "_ptr_"])
+        return self._config.get(
+            "flavors", ["_retail_", "_beta_", "_ptr_", "_classic_beta_"]
+        )
+
+    @property
+    def command_modules(self) -> List[str]:
+        """Importable modules that add commands to the server.
+
+        Each module exposes ``register_commands(server)`` and may declare the audit
+        sets ``READ_ONLY`` and ``MUTATING`` (command names). Set with the config key
+        ``command_modules`` or the MECHANIC_COMMAND_MODULES environment variable
+        (comma separated).
+        """
+        mods = list(self._config.get("command_modules", []))
+        env = os.environ.get("MECHANIC_COMMAND_MODULES", "")
+        mods.extend(m.strip() for m in env.split(",") if m.strip())
+        seen: List[str] = []
+        for m in mods:
+            if m not in seen:
+                seen.append(m)
+        return seen
 
     @property
     def template_path(self) -> Optional[Path]:

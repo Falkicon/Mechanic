@@ -31,11 +31,27 @@ api.refresh api.download
 # files. Both are intentionally advertised as potentially mutating.
 
 
+EXTERNAL_READ_ONLY: set = set()
+EXTERNAL_MUTATING: set = set()
+
+
+def declare_external(read_only=(), mutating=()):
+    """Audit names for commands that come from external modules.
+
+    Every command must still be classified, so a module that adds commands has to
+    declare them here (the loader does this from the module's READ_ONLY and MUTATING).
+    """
+    EXTERNAL_READ_ONLY.update(read_only)
+    EXTERNAL_MUTATING.update(mutating)
+
+
 def apply_mutation_audit(server):
+    read_only = READ_ONLY | EXTERNAL_READ_ONLY
+    mutating = MUTATING | EXTERNAL_MUTATING
     for command in server.list_commands():
-        if command.name not in READ_ONLY | MUTATING:
+        if command.name not in read_only | mutating:
             raise ValueError(f"Missing mutation audit for {command.name}")
-        command.mutation = command.name in MUTATING
+        command.mutation = command.name in mutating
         metadata = get_command_metadata(command.handler)
         if metadata:
             metadata.mutation = command.mutation
