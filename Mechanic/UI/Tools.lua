@@ -15,6 +15,8 @@ ToolsModule.layout = nil
 ToolsModule.selectedAddon = nil
 ToolsModule.activePanel = nil
 ToolsModule.navDirty = true
+-- addonName -> { tools = capability table, contentFrame = frame }: panels are built once
+ToolsModule.built = {}
 
 function Mechanic:InitializeTools()
 	if ToolsModule.frame then
@@ -36,7 +38,7 @@ function Mechanic:InitializeTools()
 
 	toolbar:AddSpacer("flex")
 
-	local exportBtn = toolbar:AddImageButton({
+	toolbar:AddImageButton({
 		texture = ICON_PATH .. "icon-export",
 		size = 24,
 		tooltip = L["Export Button"],
@@ -44,7 +46,6 @@ function Mechanic:InitializeTools()
 			self:Export()
 		end,
 	})
-	ToolsModule.exportButton = exportBtn
 
 	-- Help Button
 	toolbar:AddImageButton({
@@ -130,21 +131,29 @@ function ToolsModule:RefreshAddonList()
 	end
 end
 
+-- Frames are never freed, so a provider's panel is built once and reused on every
+-- re-selection. It is discarded (destroyPanel, children detached) only when the
+-- provider re-registers with different tools.
+function ToolsModule:DiscardPanel(addonName)
+	local built = self.built[addonName]
+	if not built then
+		return
+	end
+	self.built[addonName] = nil
+
+	if built.tools.destroyPanel then
+		pcall(built.tools.destroyPanel, built.contentFrame)
+	end
+	for _, child in ipairs({ built.contentFrame:GetChildren() }) do
+		child:Hide()
+		child:SetParent(nil)
+	end
+end
+
 function ToolsModule:OnAddonSelected(addonName)
 	-- Guard: layout might not be assigned yet during initialization
 	if not self.layout then
 		return
-	end
-
-	-- Destroy previous panel if it exists
-	if self.activePanel and self.selectedAddon then
-		local MechanicLib = LibStub("MechanicLib-1.0", true)
-		if MechanicLib and MechanicLib:HasCapability(self.selectedAddon, "tools") then
-			local tools = MechanicLib:GetCapability(self.selectedAddon, "tools")
-			if tools and tools.destroyPanel then
-				pcall(tools.destroyPanel, self.activePanel)
-			end
-		end
 	end
 
 	self.selectedAddon = addonName
@@ -181,16 +190,23 @@ function ToolsModule:OnAddonSelected(addonName)
 	local contentFrame = self.layout:GetContentFrame(addonName)
 	self.activePanel = contentFrame
 
-	-- Clear previous content
-	for _, child in ipairs({ contentFrame:GetChildren() }) do
-		child:Hide()
-		child:SetParent(nil)
+	local built = self.built[addonName]
+	if built and built.tools ~= tools then
+		self:DiscardPanel(addonName)
+		built = nil
 	end
 
 	-- Let addon create its panel
-	if tools.createPanel then
+	if not built and tools.createPanel then
 		local ok, err = pcall(tools.createPanel, contentFrame)
-		if not ok then
+		if ok then
+			self.built[addonName] = { tools = tools, contentFrame = contentFrame }
+		else
+			-- Detach whatever a half-built panel created so a retry starts clean
+			for _, child in ipairs({ contentFrame:GetChildren() }) do
+				child:Hide()
+				child:SetParent(nil)
+			end
 			Mechanic:Print(string.format("Error creating tools panel for %s: %s", addonName, tostring(err)))
 		end
 	end
@@ -207,12 +223,11 @@ function ToolsModule:OnHide()
 end
 
 function ToolsModule:Export()
-	local navName = (self.selectedAddon and self.selectedAddon ~= "_empty") and self.selectedAddon
-		or (L["All"] or "All")
+	-- The export lists every provider regardless of the selected panel
 	local title = string.format(
 		"%s : %s : %s",
 		tostring(L["Tools"] or "Tools"),
-		tostring(navName or "All"),
+		tostring(L["All"] or "All"),
 		tostring(L["Export"] or "Export")
 	)
 

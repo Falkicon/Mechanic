@@ -6,6 +6,6 @@
     ReloadUI()
   </Binding>
   <Binding name="MECHANIC_TOGGLE">
-    if Mechanic and Mechanic.Toggle then Mechanic:Toggle() end
+    if Mechanic and Mechanic.ToggleMainFrame then Mechanic:ToggleMainFrame() end
   </Binding>
 </Bindings>

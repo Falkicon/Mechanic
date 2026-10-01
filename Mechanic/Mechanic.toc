@@ -16,7 +16,6 @@ embeds.xml
 
 # Localization
 Locales\enUS.lua
-Locales\enGB.lua
 Locales\deDE.lua
 Locales\esES.lua
 Locales\esMX.lua

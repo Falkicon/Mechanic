@@ -149,4 +149,49 @@ assert(shown == 2 and perf.refreshTimer and perf.visible, "reopen must resume se
 perf.frame:Hide()
 addon.frame:Hide()
 assert(hidden == 1, "hidden tabs must not receive parent lifecycle callbacks")
+
+-- Bootstrap identity gate: malformed targets fail closed and only ADDON_LOADED is observed.
+local function loadBootstrap(target)
+    local bootFrame, events = newFrame(), {}
+    rawset(bootFrame, "RegisterEvent", function(_, event) events[#events + 1] = event end)
+    CreateFrame = function() return bootFrame end
+    MechanicDB, MECHANIC_DIAGNOSTIC_TARGET = nil, target
+    UnitName = function() return "Player" end
+    GetRealmName = function() return "Realm" end
+    MECHANIC_LUA_QUEUE = { { label = "probe", code = "1 + 1" } }
+    local ns = {}
+    assert(loadfile("!Mechanic/Bootstrap.lua"))("!Mechanic", ns)
+    assert(#events == 1 and events[1] == "ADDON_LOADED", "bootstrap must not register unused events")
+    bootFrame.scripts.OnEvent(bootFrame, "ADDON_LOADED", "!Mechanic")
+    return ns
+end
+local function ran(ns) return ns.rawDB.luaEvalResults.results ~= nil end
+assert(ran(loadBootstrap(nil)), "no target runs the queue")
+assert(not ran(loadBootstrap("not a table")) and MECHANIC_LUA_QUEUE == nil, "non-table target fails closed")
+assert(not ran(loadBootstrap({ character = "Other - Realm" })), "other character is rejected")
+assert(ran(loadBootstrap({ character = "Player - Realm", profile = "Default" })), "matching target runs")
+MECHANIC_DIAGNOSTIC_TARGET = nil
+
+-- Utils: error-source detection, library listing, and the single reusable help dialog.
+local libStubTable = setmetatable({ minors = {}, IterateLibraries = function() return next, {} end }, {
+    __call = function(_, name)
+        if name == "AceLocale-3.0" then return { GetLocale = function() return locale end } end
+        if name == "MechanicLib-1.0" then return {}, 7 end
+    end,
+})
+LibStub = libStubTable
+local utilsNS = {}
+local Utils = assert(loadfile("Mechanic/Utils.lua"))("Mechanic", utilsNS)
+assert(Utils == utilsNS.Utils)
+assert(Utils:DetectErrorSource("Interface/AddOns/Foo/Core.lua:12: boom") == "Foo")
+assert(Utils:DetectErrorSource("...ce/AddOns/Foo_Bar/Core.lua:1: boom") == "Foo_Bar")
+assert(Utils:DetectErrorSource("Foo\\Core.lua:3: boom") == "Foo")
+assert(Utils:DetectErrorSource("no path here") == nil and Utils:DetectErrorSource(nil) == nil)
+local libs = Utils:GetLoadedLibraries()
+assert(libs[#libs].name == "MechanicLib" and libs[#libs].version == "r7", "MechanicLib version comes from LibStub")
+local panels = 0
+FenUI.CreateInfoPanel = function() panels = panels + 1; return newFrame() end
+Utils:ShowHelpDialog("inspect")
+Utils:ShowHelpDialog("console")
+assert(panels == 1, "help dialog frame must be created once")
 print("Addon regression checks passed")

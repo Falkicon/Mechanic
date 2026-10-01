@@ -14,7 +14,6 @@ BINDING_NAME_MECHANIC_TOGGLE = "Toggle Mechanic Panel"
 
 local ADDON_NAME, ns = ...
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
-local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
 -- Get the global Mechanic table from bootstrap, extend it with AceAddon
 local BootstrapMechanic = _G.Mechanic
@@ -22,16 +21,20 @@ local Mechanic = LibStub("AceAddon-3.0"):NewAddon(ADDON_NAME, "AceConsole-3.0", 
 
 -- Merge bootstrap data into main addon
 if BootstrapMechanic then
-	-- Preserve bootstrap data
 	Mechanic.isBootstrap = false
-	Mechanic.pendingAPIQueue = BootstrapMechanic.pendingAPIQueue or _G.MechanicNS and _G.MechanicNS.pendingAPIQueue
+	-- Take ownership of the queue the bootstrap deferred (needs APIDefs, loaded here)
+	local bootstrapNS = _G.MechanicNS
+	if bootstrapNS then
+		Mechanic.pendingAPIQueue = bootstrapNS.pendingAPIQueue
+		bootstrapNS.pendingAPIQueue = nil
+	end
 end
 
 -- Replace global with main addon
 _G.Mechanic = Mechanic -- luacheck: ignore W122 -- Global for MechanicLib:IsEnabled() check
 
 -- Version from metadata
-Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "1.2.4"
+Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "unknown"
 
 -- Shared Utils (defined in Utils.lua)
 Mechanic.Utils = ns.Utils
@@ -50,13 +53,11 @@ local defaults = {
 		-- Performance settings (Phase 3)
 		autoRefresh = true,
 		refreshInterval = 1.0,
-		trackEventFrequency = false,
 		hiddenAddons = {},
 		-- Minimap (Phase 3)
 		minimap = {
 			hide = false,
 		},
-		addonSettings = {},
 		-- Sub-tab persistence
 		activeSubTabs = {
 			console = "all",
@@ -70,8 +71,6 @@ local defaults = {
 		apiNotes = {},
 		-- NOTE: apiTestQueue is NOT in defaults - it's read directly from SavedVariables
 		-- to avoid AceDB overwriting the CLI-injected queue with empty defaults
-		-- NEW: Inspect & Watch data (Phase 8)
-		inspectWatch = {},
 		-- NEW: Self-registration (dogfooding)
 		registerSelf = true,
 		-- NEW: Persistent Health Log for agent auditing
@@ -81,9 +80,6 @@ local defaults = {
 		-- NEW: Console persistence for Mechanic Desktop
 		consoleBuffer = {},
 		consoleBufferMax = 100,
-		-- NEW: Chat history for debugging (last 50 messages)
-		chatBuffer = {},
-		chatBufferMax = 50,
 		-- NEW: Centralized hub for multi-addon data (Diagnostic Hub Phase)
 		addonData = {}, -- { [addonName] = { version, logs, tests, perf } }
 		lastSync = 0,
@@ -260,6 +256,15 @@ function Mechanic:ProcessLuaEvalQueue()
 	end)
 end
 
+--- tostring() that never throws on secret values or hostile __tostring metamethods.
+local function describeValue(value)
+	if issecretvalue and issecretvalue(value) then
+		return "[secret]"
+	end
+	local ok, text = pcall(tostring, value)
+	return ok and text or "[unprintable]"
+end
+
 function Mechanic:ExecuteLuaEvalQueue(queue, target)
 	if not self:DiagnosticTargetMatches(target) then return end
 	local count = #queue
@@ -311,17 +316,17 @@ function Mechanic:ExecuteLuaEvalQueue(queue, target)
 				if ok then
 					succeeded = succeeded + 1
 					-- Serialize result for storage
-					local resultStr = tostring(result)
+					local resultStr = describeValue(result)
 					local resultType = type(result)
 					
 					-- For tables, try to serialize more usefully
-					if resultType == "table" then
+					if resultType == "table" and not (issecretvalue and issecretvalue(result)) then
 						local parts = {}
 						local count = 0
 						for k, v in pairs(result) do
 							count = count + 1
 							if count <= 10 then
-								table.insert(parts, tostring(k) .. "=" .. tostring(v))
+								table.insert(parts, describeValue(k) .. "=" .. describeValue(v))
 							end
 						end
 						if count > 10 then
@@ -341,11 +346,11 @@ function Mechanic:ExecuteLuaEvalQueue(queue, target)
 					})
 				else
 					failed = failed + 1
-					self:Print(string.format("|cFFFF6666[Lua Eval] %s → RUNTIME ERROR: %s|r", label, tostring(result)))
+					self:Print(string.format("|cFFFF6666[Lua Eval] %s → RUNTIME ERROR: %s|r", label, describeValue(result)))
 					table.insert(self.db.profile.luaEvalResults.results, {
 						label = label,
 						success = false,
-						error = "Runtime error: " .. tostring(result),
+						error = "Runtime error: " .. describeValue(result),
 						code = code,
 						executedAt = date("%Y-%m-%d %H:%M:%S"),
 					})
@@ -449,15 +454,12 @@ function Mechanic:OnEnable()
 	if self.CreateMainFrame then
 		self:CreateMainFrame()
 	end
-
-	-- Initialize event tracking if enabled (Phase 3)
-	if self.db.profile.trackEventFrequency and self.Perf then
-		self.Perf:EnableEventTracking()
-	end
 end
 
 --- Sync all registered addon data into the central !Mechanic hub.
 --- This collects logs, test results, and versions for desktop persistence.
+--- Every registered-addon callback is third-party code: a failure is recorded in the
+--- health log and leaves that section at its previous value instead of aborting the sync.
 function Mechanic:SyncAllAddonData()
 	local syncStart = debugprofilestop()
 	local MechanicLib = LibStub("MechanicLib-1.0", true)
@@ -465,19 +467,26 @@ function Mechanic:SyncAllAddonData()
 		return
 	end
 
-	if not self.db.profile.addonData then
-		self.db.profile.addonData = {}
+	local previous = self.db.profile.addonData or {}
+	local synced = {}
+
+	local function call(addonName, what, fn, ...)
+		local ok, value = pcall(fn, ...)
+		if not ok then
+			self:LogHealth("WARN", "SyncAllAddonData", string.format("%s %s failed: %s", addonName, what, describeValue(value)))
+			return false
+		end
+		return true, value
 	end
 
 	for addonName, entry in pairs(MechanicLib:GetRegistered()) do
-		-- Initialize or clear old entry
-		local data = self.db.profile.addonData[addonName] or {}
-		data.version = entry.version or "?.?.?"
+		local old = previous[addonName] or {}
+		local data = { version = entry.version or "?.?.?", logs = old.logs, tests = old.tests, perf = old.perf }
 
 		-- 1. Collect Logs / Console Buffers
 		if entry.getDebugBuffer then
-			local buffer = entry.getDebugBuffer()
-			if buffer and type(buffer) == "table" then
+			local ok, buffer = call(addonName, "getDebugBuffer", entry.getDebugBuffer)
+			if ok and type(buffer) == "table" then
 				-- Cap log size to prevent SV bloat (last 50 lines per addon)
 				local capped = {}
 				local start = #buffer > 50 and (#buffer - 49) or 1
@@ -492,18 +501,26 @@ function Mechanic:SyncAllAddonData()
 		local tests = entry.tests
 			or (MechanicLib:HasCapability(addonName, "tests") and MechanicLib:GetCapability(addonName, "tests"))
 		if tests and tests.getAll and tests.getResult then
-			data.tests = {}
-			for _, testEntry in ipairs(tests.getAll()) do
-				local testDef = testEntry.def or testEntry
-				if testDef and testDef.id then
-					local result = tests.getResult(testDef.id)
-					if result then
-						-- Inject definition info into result for hub persistence
-						result.category = testDef.category or "General"
-						result.name = testDef.name or testDef.id
-						data.tests[testDef.id] = result
+			local ok, list = call(addonName, "tests.getAll", tests.getAll)
+			if ok and type(list) == "table" then
+				local collected = {}
+				for _, testEntry in ipairs(list) do
+					local testDef = testEntry.def or testEntry
+					if testDef and testDef.id then
+						local gotResult, result = call(addonName, "tests.getResult", tests.getResult, testDef.id)
+						if gotResult and type(result) == "table" then
+							-- Copy before annotating: the result table belongs to the registering addon
+							local copy = {}
+							for k, v in pairs(result) do
+								copy[k] = v
+							end
+							copy.category = testDef.category or "General"
+							copy.name = testDef.name or testDef.id
+							collected[testDef.id] = copy
+						end
 					end
 				end
+				data.tests = collected
 			end
 		end
 
@@ -511,12 +528,17 @@ function Mechanic:SyncAllAddonData()
 		local perf = entry.performance
 			or (MechanicLib:HasCapability(addonName, "performance") and MechanicLib:GetCapability(addonName, "performance"))
 		if perf and perf.getSubMetrics then
-			data.perf = perf.getSubMetrics()
+			local ok, metrics = call(addonName, "performance.getSubMetrics", perf.getSubMetrics)
+			if ok then
+				data.perf = metrics
+			end
 		end
 
-		self.db.profile.addonData[addonName] = data
+		synced[addonName] = data
 	end
 
+	-- Rebuilding (not merging) drops addons that are no longer registered
+	self.db.profile.addonData = synced
 	self.db.profile.lastSync = time()
 	self.perf.blocks.hubSync = debugprofilestop() - syncStart
 	self.db.profile.diagnosticOverhead = self:GetDiagnosticOverheadSnapshot()
@@ -777,7 +799,6 @@ function Mechanic:RefreshAllModuleNav()
 		end
 	end
 	if self.Perf then
-		self.Perf.navDirty = true
 		if self.Perf.frame and self.Perf.frame:IsVisible() then
 			self.Perf:RefreshNavItems()
 		end
@@ -955,8 +976,8 @@ function Mechanic:RunSelfTest(id)
 		table.insert(result.logs, string.format("FenUI Version: %s", tostring(fenVer)))
 
 		-- Check MechanicLib
-		local lib = LibStub("MechanicLib-1.0", true)
-		local libVer = lib and lib.MINOR or "Missing"
+		local lib, libMinor = LibStub("MechanicLib-1.0", true)
+		local libVer = lib and libMinor or "Missing"
 		table.insert(result.logs, string.format("MechanicLib Minor: %s", tostring(libVer)))
 
 		if _G.FenUI and lib then
@@ -1145,10 +1166,14 @@ function Mechanic:OnAddonRegistered(name, capabilities)
 	end
 
 	if self.Perf then
-		self.Perf.navDirty = true
 		if self.Perf.frame and self.Perf.frame:IsVisible() then
 			self.Perf:RefreshNavItems()
 		end
+	end
+
+	-- Late registrations must appear in the settings panel
+	if capabilities and capabilities.settings and self.RefreshRegisteredAddonSettings then
+		self:RefreshRegisteredAddonSettings()
 	end
 
 	-- Check for inspect capability (Phase 8)
@@ -1208,10 +1233,6 @@ function Mechanic:GetEnvironmentHeader()
 	return self.Utils:GetEnvironmentHeader(self.db.profile)
 end
 
-function Mechanic:GetClientType()
-	return self.Utils:GetClientType()
-end
-
 --------------------------------------------------------------------------------
 -- Slash Commands
 --------------------------------------------------------------------------------
@@ -1250,9 +1271,9 @@ function Mechanic:SlashCommand(input)
 		self:Print(
 			string.format(
 				L["GC: %.1f KB freed (%.1f MB -> %.1f MB)"],
-				self.Utils:FormatMemory(freed),
-				self.Utils:FormatMemory(before),
-				self.Utils:FormatMemory(after)
+				freed,
+				before / 1024,
+				after / 1024
 			)
 		)
 
@@ -1270,7 +1291,7 @@ function Mechanic:SlashCommand(input)
 		self:ClearCurrentTab()
 	else
 		self:Print(string.format(L["Unknown command: %s"], cmd))
-		self:Print(L["Commands: inspect, console, errors, tests, perf, tools, api, reload, gc, pause, copy, clear"])
+		self:Print(L["Commands: inspect, console, errors, tests, perf, tools, api, reload, gc, pause, clear"])
 	end
 end
 
@@ -1325,8 +1346,11 @@ function Mechanic:ClearCurrentTab()
 end
 
 -- Helper to open settings panel (robust for 11.0+)
+-- AddToBlizOptions returns the panel frame; Settings.OpenToCategory needs the category ID,
+-- which AceConfigDialog stores on that frame as `name`.
 function Mechanic:OpenSettings()
-	local category = self.optionsFrame or "!Mechanic"
+	local panel = self.optionsFrame
+	local category = (type(panel) == "table" and panel.name) or panel or "!Mechanic"
 	self.Utils:OpenSettings(category)
 end
 
@@ -1379,20 +1403,4 @@ function Mechanic:SetupDataBroker()
 
 	-- Initial icon state
 	self:UpdateMinimapIcon()
-end
-
-function Mechanic:ToggleMinimapIcon()
-	local LDBIcon = LibStub("LibDBIcon-1.0", true)
-	if not LDBIcon then
-		return
-	end
-
-	local minimap = self.db.profile.minimap
-	minimap.hide = not minimap.hide
-
-	if minimap.hide then
-		LDBIcon:Hide("Mechanic")
-	else
-		LDBIcon:Show("Mechanic")
-	end
 end

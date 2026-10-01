@@ -5,11 +5,22 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local InspectModule = Mechanic.Inspect
+local SafeValue = ns.SafeValue
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
+
+local WATCH_TICK_SECONDS = 0.5
+local WATCH_NODE_HEIGHT = 32
+local WATCH_NODE_STRIDE = 34
+local WATCH_PREALLOCATED_NODES = 20
+local VALUE_OPTS = { numberFormat = "%.1f" }
+
+-- Reused every tick so polling does not allocate
+local sortedKeys = {}
 
 function InspectModule:InitializeWatch(parent)
 	local header = self:CreateColumnHeader(parent, L["Watch List"])
 	self.watchHeader = header
+	self.watchParent = parent
 
 	-- Clear All Button
 	local clearAllBtn = FenUI:CreateImageButton(parent, {
@@ -69,16 +80,69 @@ function InspectModule:InitializeWatch(parent)
 	self.watchEmpty = empty
 
 	self.watchNodes = {}
-	for i = 1, 20 do
+	for i = 1, WATCH_PREALLOCATED_NODES do
 		self:GetOrCreateWatchNode(i)
 	end
+end
 
-	-- Live Update Timer
-	self.watchTicker = C_Timer.NewTicker(0.5, function()
-		if parent:IsVisible() then
+--- Live updates run only while the Inspect tab is shown (started/stopped from OnShow/OnHide).
+function InspectModule:StartWatchTicker()
+	if not self.watchContent then
+		return
+	end
+	self:RefreshWatchList()
+	if self.watchTicker then
+		return
+	end
+	self.watchTicker = C_Timer.NewTicker(WATCH_TICK_SECONDS, function()
+		if self.watchParent and self.watchParent:IsVisible() then
 			self:RefreshWatchList()
 		end
 	end)
+end
+
+function InspectModule:StopWatchTicker()
+	if self.watchTicker then
+		self.watchTicker:Cancel()
+		self.watchTicker = nil
+	end
+end
+
+-- Current display value for a watched target
+local function readWatchValue(frame, property)
+	if type(frame) ~= "table" then
+		return "???"
+	end
+
+	local function visibility()
+		return SafeValue.Get(frame, "IsVisible") and "Visible" or "Hidden"
+	end
+	local function read(method)
+		local ok, value = pcall(frame[method], frame)
+		return ok and SafeValue.ToString(value, VALUE_OPTS) or "[error]"
+	end
+
+	if property == "Visibility" and frame.IsVisible then
+		return visibility()
+	elseif property == "Text" and frame.GetText then
+		return read("GetText")
+	elseif property == "Value" and frame.GetValue then
+		return read("GetValue")
+	elseif property == "Width" and frame.GetWidth then
+		return read("GetWidth")
+	elseif property == "Height" and frame.GetHeight then
+		return read("GetHeight")
+	end
+
+	-- Auto-detection fallback
+	if frame.GetValue then
+		return read("GetValue")
+	elseif frame.GetText then
+		return read("GetText")
+	elseif frame.IsVisible then
+		return visibility()
+	end
+	return "???"
 end
 
 function InspectModule:RefreshWatchList()
@@ -92,7 +156,7 @@ function InspectModule:RefreshWatchList()
 	end
 
 	local watchList = MechanicLib:GetWatchList()
-	local sortedKeys = {}
+	wipe(sortedKeys)
 	local hasManual = false
 	for key, data in pairs(watchList) do
 		table.insert(sortedKeys, key)
@@ -128,6 +192,7 @@ function InspectModule:RefreshWatchList()
 		node:SetPoint("TOPLEFT", self.watchContent, "TOPLEFT", 0, -yOffset)
 		node:SetPoint("RIGHT", self.watchContent, "RIGHT", 0, 0)
 
+		node.watchKey = key
 		node.label:SetText(data.label)
 		node.label:SetPoint("TOPLEFT", 4, -4)
 
@@ -139,15 +204,14 @@ function InspectModule:RefreshWatchList()
 		end
 		node.source:SetText(data.source or "Manual")
 
-		-- Add unwatch button
+		-- Add unwatch button (its handler reads the key from the pooled node)
 		if not node.removeBtn then
 			node.removeBtn = FenUI:CreateImageButton(node, {
 				texture = ICON_PATH .. "icon-clear",
 				size = 10,
 				tooltip = L["Remove from Watch List"] or "Remove from Watch List",
 				onClick = function()
-					local currentWatchList = MechanicLib:GetWatchList()
-					local currentData = currentWatchList[key]
+					local currentData = MechanicLib:GetWatchList()[node.watchKey]
 					if currentData then
 						MechanicLib:RemoveFromWatchList(currentData.target)
 					end
@@ -161,76 +225,14 @@ function InspectModule:RefreshWatchList()
 			node.removeBtn:ClearAllPoints()
 			node.removeBtn:SetPoint("BOTTOMLEFT", 4, 6)
 			node.source:SetPoint("LEFT", node.removeBtn, "RIGHT", 4, 0)
-
 			node.removeBtn:SetFrameLevel(node:GetFrameLevel() + 5)
-			node.removeBtn.config.onClick = function()
-				local currentWatchList = MechanicLib:GetWatchList()
-				local currentData = currentWatchList[key]
-				if currentData then
-					MechanicLib:RemoveFromWatchList(currentData.target)
-				end
-			end
 		else
 			node.removeBtn:Hide()
 			node.source:SetPoint("BOTTOMLEFT", 4, 4)
 		end
 
 		local frame = type(data.target) == "string" and ns.FrameResolver:ResolvePath(data.target) or data.target
-		local value = "???"
-
-		-- Helper for consistent value conversion
-		local function safeToString(val)
-			if val == nil then
-				return "nil"
-			end
-			if issecretvalue and issecretvalue(val) then
-				return "[secret]"
-			end
-			local ok, str = pcall(tostring, val)
-			if ok then
-				-- Handle numeric formatting for common properties
-				if type(val) == "number" then
-					return string.format("%.1f", val)
-				end
-				-- Clean up function addresses
-				if type(val) == "function" then
-					local addr = str:match(":(%s*0x%x+)") or str:match(":%s*(%x+)") or str:match("(%x+)") or "ptr"
-					addr = addr:gsub("%s", ""):gsub("^0x", "")
-					if #addr > 8 then
-						addr = addr:sub(-8)
-					end
-					return "[" .. addr .. "]"
-				end
-				return str
-			end
-			return "[error]"
-		end
-
-		if frame then
-			local property = data.property
-			if property == "Visibility" then
-				value = frame:IsVisible() and "Visible" or "Hidden"
-			elseif property == "Text" and frame.GetText then
-				value = safeToString(frame:GetText())
-			elseif property == "Value" and frame.GetValue then
-				value = safeToString(frame:GetValue())
-			elseif property == "Width" and frame.GetWidth then
-				value = safeToString(frame:GetWidth())
-			elseif property == "Height" and frame.GetHeight then
-				value = safeToString(frame:GetHeight())
-			else
-				-- Auto-detection fallback
-				if frame.GetValue then
-					value = safeToString(frame:GetValue())
-				elseif frame.GetText then
-					value = safeToString(frame:GetText())
-				elseif frame.IsVisible then
-					value = frame:IsVisible() and "Visible" or "Hidden"
-				end
-			end
-		end
-
-		node.value:SetText(value)
+		node.value:SetText(readWatchValue(frame, data.property))
 		node.value:SetPoint("BOTTOMRIGHT", -4, 4)
 		-- Ensure value doesn't overlap with label
 		node.value:SetWidth(node:GetWidth() - 80) -- Leave room for source
@@ -242,7 +244,7 @@ function InspectModule:RefreshWatchList()
 		node.path = type(data.target) == "string" and data.target or nil
 
 		node:Show()
-		yOffset = yOffset + 34
+		yOffset = yOffset + WATCH_NODE_STRIDE
 	end
 
 	self.watchContent:SetHeight(yOffset)
@@ -254,7 +256,7 @@ function InspectModule:GetOrCreateWatchNode(index)
 	end
 
 	local node = CreateFrame("Button", nil, self.watchContent)
-	node:SetHeight(32)
+	node:SetHeight(WATCH_NODE_HEIGHT)
 
 	local bg = node:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
@@ -276,10 +278,11 @@ function InspectModule:GetOrCreateWatchNode(index)
 	node.value = value
 
 	node:SetScript("OnClick", function(s)
-		InspectModule:SetSelectedFrame(s.frame, s.path)
+		if s.frame then
+			InspectModule:SetSelectedFrame(s.frame, s.path)
+		end
 	end)
 
 	self.watchNodes[index] = node
 	return node
 end
-

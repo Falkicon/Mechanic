@@ -12,6 +12,10 @@ local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
 local CATEGORY_COLORS = Mechanic.Utils.Colors.Categories
 local DEFAULT_CATEGORY_COLOR = Mechanic.Utils.Colors.Status.default
+local SafeValue = ns.SafeValue
+
+local REFRESH_DELAY = 0.25 -- seconds; coalesces bursts of log lines into one redraw
+local PRINT_SOURCE = "Print"
 
 Console.buffer = {} -- { {source, category, message, time}, ... }
 Console.head = 1
@@ -19,7 +23,6 @@ Console.count = 0
 Console.paused = false
 Console.filters = {
 	source = "all",
-	category = "all",
 	search = "",
 }
 Console.selectedSource = "all"
@@ -83,7 +86,7 @@ function Console:Initialize(parent)
 	self.lineCount = filterBar:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontSmall"))
 	self.lineCount:SetPoint("RIGHT", -12, 0)
 	self.lineCount:SetTextColor(FenUI:GetColorRGB("textMuted"))
-	self.lineCount:SetText((L["Lines: %d"] or "Lines: %d"):format(0):gsub("(%d+)", "|cffffffff%1|r"))
+	self:SetLineCount(0)
 
 	-- Main Display (MultiLineEditBox)
 	local logDisplay = FenUI:CreateMultiLineEditBox(contentArea, {
@@ -234,7 +237,7 @@ function Console:GetSourceList()
 
 	-- Add "System" for internal logs if it has entries and isn't a registered addon
 	if sourceCounts["System"] then
-		local isRegistered = MechanicLib and MechanicLib:HasCapability("System", "performance") -- Just a check for existence
+		local isRegistered = MechanicLib and MechanicLib:GetRegistered()["System"] ~= nil
 		if not isRegistered then
 			table.insert(items, {
 				key = "System",
@@ -271,19 +274,11 @@ function Console:SetBufferSize(newSize)
 		return
 	end
 
+	-- Collect in chronological order while the profile still holds the old size
 	local entries = {}
-	if self.count > 0 then
-		local start = self.head - self.count
-		if start < 1 then
-			start = start + oldSize
-		end
-		for i = 0, self.count - 1 do
-			local idx = ((start + i - 1) % oldSize) + 1
-			if self.buffer[idx] then
-				table.insert(entries, self.buffer[idx])
-			end
-		end
-	end
+	self:IterateBuffer(function(entry)
+		table.insert(entries, entry)
+	end)
 
 	wipe(self.buffer)
 	self.head = 1
@@ -301,25 +296,44 @@ function Console:SetBufferSize(newSize)
 	self:Refresh()
 end
 
-function Console:OnLog(source, message, category)
-	if self.paused then
-		return
+-- Log producers are arbitrary addons: store only strings, and never touch secret values
+local function toText(value, fallback)
+	if value == nil and fallback then
+		return fallback
 	end
+	if SafeValue.IsSecret(value) then
+		return "[secret]"
+	end
+	if type(value) == "string" then
+		return value
+	end
+	local ok, text = pcall(tostring, value)
+	return ok and text or fallback or "[error]"
+end
 
+--- Append one entry to the ring buffer (no UI refresh).
+function Console:Push(source, message, category, timestamp)
 	local maxLimit = Mechanic.db.profile.bufferSize or 1000
 
-	-- Circular buffer logic
 	self.buffer[self.head] = {
-		source = source,
-		message = message,
-		category = category or "",
-		time = time(),
+		source = toText(source, "Unknown"),
+		message = toText(message, ""),
+		category = toText(category, ""),
+		time = timestamp or time(),
 	}
 
 	self.head = (self.head % maxLimit) + 1
 	if self.count < maxLimit then
 		self.count = self.count + 1
 	end
+end
+
+function Console:OnLog(source, message, category)
+	if self.paused then
+		return
+	end
+
+	self:Push(source, message, category)
 
 	-- Mark nav as dirty to refresh source list on next show
 	self.navDirty = true
@@ -336,7 +350,7 @@ function Console:Refresh()
 	end
 	self.refreshPending = true
 
-	C_Timer.After(0.1, function()
+	C_Timer.After(REFRESH_DELAY, function()
 		self.refreshPending = false
 		if not self.frame or not self.frame:IsVisible() then
 			return
@@ -347,13 +361,18 @@ function Console:Refresh()
 		if self.logDisplay then
 			self.logDisplay:SetText(text)
 		end
-		if self.lineCount then
-			local countText = string.format(L["Lines: %d"] or "Lines: %d", #filtered)
-			-- Colorize the number part to white to match footer values
-			countText = countText:gsub("(%d+)", "|cffffffff%1|r")
-			self.lineCount:SetText(countText)
-		end
+		self:SetLineCount(#filtered)
 	end)
+end
+
+function Console:SetLineCount(count)
+	if not self.lineCount then
+		return
+	end
+	local countText = string.format(L["Lines: %d"] or "Lines: %d", count)
+	-- Colorize the number part to white to match footer values
+	countText = countText:gsub("(%d+)", "|cffffffff%1|r")
+	self.lineCount:SetText(countText)
 end
 
 function Console:ApplyFilters()
@@ -368,17 +387,12 @@ function Console:ApplyFilters()
 			match = false
 		end
 
-		-- Category filter
-		if match and self.filters.category ~= "all" and entry.category ~= self.filters.category then
-			match = false
-		end
-
 		-- Search filter
 		if match and search ~= "" then
 			if
 				not entry.message:lower():find(search, 1, true)
 				and not entry.source:lower():find(search, 1, true)
-				and not (entry.category or ""):lower():find(search, 1, true)
+				and not entry.category:lower():find(search, 1, true)
 			then
 				match = false
 			end
@@ -438,11 +452,24 @@ function Console:FormatEntries(entries, stripColors)
 	return table.concat(lines, "\n")
 end
 
+-- Dedup helpers return copies: the buffer entries are shared with export/persistence
+-- and must never carry display-only state such as a repeat count.
+local function copyEntry(entry, count)
+	return {
+		source = entry.source,
+		category = entry.category,
+		message = entry.message,
+		time = entry.time,
+		count = count,
+	}
+end
+
 function Console:DedupAll(entries)
 	local seen = {}
 	local deduped = {}
 	for _, entry in ipairs(entries) do
-		local key = entry.source .. (entry.category or "") .. entry.message
+		-- NUL separators keep ("ab", "c") distinct from ("a", "bc")
+		local key = entry.source .. "\0" .. entry.category .. "\0" .. entry.message
 		if not seen[key] then
 			seen[key] = true
 			table.insert(deduped, entry)
@@ -453,19 +480,18 @@ end
 
 function Console:DedupAdjacent(entries)
 	local deduped = {}
-	local lastEntry = nil
+	local last = nil
 	for _, entry in ipairs(entries) do
 		if
-			lastEntry
-			and lastEntry.source == entry.source
-			and lastEntry.category == entry.category
-			and lastEntry.message == entry.message
+			last
+			and last.source == entry.source
+			and last.category == entry.category
+			and last.message == entry.message
 		then
-			lastEntry.count = (lastEntry.count or 1) + 1
+			last.count = last.count + 1
 		else
-			entry.count = 1
-			table.insert(deduped, entry)
-			lastEntry = entry
+			last = copyEntry(entry, 1)
+			table.insert(deduped, last)
 		end
 	end
 	return deduped
@@ -540,6 +566,37 @@ function Console:GetCopyText(includeHeader)
 	return table.concat(lines, "\n")
 end
 
+-- Guess the originating addon from a "[AddonName] ..." prefix (colored or plain).
+-- Returns source, message-without-prefix.
+local function parsePrintSource(message)
+	-- Strip color codes first for easier pattern matching
+	local stripped = message:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+
+	local bracketSource = stripped:match("^%[([^%]]+)%]")
+	if not bracketSource then
+		return PRINT_SOURCE, message
+	end
+
+	-- Clean message removes the [AddonName] prefix (preserving color codes in rest)
+	local cleanMsg = message:gsub("^|c%x%x%x%x%x%x%x%x%[.-%]|r%s*", ""):gsub("^%[[^%]]+%]%s*", "")
+	return bracketSource:match("^!?[%w_]+") or bracketSource, cleanMsg
+end
+
+--- Post-hook for print(): mirror its output into the buffer. Must never raise.
+function Console:CapturePrint(...)
+	if not self.enabled or self.paused then
+		return
+	end
+
+	local parts = {}
+	for i = 1, select("#", ...) do
+		parts[i] = toText((select(i, ...)))
+	end
+
+	local source, message = parsePrintSource(table.concat(parts, " "))
+	self:OnLog(source, message, "[Print]")
+end
+
 function Console:OnEnable()
 	if self.enabled then
 		return
@@ -547,60 +604,18 @@ function Console:OnEnable()
 
 	self.enabled = true
 
-	-- Hook global print() to capture all addon print output
+	-- Capture all addon print output. hooksecurefunc leaves print itself intact (no
+	-- taint, no broken wrapper chain when other addons wrap it); disabling just mutes it.
 	if not self.printHooked then
-		self.originalPrint = _G.print
-		_G.print = function(...)
-			-- Call original print
-			if Console.originalPrint then
-				Console.originalPrint(...)
-			end
-
-			-- Capture to Console buffer
-			if Console.paused then
-				return
-			end
-
-			-- Concatenate all args into a single message
-			local parts = {}
-			for i = 1, select("#", ...) do
-				local v = select(i, ...)
-				table.insert(parts, tostring(v))
-			end
-			local message = table.concat(parts, " ")
-
-			-- Try to detect source addon from the message format
-			-- Common patterns: [AddonName], |cFFxxxxxx[AddonName]|r, etc.
-			local source = "Print"
-			local cleanMsg = message
-
-			-- Strip color codes first for easier pattern matching
-			local stripped = message:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-
-			-- Pattern: [AddonName] at start of stripped message
-			local bracketSource = stripped:match("^%[([^%]]+)%]")
-			if bracketSource then
-				-- Clean up the source name (remove any remaining formatting)
-				source = bracketSource:match("^!?[%w_]+") or bracketSource
-				-- Clean message removes the [AddonName] prefix (preserving color codes in rest)
-				cleanMsg = message:gsub("^|c%x%x%x%x%x%x%x%x%[.-%]|r%s*", ""):gsub("^%[[^%]]+%]%s*", "")
-			end
-
-			-- Add to console buffer
-			Console:OnLog(source, cleanMsg, "[Print]")
-		end
+		hooksecurefunc("print", function(...)
+			pcall(Console.CapturePrint, Console, ...)
+		end)
 		self.printHooked = true
 	end
 end
 
 function Console:OnDisable()
 	self.enabled = false
-
-	-- Restore original print if we hooked it
-	if self.printHooked and self.originalPrint then
-		_G.print = self.originalPrint
-		self.printHooked = false
-	end
 end
 
 -- Initialize the console when called from Core
@@ -621,20 +636,12 @@ function Console:PersistBuffer()
 	local maxEntries = Mechanic.db.profile.consoleBufferMax or 100
 	local entries = {}
 
-	-- Extract last N entries from ring buffer in chronological order
-	local count = math.min(self.count, maxEntries)
-	local maxLimit = Mechanic.db.profile.bufferSize or 1000
-
-	-- Calculate starting position (oldest entry we want to save)
-	local start = self.head - count
-	if start < 1 then
-		start = start + maxLimit
-	end
-
-	for i = 0, count - 1 do
-		local idx = ((start + i - 1) % maxLimit) + 1
-		local entry = self.buffer[idx]
-		if entry then
+	-- Keep the newest N entries, oldest first
+	local skip = math.max(0, self.count - maxEntries)
+	local index = 0
+	self:IterateBuffer(function(entry)
+		index = index + 1
+		if index > skip then
 			table.insert(entries, {
 				source = entry.source,
 				category = entry.category,
@@ -642,7 +649,7 @@ function Console:PersistBuffer()
 				time = entry.time,
 			})
 		end
-	end
+	end)
 
 	Mechanic.db.profile.consoleBuffer = entries
 end
@@ -655,23 +662,11 @@ function Console:RestoreBuffer()
 		return
 	end
 
-	local maxLimit = Mechanic.db.profile.bufferSize or 1000
-
 	for _, entry in ipairs(saved) do
 		-- Add to ring buffer without triggering UI refresh
-		self.buffer[self.head] = {
-			source = entry.source,
-			category = entry.category,
-			message = entry.message,
-			time = entry.time,
-		}
-		self.head = (self.head % maxLimit) + 1
-		if self.count < maxLimit then
-			self.count = self.count + 1
-		end
+		self:Push(entry.source, entry.message, entry.category, entry.time)
 	end
 
 	-- Mark nav as dirty to refresh on next show
 	self.navDirty = true
 end
-

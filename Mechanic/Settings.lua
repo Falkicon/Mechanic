@@ -159,10 +159,8 @@ function Mechanic:SetupOptions()
 								elseif not v then
 									self.Perf:StopAutoRefresh()
 								end
-								if self.Perf.autoRefreshButton then
-									self.Perf.autoRefreshButton:SetText(
-										v and "▶ Auto-Refresh: ON" or "⏸ Auto-Refresh: OFF"
-									)
+								if self.Perf.autoRefreshCheck then
+									self.Perf.autoRefreshCheck:SetChecked(v, true)
 								end
 							end
 						end,
@@ -189,26 +187,6 @@ function Mechanic:SetupOptions()
 							end
 						end,
 					},
-					trackEventFrequency = {
-						type = "toggle",
-						name = L["Track Event Frequency"] or "Track Event Frequency",
-						desc = "Monitor event fire rates (adds overhead, requires reload)",
-						order = 4,
-						get = function()
-							return self.db.profile.trackEventFrequency
-						end,
-						set = function(_, v)
-							self.db.profile.trackEventFrequency = v
-							-- Update tracking
-							if self.Perf then
-								if v then
-									self.Perf:EnableEventTracking()
-								else
-									self.Perf:DisableEventTracking()
-								end
-							end
-						end,
-					},
 				},
 			},
 			registeredAddons = {
@@ -225,6 +203,7 @@ function Mechanic:SetupOptions()
 	-- Add registered addon settings
 	self:PopulateRegisteredAddonSettings(options.args.registeredAddons.args)
 
+	self.optionsTable = options
 	AceConfig:RegisterOptionsTable("Mechanic", options)
 	self.optionsFrame = AceConfigDialog:AddToBlizOptions("Mechanic", "!Mechanic")
 end
@@ -240,8 +219,16 @@ function Mechanic:PopulateRegisteredAddonSettings(args)
 		return
 	end
 
+	local registered = MechanicLib:GetRegistered()
+	local names = {}
+	for addonName in pairs(registered) do
+		table.insert(names, addonName)
+	end
+	table.sort(names)
+
 	local order = 1
-	for addonName, capabilities in pairs(MechanicLib:GetRegistered()) do
+	for _, addonName in ipairs(names) do
+		local capabilities = registered[addonName]
 		if capabilities.settings then
 			args[addonName] = {
 				type = "group",
@@ -264,7 +251,14 @@ end
 
 --- Refreshes registered addon settings (call after new registrations)
 function Mechanic:RefreshRegisteredAddonSettings()
-	-- Re-register options table with updated addon settings
-	-- This is a bit heavy but ensures new registrations appear
-	self:SetupOptions()
+	local group = self.optionsTable and self.optionsTable.args.registeredAddons
+	if not group then
+		return
+	end
+	wipe(group.args)
+	self:PopulateRegisteredAddonSettings(group.args)
+	local AceConfigRegistry = LibStub("AceConfigRegistry-3.0", true)
+	if AceConfigRegistry then
+		AceConfigRegistry:NotifyChange("Mechanic")
+	end
 end

@@ -5,41 +5,42 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local InspectModule = Mechanic.Inspect
+local SafeValue = ns.SafeValue
 
 -- Constants for consistent spacing
 local SECTION_GAP = 10
 local TITLE_HEIGHT = 16
 local BOTTOM_PADDING = 4
+local MAX_HIERARCHY_DEPTH = 64
 
--- Helper for consistent name resolution
-local function getDescriptiveName(target)
-	if not target or type(target) ~= "table" then
-		return tostring(target or (L and L["None"] or "None"))
+-- Protected method call returning the raw results (secret values included; callers
+-- must format them through SafeValue). Returns nil when missing or erroring.
+local function pget(obj, method, ...)
+	if type(obj) ~= "table" or not obj[method] then
+		return nil
 	end
-
-	local name
-	if target.GetName then
-		local ok, n = pcall(target.GetName, target)
-		if ok and n and type(n) == "string" and n ~= "" then
-			name = n
-		end
+	local ok, a, b = pcall(obj[method], obj, ...)
+	if ok then
+		return a, b
 	end
+	return nil
+end
 
-	if (not name or name == "") and target.GetObjectType then
-		local path = ns.FrameResolver:GetFramePath(target)
-		if path and type(path) == "string" then
-			name = path:match("([^%.]+)$")
-		end
+local function yesNo(value, yes, no)
+	if SafeValue.IsSecret(value) then
+		return "[secret]"
 	end
+	return value and yes or no
+end
 
-	if not name and target.GetObjectType then
-		local ok, objType = pcall(target.GetObjectType, target)
-		if ok and objType then
-			name = "<" .. objType .. ">"
-		end
+local function plainName(value, empty)
+	if SafeValue.IsSecret(value) then
+		return "[secret]"
 	end
-
-	return name or "<anonymous>"
+	if type(value) == "string" and value ~= "" then
+		return value
+	end
+	return empty
 end
 
 function InspectModule:InitializeDetails(parent)
@@ -56,6 +57,7 @@ function InspectModule:InitializeDetails(parent)
 	scrollFrame:SetScrollChild(content)
 	self.detailsContent = content
 
+	-- Array of every section frame ever created (hidden on each update, re-shown as needed)
 	self.detailSections = {}
 end
 
@@ -64,8 +66,6 @@ function InspectModule:UpdateDetails(frame)
 		return
 	end
 
-	-- Clear old sections
-	local L = LibStub("AceLocale-3.0"):GetLocale("Mechanic")
 	for _, section in ipairs(self.detailSections) do
 		section:Hide()
 	end
@@ -74,105 +74,61 @@ function InspectModule:UpdateDetails(frame)
 		return
 	end
 
+	-- Each builder is [condition, function]; a failing section must not hide the rest.
+	local builders = {
+		{ true, self.AddDetailHeader },
+		{ frame.IsMouseEnabled, self.AddDetailInteractivity },
+		{ frame.GetObjectType and frame.GetSize, self.AddDetailGeometry },
+		{ frame.GetNumPoints, self.AddDetailAnchors },
+		{ frame.GetRegions, self.AddDetailRegions },
+		{ frame.fenUISupportsLayout or frame.config or frame.fenUILayout, self.AddDetailFenUI },
+		{ true, self.AddDetailProperties },
+		{ frame.GetAttribute, self.AddDetailAttributes },
+		{ frame.HasScript, self.AddDetailScripts },
+		{ frame.GetParent, self.AddDetailHierarchy },
+	}
+
 	local yOffset = 0
-
-	-- 1. Header Section
-	yOffset = self:AddDetailHeader(frame, yOffset)
-
-	-- 2. Interactivity Section (Frames only)
-	if frame.IsMouseEnabled then
-		yOffset = self:AddDetailInteractivity(frame, yOffset)
-	end
-
-	-- 3. Geometry Section (Frames only)
-	if frame.GetObjectType and frame.GetSize then
-		yOffset = self:AddDetailGeometry(frame, yOffset)
-	end
-
-	-- 4. Anchors Section (Frames only)
-	if frame.GetNumPoints then
-		yOffset = self:AddDetailAnchors(frame, yOffset)
-	end
-
-	-- 5. Regions Section (Frames only)
-	if frame.GetRegions then
-		yOffset = self:AddDetailRegions(frame, yOffset)
-	end
-
-	-- 6. FenUI Section (Ours)
-	if frame.fenUISupportsLayout or frame.config or frame.fenUILayout then
-		yOffset = self:AddDetailFenUI(frame, yOffset)
-	end
-
-	-- 7. Properties Section
-	yOffset = self:AddDetailProperties(frame, yOffset)
-
-	-- 8. Attributes Section (Frames only)
-	if frame.GetAttribute then
-		yOffset = self:AddDetailAttributes(frame, yOffset)
-	end
-
-	-- 9. Scripts Section (Frames only)
-	if frame.HasScript then
-		yOffset = self:AddDetailScripts(frame, yOffset)
-	end
-
-	-- 10. Hierarchy Section (Frames only)
-	if frame.GetParent then
-		yOffset = self:AddDetailHierarchy(frame, yOffset)
+	for _, builder in ipairs(builders) do
+		if builder[1] then
+			local ok, result = pcall(builder[2], self, frame, yOffset)
+			if ok then
+				yOffset = result
+			end
+		end
 	end
 
 	self.detailsContent:SetHeight(-yOffset)
 end
 
+-- Fill a section with text, size it, and return the offset for the next one.
+function InspectModule:FinishDetailSection(section, text, yOffset)
+	section.content:SetText(text)
+
+	local height = self:GetSectionHeight(section)
+	section:SetHeight(height)
+	section:Show()
+	return yOffset - height - SECTION_GAP
+end
+
 function InspectModule:AddDetailHeader(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Header", yOffset)
 
-	local globalName
-	if frame.GetName then
-		local ok, n = pcall(frame.GetName, frame)
-		if ok then
-			globalName = n
-		end
-	end
-	local displayName = getDescriptiveName(frame)
+	local displayName = ns.FrameResolver:GetDisplayName(frame)
 	section.title:SetText(displayName)
 
 	local info
 	if frame.GetObjectType then
-		local okO, objType = pcall(frame.GetObjectType, frame)
-		local parent
-		if frame.GetParent then
-			local okP, p = pcall(frame.GetParent, frame)
-			if okP then
-				parent = p
-			end
-		end
-		local parentName = parent and getDescriptiveName(parent) or (L["None"] or "None")
-
-		local level = 0
-		if frame.GetFrameLevel then
-			local okL, l = pcall(frame.GetFrameLevel, frame)
-			if okL then
-				level = l
-			end
-		end
-
-		local strata = "N/A"
-		if frame.GetFrameStrata then
-			local okS, s = pcall(frame.GetFrameStrata, frame)
-			if okS then
-				strata = s
-			end
-		end
+		local parent = pget(frame, "GetParent")
+		local parentName = parent and ns.FrameResolver:GetDisplayName(parent) or (L["None"] or "None")
 
 		info = string.format(
-			"Type: %s | Level: %d | Strata: %s\nParent: |cff00ff00%s|r\nGlobal: %s",
-			objType or "Unknown",
-			level,
-			strata,
+			"Type: %s | Level: %s | Strata: %s\nParent: |cff00ff00%s|r\nGlobal: %s",
+			SafeValue.ToString((pget(frame, "GetObjectType"))),
+			SafeValue.FormatNumber((pget(frame, "GetFrameLevel")), "%d", "0"),
+			SafeValue.ToString((pget(frame, "GetFrameStrata"))),
 			parentName,
-			(globalName and globalName ~= "") and globalName or "<none>"
+			plainName((pget(frame, "GetName")), "<none>")
 		)
 
 		-- Create or update Parent jump button
@@ -203,148 +159,105 @@ function InspectModule:AddDetailHeader(frame, yOffset)
 			section.parentBtn:Hide()
 		end
 	end
-	section.content:SetText(info)
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, info, yOffset)
 end
 
 function InspectModule:AddDetailInteractivity(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Interactivity", yOffset)
 	section.title:SetText(L["Interactivity"] or "Interactivity")
 
-	-- Safe method access
-	local function safeCall(obj, method, ...)
-		if obj[method] then
-			local ok, val = pcall(obj[method], obj, ...)
-			if ok then
-				return val
-			end
-		end
-		return nil
+	local function enabled(method)
+		return yesNo((pget(frame, method)), "|cff00ff00Enabled|r", "|cff888888Disabled|r")
 	end
-
-	local mouse = safeCall(frame, "IsMouseEnabled") and "|cff00ff00Enabled|r" or "|cff888888Disabled|r"
-	local mouseClick = safeCall(frame, "IsMouseClickEnabled") and "|cff00ff00Enabled|r" or "|cff888888Disabled|r"
-	local keyboard = safeCall(frame, "IsKeyboardEnabled") and "|cff00ff00Enabled|r" or "|cff888888Disabled|r"
-	local propagate = safeCall(frame, "GetPropagateKeyboardInput") and "Yes" or "No"
-	local protected = safeCall(frame, "IsProtected") and "|cffff6666Yes|r" or "No"
 
 	local info = string.format(
 		"Mouse Motion: %s\nMouse Click: %s\nKeyboard: %s (Propagate: %s)\nProtected: %s",
-		mouse,
-		mouseClick,
-		keyboard,
-		propagate,
-		protected
+		enabled("IsMouseEnabled"),
+		enabled("IsMouseClickEnabled"),
+		enabled("IsKeyboardEnabled"),
+		yesNo((pget(frame, "GetPropagateKeyboardInput")), "Yes", "No"),
+		yesNo((pget(frame, "IsProtected")), "|cffff6666Yes|r", "No")
 	)
-	section.content:SetText(info)
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, info, yOffset)
 end
 
 function InspectModule:AddDetailGeometry(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Geometry", yOffset)
 	section.title:SetText(L["Geometry"])
 
-	-- Safe method access
-	local function safeCall(obj, method, ...)
-		if obj[method] then
-			local ok, val, val2 = pcall(obj[method], obj, ...)
-			if ok then
-				return val, val2
+	local w, h = pget(frame, "GetSize")
+	local scale = pget(frame, "GetScale")
+	local alpha = pget(frame, "GetAlpha")
+	local effectiveScale = pget(frame, "GetEffectiveScale")
+
+	-- Effective alpha multiplies every ancestor; skip it when any value is secret
+	local effectiveAlpha
+	if type(alpha) == "number" and not SafeValue.IsSecret(alpha) then
+		effectiveAlpha = alpha
+		local parent = pget(frame, "GetParent")
+		local depth = 0
+		while parent and depth < MAX_HIERARCHY_DEPTH do
+			local pAlpha = pget(parent, "GetAlpha")
+			if type(pAlpha) == "number" and not SafeValue.IsSecret(pAlpha) then
+				effectiveAlpha = effectiveAlpha * pAlpha
+			else
+				effectiveAlpha = nil
+				break
 			end
+			parent = pget(parent, "GetParent")
+			depth = depth + 1
 		end
-		return nil
-	end
-
-	local w, h = safeCall(frame, "GetSize")
-	local scale = safeCall(frame, "GetScale")
-	local alpha = safeCall(frame, "GetAlpha")
-
-	-- Calculate effective scale (includes all parents)
-	local effectiveScale = safeCall(frame, "GetEffectiveScale") or 1
-
-	-- Calculate effective alpha (includes all parents)
-	local effectiveAlpha = alpha or 1
-	local parent = safeCall(frame, "GetParent")
-	while parent do
-		local pAlpha = safeCall(parent, "GetAlpha")
-		if pAlpha then
-			effectiveAlpha = effectiveAlpha * pAlpha
-		end
-		parent = safeCall(parent, "GetParent")
 	end
 
 	local info = string.format(
-		"Size: %.1f x %.1f\nScale: %.2f (Effective: %.2f)\nAlpha: %.2f (Effective: %.2f)\nVisible: %s (Shown: %s)",
-		w or 0,
-		h or 0,
-		scale or 1,
-		effectiveScale,
-		alpha or 1,
-		effectiveAlpha,
-		tostring(safeCall(frame, "IsVisible")),
-		tostring(safeCall(frame, "IsShown"))
+		"Size: %s x %s\nScale: %s (Effective: %s)\nAlpha: %s (Effective: %s)\nVisible: %s (Shown: %s)",
+		SafeValue.FormatNumber(w, "%.1f"),
+		SafeValue.FormatNumber(h, "%.1f"),
+		SafeValue.FormatNumber(scale, "%.2f"),
+		SafeValue.FormatNumber(effectiveScale, "%.2f"),
+		SafeValue.FormatNumber(alpha, "%.2f"),
+		SafeValue.FormatNumber(effectiveAlpha, "%.2f", "[secret]"),
+		yesNo((pget(frame, "IsVisible")), "true", "false"),
+		yesNo((pget(frame, "IsShown")), "true", "false")
 	)
-	section.content:SetText(info)
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, info, yOffset)
 end
 
 function InspectModule:AddDetailAnchors(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Anchors", yOffset)
 	section.title:SetText(L["Anchors"] or "Anchors")
 
-	local numPoints = 0
-	if frame.GetNumPoints then
-		local ok, n = pcall(frame.GetNumPoints, frame)
-		if ok then
-			numPoints = n
-		end
+	local numPoints = pget(frame, "GetNumPoints")
+	if SafeValue.IsSecret(numPoints) or type(numPoints) ~= "number" then
+		numPoints = 0
 	end
 
 	local anchors = {}
-
 	if numPoints == 0 then
 		table.insert(anchors, "No anchors set")
 	else
 		for i = 1, numPoints do
 			local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(frame.GetPoint, frame, i)
 			if ok then
-				local relativeName = "<nil>"
-				if relativeTo then
-					relativeName = getDescriptiveName(relativeTo)
-				end
 				table.insert(
 					anchors,
 					string.format(
-						"%s -> %s:%s (%.0f, %.0f)",
-						point or "?",
-						relativeName,
-						relativePoint or "?",
-						xOfs or 0,
-						yOfs or 0
+						"%s -> %s:%s (%s, %s)",
+						SafeValue.ToString(point),
+						relativeTo and ns.FrameResolver:GetDisplayName(relativeTo) or "<nil>",
+						SafeValue.ToString(relativePoint),
+						SafeValue.FormatNumber(xOfs, "%.0f", "0"),
+						SafeValue.FormatNumber(yOfs, "%.0f", "0")
 					)
 				)
 			end
 		end
 	end
 
-	section.content:SetText(table.concat(anchors, "\n"))
-
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(anchors, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailRegions(frame, yOffset)
@@ -356,93 +269,15 @@ function InspectModule:AddDetailRegions(frame, yOffset)
 	end)
 	local regionList = {}
 
-	if not okR or not regions or #regions == 0 then
+	if not okR or #regions == 0 then
 		table.insert(regionList, L["None"] or "None")
 	else
 		for _, region in ipairs(regions) do
-			local objType = "Unknown"
-			if region.GetObjectType then
-				local okO, ot = pcall(region.GetObjectType, region)
-				if okO then
-					objType = ot
-				end
-			end
-
-			local name
-			if region.GetName then
-				local okN, n = pcall(region.GetName, region)
-				if okN then
-					name = n
-				end
-			end
-
-			if name and name ~= "" then
-				table.insert(regionList, string.format("[%s] %s", objType, name))
-			else
-				-- Try to get more info for textures/mask textures
-				local extra = ""
-				local isTextureType = objType == "Texture" or objType == "MaskTexture"
-				if isTextureType then
-					-- Try atlas first
-					if region.GetAtlas then
-						local okA, atlas = pcall(region.GetAtlas, region)
-						if okA and atlas and atlas ~= "" then
-							extra = " atlas:" .. atlas
-						end
-					end
-					-- If no atlas, try texture file path
-					if extra == "" and region.GetTexture then
-						local okT, texPath = pcall(region.GetTexture, region)
-						if okT and texPath then
-							if type(texPath) == "number" then
-								-- FileID
-								extra = (texPath == 0) and " [empty]" or " fileID:" .. texPath
-							elseif type(texPath) == "string" and texPath ~= "" then
-								-- Clean up "FileData ID 0" style strings or numeric strings
-								local fileID = texPath:match("FileData ID (%d+)") or texPath:match("^(%d+)$")
-								if fileID then
-									extra = (fileID == "0") and " [empty]" or " fileID:" .. fileID
-								else
-									-- Extract just the filename from full path
-									local filename = texPath:match("([^\\]+)$") or texPath
-									extra = " file:" .. filename
-								end
-							end
-						end
-					end
-				elseif objType == "FontString" then
-					-- For FontStrings, show preview + font info
-					if region.GetText then
-						local okT, text = pcall(region.GetText, region)
-						if okT and text and text ~= "" then
-							-- Truncate long text
-							if #text > 20 then
-								text = text:sub(1, 17) .. "..."
-							end
-							extra = ' "' .. text .. '"'
-						end
-					end
-
-					-- Add font info (font file and size)
-					if region.GetFont then
-						local okF, font, size = pcall(region.GetFont, region)
-						if okF and font then
-							local fontName = font:match("([^\\]+)$") or font
-							extra = extra .. " font:" .. fontName .. "(" .. math.floor(size + 0.5) .. ")"
-						end
-					end
-				end
-				table.insert(regionList, string.format("[%s] <anonymous>%s", objType, extra))
-			end
+			table.insert(regionList, self.DescribeRegion(region))
 		end
 	end
 
-	section.content:SetText(table.concat(regionList, "\n"))
-
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(regionList, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailFenUI(frame, yOffset)
@@ -462,7 +297,10 @@ function InspectModule:AddDetailFenUI(frame, yOffset)
 	if frame.borderApplied ~= nil then
 		table.insert(
 			details,
-			string.format("Border: %s", frame.borderApplied and "|cff00ff00Applied|r" or ("|cff888888" .. (L["None"] or "None") .. "|r"))
+			string.format(
+				"Border: %s",
+				frame.borderApplied and "|cff00ff00Applied|r" or ("|cff888888" .. (L["None"] or "None") .. "|r")
+			)
 		)
 	end
 	if frame.shadowType then
@@ -473,50 +311,47 @@ function InspectModule:AddDetailFenUI(frame, yOffset)
 	end
 
 	-- Extract info from config if available
-	if frame.config and type(frame.config) == "table" then
-		if frame.config.border then
-			table.insert(details, string.format("Config Border: |cffffffff%s|r", tostring(frame.config.border)))
+	local config = frame.config
+	if type(config) == "table" then
+		if config.border then
+			table.insert(details, string.format("Config Border: |cffffffff%s|r", tostring(config.border)))
 		end
-		if frame.config.background then
-			local bg = frame.config.background
-			if type(bg) == "string" then
-				table.insert(details, string.format("Config BG: |cffffffff%s|r", bg))
-			elseif type(bg) == "table" then
-				if bg.color then
-					table.insert(
-						details,
-						string.format("Config BG: |cffffffff%s|r (alpha %.2f)", tostring(bg.color), bg.alpha or 1)
-					)
-				elseif bg.image then
-					table.insert(details, string.format("Config BG: |cffffffffImage|r (%s)", tostring(bg.image)))
-				end
-			end
-		end
-		if frame.config.padding then
-			local p = frame.config.padding
-			if type(p) == "table" then
+		local bg = config.background
+		if type(bg) == "string" then
+			table.insert(details, string.format("Config BG: |cffffffff%s|r", bg))
+		elseif type(bg) == "table" then
+			if bg.color then
 				table.insert(
 					details,
-					string.format(
-						"Padding: L:%s R:%s T:%s B:%s",
-						tostring(p.left or 0),
-						tostring(p.right or 0),
-						tostring(p.top or 0),
-						tostring(p.bottom or 0)
-					)
+					string.format("Config BG: |cffffffff%s|r (alpha %.2f)", tostring(bg.color), tonumber(bg.alpha) or 1)
 				)
-			else
-				table.insert(details, string.format("Padding: %s", tostring(p)))
+			elseif bg.image then
+				table.insert(details, string.format("Config BG: |cffffffffImage|r (%s)", tostring(bg.image)))
 			end
 		end
-		if frame.config.gap then
-			table.insert(details, string.format("Gap: %s", tostring(frame.config.gap)))
+		local p = config.padding
+		if type(p) == "table" then
+			table.insert(
+				details,
+				string.format(
+					"Padding: L:%s R:%s T:%s B:%s",
+					tostring(p.left or 0),
+					tostring(p.right or 0),
+					tostring(p.top or 0),
+					tostring(p.bottom or 0)
+				)
+			)
+		elseif p then
+			table.insert(details, string.format("Padding: %s", tostring(p)))
 		end
-		if frame.config.rows then
-			table.insert(details, string.format("Rows: %d", #frame.config.rows))
+		if config.gap then
+			table.insert(details, string.format("Gap: %s", tostring(config.gap)))
 		end
-		if frame.config.cols then
-			table.insert(details, string.format("Cols: %d", #frame.config.cols))
+		if type(config.rows) == "table" then
+			table.insert(details, string.format("Rows: %d", #config.rows))
+		end
+		if type(config.cols) == "table" then
+			table.insert(details, string.format("Cols: %d", #config.cols))
 		end
 	end
 
@@ -524,66 +359,48 @@ function InspectModule:AddDetailFenUI(frame, yOffset)
 		table.insert(details, "None (Base Layout)")
 	end
 
-	section.content:SetText(table.concat(details, "\n"))
-
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(details, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailProperties(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Properties", yOffset)
 	section.title:SetText(L["Common Properties"])
 
-	-- Helper to safely get values (handles Midnight secret values)
-	local function safeGet(func, ...)
-		local ok, result = pcall(func, ...)
-		if not ok then
-			return nil, true
-		end -- Error, likely secret
-		-- Check if result is a secret value (Midnight 12.0+)
-		if issecretvalue and issecretvalue(result) then
-			return nil, true
-		end
-		return result, false
-	end
-
 	local props = {}
 	if type(frame.GetText) == "function" then
-		local text, isSecret = safeGet(frame.GetText, frame)
-		if isSecret then
-			table.insert(props, "Text: [secret]")
-		elseif text then
-			table.insert(props, string.format("Text: %s", tostring(text)))
+		local ok, text = pcall(frame.GetText, frame)
+		if ok and (SafeValue.IsSecret(text) or text ~= nil) then
+			table.insert(props, "Text: " .. SafeValue.ToString(text))
 		else
 			table.insert(props, "Text: nil")
 		end
 	end
 	if type(frame.GetID) == "function" then
-		local id, isSecret = safeGet(frame.GetID, frame)
-		if not isSecret and id then
+		local id = pget(frame, "GetID")
+		if not SafeValue.IsSecret(id) and id then
 			table.insert(props, string.format("ID: %s", tostring(id)))
 		end
 	end
 	if type(frame.GetValue) == "function" then
-		local value, isSecret = safeGet(frame.GetValue, frame)
-		if isSecret then
-			table.insert(props, "Value: [secret]")
-		elseif value then
-			table.insert(props, string.format("Value: %s", tostring(value)))
+		local ok, value = pcall(frame.GetValue, frame)
+		if ok and (SafeValue.IsSecret(value) or value) then
+			table.insert(props, "Value: " .. SafeValue.ToString(value))
 		end
 	end
 	if type(frame.GetMinMaxValues) == "function" then
 		local ok, min, max = pcall(frame.GetMinMaxValues, frame)
-		if ok and min and max then
-			-- Check for secret values
-			local minSecret = issecretvalue and issecretvalue(min)
-			local maxSecret = issecretvalue and issecretvalue(max)
-			if minSecret or maxSecret then
+		if ok and (SafeValue.IsSecret(min) or min) and (SafeValue.IsSecret(max) or max) then
+			if SafeValue.IsSecret(min) or SafeValue.IsSecret(max) then
 				table.insert(props, "Min/Max: [secret]")
 			else
-				table.insert(props, string.format("Min/Max: %.1f - %.1f", min, max))
+				table.insert(
+					props,
+					string.format(
+						"Min/Max: %s - %s",
+						SafeValue.FormatNumber(min, "%.1f"),
+						SafeValue.FormatNumber(max, "%.1f")
+					)
+				)
 			end
 		end
 	end
@@ -599,138 +416,42 @@ function InspectModule:AddDetailProperties(frame, yOffset)
 	if #props == 0 then
 		table.insert(props, L["None"] or "None")
 	end
-	section.content:SetText(table.concat(props, "\n"))
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(props, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailAttributes(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Attributes", yOffset)
 	section.title:SetText(L["Attributes"] or "Attributes")
 
-	-- Helper for consistent value conversion
-	local function safeToString(val)
-		if val == nil then
-			return "nil"
-		end
-		if issecretvalue and issecretvalue(val) then
-			return "[secret]"
-		end
-		local ok, str = pcall(tostring, val)
-		return ok and str or "[error]"
-	end
-
-	-- Attributes are key-value pairs set via SetAttribute
-	-- There's no way to iterate all attributes, so we check common ones used by Blizzard/addons
-	local common = {
-		-- Secure Button attributes
-		"type",
-		"action",
-		"unit",
-		"spell",
-		"item",
-		"macro",
-		"macrotext",
-		"target-slot",
-		"attribute",
-		"value",
-		"pressbutton",
-		"clickbutton",
-		"initialConfigFunction",
-		"initialConfigFunction",
-		-- State Driver attributes
-		"state-visibility",
-		"state-parent",
-		"state-unit",
-		"state-page",
-		-- Backdrop/UI attributes
-		"tableIndex",
-		"id",
-		"name",
-		"label",
-		-- UnitFrame attributes
-		"showPlayer",
-		"showSolo",
-		"showParty",
-		"showRaid",
-	}
-
+	-- Attributes are key-value pairs set via SetAttribute and cannot be enumerated,
+	-- so the ones used by Blizzard/addon secure templates are probed.
 	local attributes = {}
-	for _, attr in ipairs(common) do
-		local val = frame:GetAttribute(attr)
-		if val ~= nil then
-			table.insert(attributes, string.format("%s: %s", attr, safeToString(val)))
+	for _, attr in ipairs(self.COMMON_ATTRIBUTES) do
+		local val = pget(frame, "GetAttribute", attr)
+		if SafeValue.IsSecret(val) or val ~= nil then
+			table.insert(attributes, string.format("%s: %s", attr, SafeValue.ToString(val)))
 		end
 	end
 
 	if #attributes == 0 then
 		table.insert(attributes, L["None"] or "None")
 	end
-	section.content:SetText(table.concat(attributes, "\n"))
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(attributes, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailScripts(frame, yOffset)
 	local section = self:GetOrCreateDetailSection("Scripts", yOffset)
 	section.title:SetText(L["Scripts"])
 
-	-- Helper for consistent value conversion
-	local function safeToString(val)
-		if val == nil then
-			return "nil"
-		end
-		if issecretvalue and issecretvalue(val) then
-			return "[secret]"
-		end
-		local ok, str = pcall(tostring, val)
-		return ok and str or "[error]"
-	end
-
-	local scripts = {
-		"OnUpdate",
-		"OnEvent",
-		"OnShow",
-		"OnHide",
-		"OnEnter",
-		"OnLeave",
-		"OnMouseDown",
-		"OnMouseUp",
-		"OnClick",
-		"OnValueChanged",
-		"OnSizeChanged",
-		"OnAttributeChanged",
-		"OnDragStart",
-		"OnDragStop",
-		"OnTooltipShow",
-		"OnLoad",
-		"OnScrollRangeChanged",
-		"OnHorizontalScroll",
-		"OnVerticalScroll",
-	}
-
+	-- Handler identity is shown as the last 8 hex digits of the function address
 	local active = {}
-	for _, script in ipairs(scripts) do
-		if frame:HasScript(script) then
-			local func = frame:GetScript(script)
+	for _, script in ipairs(self.COMMON_SCRIPTS) do
+		if pget(frame, "HasScript", script) then
+			local func = pget(frame, "GetScript", script)
 			if func then
-				-- Get function address for identity checking
-				-- WoW tostring(func) can be "function: 0x..." or "function: 000..."
-				local str = safeToString(func)
-				local addr = str:match(":(%s*0x%x+)") or str:match(":%s*(%x+)") or str:match("(%x+)") or "ptr"
-				-- Clean up whitespace and 0x
-				addr = addr:gsub("%s", ""):gsub("^0x", "")
-				-- Show last 8 chars for brevity if it's a long address
-				if #addr > 8 then
-					addr = addr:sub(-8)
-				end
-				table.insert(active, string.format("%s: [%s]", script, addr))
+				table.insert(active, string.format("%s: %s", script, SafeValue.ToString(func)))
 			end
 		end
 	end
@@ -738,12 +459,8 @@ function InspectModule:AddDetailScripts(frame, yOffset)
 	if #active == 0 then
 		table.insert(active, L["None"] or "None")
 	end
-	section.content:SetText(table.concat(active, "\n"))
 
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(active, "\n"), yOffset)
 end
 
 function InspectModule:AddDetailHierarchy(frame, yOffset)
@@ -752,26 +469,12 @@ function InspectModule:AddDetailHierarchy(frame, yOffset)
 
 	local stack = {}
 	local current = frame
-	while current do
-		table.insert(stack, getDescriptiveName(current))
-
-		local parent
-		if current.GetParent then
-			local ok, p = pcall(current.GetParent, current)
-			if ok then
-				parent = p
-			end
-		end
-		current = parent
+	while current and #stack < MAX_HIERARCHY_DEPTH do
+		table.insert(stack, ns.FrameResolver:GetDisplayName(current))
+		current = pget(current, "GetParent")
 	end
 
-	local info = table.concat(stack, " -> ")
-	section.content:SetText(info)
-
-	local height = self:GetSectionHeight(section)
-	section:SetHeight(height)
-	section:Show()
-	return yOffset - height - SECTION_GAP
+	return self:FinishDetailSection(section, table.concat(stack, " -> "), yOffset)
 end
 
 function InspectModule:GetOrCreateDetailSection(name, yOffset)
@@ -856,6 +559,8 @@ function InspectModule:GetOrCreateDetailSection(name, yOffset)
 		end
 		s.content:SetWidth(p:GetWidth() - 20)
 
+		-- Sections are created once and then reused, so register each exactly once
+		table.insert(self.detailSections, s)
 		return s
 	end)
 
@@ -872,11 +577,6 @@ function InspectModule:GetOrCreateDetailSection(name, yOffset)
 		if section.parentBtn then
 			section.parentBtn:Show()
 		end
-	end
-
-	self.detailSections[name] = section
-	if not _G.tContains(self.detailSections, section) then
-		table.insert(self.detailSections, section)
 	end
 
 	return section

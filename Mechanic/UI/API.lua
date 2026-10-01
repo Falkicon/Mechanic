@@ -30,6 +30,86 @@ local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 local function GetAPINamespace(apiKey)
 	return apiKey and apiKey:match("^(.+)%.") or "Global"
 end
+APIModule.GetAPINamespace = GetAPINamespace
+
+-- Definitions may carry an eager `func`, but namespaces in load-on-demand Blizzard
+-- addons (or hooked functions) are only correct when resolved at call time.
+local function ResolveFuncPath(path)
+	if type(path) ~= "string" or path == "" then
+		return nil
+	end
+	local node = _G
+	for part in path:gmatch("[^%.]+") do
+		if type(node) ~= "table" then
+			return nil
+		end
+		node = node[part]
+	end
+	return type(node) == "function" and node or nil
+end
+
+local function ResolveAPIFunc(apiDef)
+	if not apiDef then
+		return nil
+	end
+	return apiDef.func or ResolveFuncPath(apiDef.funcPath or apiDef.key)
+end
+APIModule.ResolveAPIFunc = ResolveAPIFunc
+
+local function IsSecret(value)
+	local check = _G.issecretvalue
+	if not check then
+		return false
+	end
+	local ok, secret = pcall(check, value)
+	return ok and secret == true
+end
+
+local function CountSecrets(results)
+	local ok, count = pcall(Mechanic.Utils.CountSecrets, Mechanic.Utils, results)
+	return ok and tonumber(count) or 0
+end
+
+-- APIs run in a namespace batch must be read-only: the name starts with a query verb
+-- and is not on the explicit denylist (process/session control and console access).
+local BATCH_READ_PREFIXES = {
+	"Get", "Is", "Has", "Can", "Are", "Does", "Did", "Should", "Was", "Will",
+	"Unit", "Find", "Count", "Num", "Lookup", "Compare", "Format", "Convert", "Calc",
+}
+local BATCH_DENYLIST = {
+	Logout = true,
+	Quit = true,
+	ForceQuit = true,
+	CancelLogout = true,
+	ReloadUI = true,
+	RestartGx = true,
+	ConsoleExec = true,
+	RunScript = true,
+	DeleteCursorItem = true,
+	SetCVar = true,
+	["C_CVar.SetCVar"] = true,
+}
+
+local function IsBatchSafeAPI(apiKey)
+	if BATCH_DENYLIST[apiKey] then
+		return false
+	end
+	local name = apiKey:match("([^%.]+)$") or apiKey
+	if name:find("^UnitSet") then
+		return false
+	end
+	for _, prefix in ipairs(BATCH_READ_PREFIXES) do
+		if name:sub(1, #prefix) == prefix then
+			local nextChar = name:sub(#prefix + 1, #prefix + 1)
+			-- "Get" must begin a word: GetFoo, not Getaway
+			if nextChar == "" or nextChar:match("[%u%d_]") then
+				return true
+			end
+		end
+	end
+	return false
+end
+APIModule.IsBatchSafeAPI = IsBatchSafeAPI
 
 --------------------------------------------------------------------------------
 -- Common Parameter Examples (auto-applied based on param name patterns)
@@ -493,8 +573,8 @@ function APIModule:BuildLayout(parent)
 	contentArea:SetPoint("BOTTOMRIGHT", 0, 0)
 	self.contentArea = contentArea
 
-	-- Content frames cache (one per selected API)
-	self.contentFrames = {}
+	-- One reusable detail panel (created on first selection)
+	self.detailFrame = nil
 
 	-- Populate namespace list after categories are built
 	C_Timer.After(0, function()
@@ -523,6 +603,18 @@ end
 --------------------------------------------------------------------------------
 -- Navigation Building
 --------------------------------------------------------------------------------
+
+-- Lowercased once at build time so each keystroke filters without allocating strings.
+-- Keys end in the display name, so the name is only appended when it is not already covered.
+local function BuildSearchKey(key, text)
+	local search = key:lower()
+	local lowerText = text:lower()
+	if lowerText ~= search and not search:find(lowerText, 1, true) then
+		search = search .. "\n" .. lowerText
+	end
+	return search
+end
+APIModule.BuildSearchKey = BuildSearchKey
 
 function APIModule:BuildAllNavItems()
 	local items = {}
@@ -568,9 +660,11 @@ function APIModule:BuildAllNavItems()
 
 		-- Add APIs
 		for _, api in ipairs(apis) do
+			local text = api.name or api.key
 			table.insert(items, {
 				key = api.key,
-				text = api.name or api.key,
+				text = text,
+				search = BuildSearchKey(api.key, text),
 				namespace = nsKey,
 				impact = api.impact,
 				isAPI = true,
@@ -603,9 +697,7 @@ function APIModule:ApplyFilters()
 			and (not nsFilter or item.namespace == nsFilter)
 			and (not hideRestricted or not item.impact or item.impact == "NORMAL") then
 			local passImpact = not impactFilter or item.impact == impactFilter
-			local passSearch = searchLower == ""
-				or (item.text and item.text:lower():find(searchLower, 1, true))
-				or (item.key and item.key:lower():find(searchLower, 1, true))
+			local passSearch = searchLower == "" or item.search:find(searchLower, 1, true)
 
 			if passImpact and passSearch then
 				-- Add pending header if this is first visible item in namespace
@@ -706,9 +798,9 @@ function APIModule:OnAPISelected(key)
 
 	self.selectedAPI = key
 
-	-- Get or create content frame
-	local contentFrame = self:GetContentFrame(key)
-	self:BuildAPIPanel(contentFrame, apiDef)
+	-- Rebuild the shared detail panel for this API
+	local detailFrame = self:GetDetailFrame()
+	self:BuildAPIPanel(detailFrame, apiDef)
 
 	-- Update virtual list selection
 	if self.virtualList then
@@ -716,27 +808,21 @@ function APIModule:OnAPISelected(key)
 	end
 end
 
-function APIModule:GetContentFrame(key)
-	if not self.contentFrames[key] then
+--- The single detail panel, shown and rebuilt for whichever API is selected.
+function APIModule:GetDetailFrame()
+	if not self.detailFrame then
 		local frame = CreateFrame("Frame", nil, self.contentArea)
 		frame:SetAllPoints()
-		frame:Hide()
-		self.contentFrames[key] = frame
+		self.detailFrame = frame
 	end
-
-	-- Hide all other content frames
-	for k, f in pairs(self.contentFrames) do
-		if k == key then
-			f:Show()
-		else
-			f:Hide()
-		end
-	end
-
-	return self.contentFrames[key]
+	self.detailFrame:Show()
+	return self.detailFrame
 end
 
 function APIModule:BuildAPIPanel(parent, apiDef)
+	-- The panel is reused, so widget callbacks resolve the current API at click time
+	self.currentDef = apiDef
+
 	-- Clear previous content
 	for _, child in ipairs({ parent:GetChildren() }) do
 		child:Hide()
@@ -752,17 +838,16 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 		return fs
 	end)
 	nameLabel:SetPoint("TOPLEFT", 8, yOffset)
-	nameLabel:SetText(apiDef.funcPath)
+	nameLabel:SetText(apiDef.funcPath or apiDef.key)
 	nameLabel:Show()
 	yOffset = yOffset - 24
 
-	-- Namespace and category
+	-- Namespace (derived from the key; `category` is only a topic bucket)
 	local infoLabel = Mechanic.Utils:GetOrCreateWidget(parent, "infoLabel", function(p)
 		return p:CreateFontString(nil, "OVERLAY", FenUI:GetFont("fontBody"))
 	end)
 	infoLabel:SetPoint("TOPLEFT", 8, yOffset)
-	local nsName = apiDef.category or "Unknown"
-	infoLabel:SetText(string.format("Namespace: %s", tostring(nsName)))
+	infoLabel:SetText(string.format("Namespace: %s", GetAPINamespace(apiDef.key)))
 	infoLabel:Show()
 	yOffset = yOffset - 18
 
@@ -891,7 +976,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 			size = 24,
 			tooltip = L["Run"],
 			onClick = function()
-				self:RunAPI(apiDef)
+				if self.currentDef then
+					self:RunAPI(self.currentDef)
+				end
 			end,
 		})
 	end)
@@ -904,7 +991,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 			size = 24,
 			tooltip = L["Run Namespace"] or "Run all APIs in this namespace",
 			onClick = function()
-				self:RunNamespace(GetAPINamespace(apiDef.key))
+				if self.currentDef then
+					self:RunNamespace(GetAPINamespace(self.currentDef.key))
+				end
 			end,
 		})
 	end)
@@ -917,7 +1006,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 			size = 24,
 			tooltip = L["Copy Report"],
 			onClick = function()
-				self:CopyAPIReport(apiDef)
+				if self.currentDef then
+					self:CopyAPIReport(self.currentDef)
+				end
 			end,
 		})
 	end)
@@ -980,6 +1071,7 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	end)
 	resultsBox:SetPoint("TOPLEFT", 8, yOffset)
 	resultsBox:SetPoint("BOTTOMRIGHT", -8, 80)
+	resultsBox:SetText("")
 	resultsBox:Show()
 	parent.resultsBox = resultsBox
 
@@ -999,6 +1091,12 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 			font = "fontMono",
 		})
 		box:SetHeight(55)
+		-- Installed once; saves to whichever API is current, and never while loading notes
+		box.editBox:HookScript("OnTextChanged", function(eb)
+			if not APIModule.loadingNotes and APIModule.currentDef then
+				APIModule:SaveNotes(APIModule.currentDef.key, eb:GetText())
+			end
+		end)
 		return box
 	end)
 	apiNotesBox:SetPoint("BOTTOMLEFT", 8, 8)
@@ -1008,11 +1106,9 @@ function APIModule:BuildAPIPanel(parent, apiDef)
 	-- Load saved notes
 	local savedNotes = Mechanic.db.profile.apiNotes and Mechanic.db.profile.apiNotes[apiDef.key]
 		or ""
+	self.loadingNotes = true
 	apiNotesBox:SetText(savedNotes)
-
-	apiNotesBox.editBox:SetScript("OnTextChanged", function(eb)
-		APIModule:SaveNotes(apiDef.key, eb:GetText())
-	end)
+	self.loadingNotes = false
 	parent.notesBox = apiNotesBox
 
 	-- Restore last results if available
@@ -1067,8 +1163,20 @@ function APIModule:CreateParamInput(parent, param, index, yOffset)
 	typeLabel:SetText(string.format("(%s)", param.type))
 	typeLabel:Show()
 
-	-- Examples dropdown (if examples available)
-	if examples and #examples > 0 then
+	-- Rows are reused across APIs, so example widgets are refreshed or hidden every build
+	local MAX_QUICK_BUTTONS = 3
+	local hasExamples = examples ~= nil and #examples > 0
+	if row.examplesBtn then
+		row.examplesBtn:SetShown(hasExamples)
+	end
+	for i = 1, MAX_QUICK_BUTTONS do
+		local existing = row[string.format("quickBtn%d", i)]
+		if existing then
+			existing:Hide()
+		end
+	end
+
+	if hasExamples then
 		local examplesBtn = Mechanic.Utils:GetOrCreateWidget(row, "examplesBtn", function(p)
 			return FenUI:CreateDropdown(p, {
 				width = 24,
@@ -1081,25 +1189,30 @@ function APIModule:CreateParamInput(parent, param, index, yOffset)
 				end,
 			})
 		end)
+		examplesBtn:SetItems(examples)
 		examplesBtn:SetPoint("LEFT", typeLabel, "RIGHT", 8, 0)
 		examplesBtn:Show()
 
 		-- Quick example buttons for common cases (show first 3)
 		local xOffset = 36
 		for i, example in ipairs(examples) do
-			if i > 3 then
+			if i > MAX_QUICK_BUTTONS then
 				break
 			end
 			local quickBtn = Mechanic.Utils:GetOrCreateWidget(row, string.format("quickBtn%d", i), function(p)
-				return FenUI:CreateButton(p, {
-					text = string.format("|cff88ccff%s|r", example.label),
+				local btn
+				btn = FenUI:CreateButton(p, {
+					text = "",
 					width = 40,
 					height = 18,
 					onClick = function()
-						input:SetText(tostring(example.value))
+						input:SetText(tostring(btn.exampleValue))
 					end,
 				})
+				return btn
 			end)
+			quickBtn.exampleValue = example.value
+			quickBtn:SetText(string.format("|cff88ccff%s|r", example.label))
 			quickBtn:SetPoint("LEFT", typeLabel, "RIGHT", xOffset, 0)
 
 			local textWidth = quickBtn:GetFontString():GetStringWidth()
@@ -1152,7 +1265,8 @@ function APIModule:RunAPI(apiDef)
 		return
 	end
 
-	if not apiDef.func then
+	local func = ResolveAPIFunc(apiDef)
+	if not func then
 		local resultData = {
 			success = false,
 			results = {},
@@ -1195,15 +1309,14 @@ function APIModule:RunAPI(apiDef)
 		}
 		self.lastResults[apiDef.key] = resultData
 		self:SaveAPIResult(apiDef.key, resultData)
-		
-		local contentFrame = self:GetContentFrame(apiDef.key)
-		self:DisplayResults(contentFrame, apiDef, resultData)
+
+		self:DisplayCurrentResults(apiDef, resultData)
 		return
 	end
 
 	-- Execute API
 	local startTime = debugprofilestop()
-	local success, results = Mechanic.Utils:SafeCall(apiDef.func, unpack(params))
+	local success, results = Mechanic.Utils:SafeCall(func, unpack(params))
 	local endTime = debugprofilestop()
 	local duration = (endTime - startTime)
 
@@ -1221,8 +1334,14 @@ function APIModule:RunAPI(apiDef)
 	self:SaveAPIResult(apiDef.key, resultData)
 
 	-- Display
-	local contentFrame = self:GetContentFrame(apiDef.key)
-	self:DisplayResults(contentFrame, apiDef, resultData)
+	self:DisplayCurrentResults(apiDef, resultData)
+end
+
+--- Show results only when that API is the one the shared detail panel is displaying.
+function APIModule:DisplayCurrentResults(apiDef, resultData)
+	if self.detailFrame and self.selectedAPI == apiDef.key then
+		self:DisplayResults(self.detailFrame, apiDef, resultData)
+	end
 end
 
 function APIModule:DisplayResults(parent, apiDef, resultData)
@@ -1240,7 +1359,7 @@ function APIModule:DisplayResults(parent, apiDef, resultData)
 	if not resultData.success then
 		statusText = "|cffff0000ERROR|r"
 	else
-		local secretCount = Mechanic.Utils:CountSecrets(resultData.results)
+		local secretCount = CountSecrets(resultData.results)
 		if secretCount > 0 then
 			statusText = string.format("|cffaa00ffSECRET|r (%d secret values)", secretCount)
 		else
@@ -1288,82 +1407,158 @@ end
 -- Namespace Batch Testing
 --------------------------------------------------------------------------------
 
-function APIModule:RunNamespace(namespace)
-	local count = 0
-	local totalInNamespace = 0
-	local protectedCount = 0
-	local results = {}
+local NAMESPACE_RUN_BUDGET_MS = 8 -- per-frame time slice for batch runs
+
+_G.StaticPopupDialogs["MECHANIC_API_RUN_NAMESPACE"] = {
+	text = "%s",
+	button1 = _G.YES,
+	button2 = _G.NO,
+	OnAccept = function(_, data)
+		APIModule:StartNamespaceRun(data)
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+--- Split a namespace into APIs a batch may call and counts of those it will not.
+function APIModule:BuildNamespaceRunPlan(namespace)
+	local keys, protectedCount, unsafeCount = {}, 0, 0
 	for apiKey, apiDef in pairs(API_DEFINITIONS) do
-		local apiNs = GetAPINamespace(apiKey)
-		if apiNs == namespace then
-			totalInNamespace = totalInNamespace + 1
+		if GetAPINamespace(apiKey) == namespace then
 			if apiDef.protected then
 				protectedCount = protectedCount + 1
+			elseif not IsBatchSafeAPI(apiKey) then
+				unsafeCount = unsafeCount + 1
 			else
-				-- Run silently without switching content frame
-				self:RunAPISilent(apiDef)
-				count = count + 1
-				table.insert(results, apiDef.name or apiKey)
+				keys[#keys + 1] = apiKey
 			end
 		end
 	end
-	
-	-- Provide informative message in the UI
-	local statusMsg, statusColor
-	if count > 0 then
-		statusMsg = string.format("Ran %d APIs", count)
-		statusColor = {0.3, 1, 0.3} -- Green
-	elseif totalInNamespace == 0 then
-		statusMsg = "No APIs found"
-		statusColor = {1, 0.5, 0.5} -- Red
-	else
-		statusMsg = string.format("All %d protected", protectedCount)
-		statusColor = {1, 0.7, 0.3} -- Orange
-	end
-	
-	-- Update the status label in the current content frame
-	if self.selectedAPI then
-		local contentFrame = self.contentFrames[self.selectedAPI]
-		if contentFrame and contentFrame.nsStatusLabel then
-			contentFrame.nsStatusLabel:SetText(statusMsg)
-			contentFrame.nsStatusLabel:SetTextColor(unpack(statusColor))
-		end
-	end
-	
-	-- Refresh the current content frame if an API is selected
-	if self.selectedAPI then
-		local apiDef = API_DEFINITIONS[self.selectedAPI]
-		if apiDef then
-			local contentFrame = self.contentFrames[self.selectedAPI]
-			if contentFrame then
-				local resultData = self.lastResults[self.selectedAPI]
-				if resultData then
-					self:DisplayResults(contentFrame, apiDef, resultData)
-				end
-			end
-		end
+	table.sort(keys)
+	return {
+		namespace = namespace,
+		keys = keys,
+		protectedCount = protectedCount,
+		unsafeCount = unsafeCount,
+		total = #keys + protectedCount + unsafeCount,
+	}
+end
+
+function APIModule:SetNamespaceStatus(message, r, g, b)
+	local label = self.detailFrame and self.detailFrame.nsStatusLabel
+	if label then
+		label:SetText(message)
+		label:SetTextColor(r, g, b)
 	end
 end
 
---- Run an API silently (no UI switch, just store results)
-function APIModule:RunAPISilent(apiDef)
-	if not apiDef or not apiDef.func then
+--- Ask for confirmation, then run the namespace's read-only APIs in time-sliced steps.
+function APIModule:RunNamespace(namespace)
+	if self.nsRun then
+		self:SetNamespaceStatus("A namespace run is already in progress", 1, 0.7, 0.3)
 		return
 	end
-	
+
+	local plan = self:BuildNamespaceRunPlan(namespace)
+	if plan.total == 0 then
+		self:SetNamespaceStatus("No APIs found", 1, 0.5, 0.5)
+		return
+	end
+	if #plan.keys == 0 then
+		self:SetNamespaceStatus(
+			string.format("Nothing to run: %d protected, %d not read-only", plan.protectedCount, plan.unsafeCount),
+			1,
+			0.7,
+			0.3
+		)
+		return
+	end
+
+	_G.StaticPopup_Show(
+		"MECHANIC_API_RUN_NAMESPACE",
+		string.format(
+			"Call %d read-only APIs in %s with default parameters?\n\nSkipped: %d protected, %d not read-only.",
+			#plan.keys,
+			namespace,
+			plan.protectedCount,
+			plan.unsafeCount
+		),
+		nil,
+		plan
+	)
+end
+
+function APIModule:StartNamespaceRun(plan)
+	if self.nsRun or not plan or #plan.keys == 0 then
+		return
+	end
+	self.nsRun = { plan = plan, index = 0, ran = 0 }
+	self:StepNamespaceRun()
+end
+
+function APIModule:StepNamespaceRun()
+	local run = self.nsRun
+	if not run then
+		return
+	end
+
+	local keys = run.plan.keys
+	local deadline = debugprofilestop() + NAMESPACE_RUN_BUDGET_MS
+	while run.index < #keys do
+		run.index = run.index + 1
+		local apiDef = API_DEFINITIONS[keys[run.index]]
+		if apiDef and self:RunAPISilent(apiDef) then
+			run.ran = run.ran + 1
+		end
+		if debugprofilestop() >= deadline then
+			break
+		end
+	end
+
+	if run.index < #keys then
+		self:SetNamespaceStatus(string.format("Running %d/%d...", run.index, #keys), 0.7, 0.7, 0.7)
+		C_Timer.After(0, function()
+			self:StepNamespaceRun()
+		end)
+		return
+	end
+
+	self.nsRun = nil
+	self:SetNamespaceStatus(
+		string.format("Ran %d APIs (%d skipped)", run.ran, run.plan.total - run.ran),
+		0.3,
+		1,
+		0.3
+	)
+	local selected = self.selectedAPI and API_DEFINITIONS[self.selectedAPI]
+	local resultData = selected and self.lastResults[self.selectedAPI]
+	if resultData then
+		self:DisplayCurrentResults(selected, resultData)
+	end
+end
+
+--- Run an API silently (no UI switch, just store results). Returns true if it executed.
+function APIModule:RunAPISilent(apiDef)
+	local func = ResolveAPIFunc(apiDef)
+	if not func then
+		return false
+	end
+
 	-- Use defaults for parameters
 	local params = {}
 	for _, paramDef in ipairs(apiDef.params) do
 		local value = ConvertParamValue(paramDef, paramDef.default)
 		table.insert(params, value)
 	end
-	
+
 	-- Execute API
 	local startTime = debugprofilestop()
-	local success, results = Mechanic.Utils:SafeCall(apiDef.func, unpack(params))
+	local success, results = Mechanic.Utils:SafeCall(func, unpack(params))
 	local endTime = debugprofilestop()
 	local duration = (endTime - startTime)
-	
+
 	-- Store results (but don't display)
 	local resultData = {
 		success = success,
@@ -1374,6 +1569,7 @@ function APIModule:RunAPISilent(apiDef)
 	}
 	self.lastResults[apiDef.key] = resultData
 	self:SaveAPIResult(apiDef.key, resultData)
+	return true
 end
 
 --------------------------------------------------------------------------------
@@ -1407,7 +1603,8 @@ function APIModule:ExecuteAPITest(apiDef, inputParams)
 	end
 	
 	-- Handle missing function reference
-	if not apiDef.func then
+	local func = ResolveAPIFunc(apiDef)
+	if not func then
 		local resultData = {
 			success = false,
 			results = { "Function not available in current client" },
@@ -1464,12 +1661,12 @@ function APIModule:ExecuteAPITest(apiDef, inputParams)
 	
 	-- Execute API
 	local startTime = debugprofilestop()
-	local success, results = Mechanic.Utils:SafeCall(apiDef.func, unpack(params))
+	local success, results = Mechanic.Utils:SafeCall(func, unpack(params))
 	local endTime = debugprofilestop()
 	local duration = (endTime - startTime)
 	
 	-- Determine status
-	local secretCount = success and Mechanic.Utils:CountSecrets(results or {}) or 0
+	local secretCount = success and CountSecrets(results or {}) or 0
 	local status
 	if not success then
 		status = "error"
@@ -1511,6 +1708,7 @@ function APIModule:CopyAPIReport(apiDef)
 	table.insert(lines, "---")
 
 	table.insert(lines, string.format("API: %s", tostring(apiDef.funcPath or "Unknown")))
+	table.insert(lines, string.format("Namespace: %s", GetAPINamespace(apiDef.key)))
 	table.insert(lines, string.format("Category: %s", tostring(apiDef.category or "Unknown")))
 	table.insert(lines, string.format("Midnight Impact: %s", tostring(apiDef.midnightImpact or "Unknown")))
 	if apiDef.midnightNote then
@@ -1523,7 +1721,7 @@ function APIModule:CopyAPIReport(apiDef)
 		table.insert(lines, "Last Test:")
 		table.insert(lines, string.format("  Duration: %.2fms", resultData.duration or 0))
 		table.insert(lines, string.format("  Status: %s", (resultData.success and "SUCCESS" or "ERROR")))
-		table.insert(lines, string.format("  Secret Values: %d", Mechanic.Utils:CountSecrets(resultData.results or {})))
+		table.insert(lines, string.format("  Secret Values: %d", CountSecrets(resultData.results or {})))
 		table.insert(lines, "")
 		table.insert(lines, "Results:")
 
@@ -1567,7 +1765,7 @@ function APIModule:GetCategoryReport(namespace)
 	local passCount, secretCount, errorCount, untestedCount = 0, 0, 0, 0
 	local apis = {}
 	for apiKey, apiDef in pairs(API_DEFINITIONS) do
-		if apiDef.category == namespace then
+		if GetAPINamespace(apiKey) == namespace then
 			table.insert(apis, apiDef)
 		end
 	end
@@ -1584,7 +1782,7 @@ function APIModule:GetCategoryReport(namespace)
 		elseif not resultData.success then
 			status = "FAIL"
 			errorCount = errorCount + 1
-		elseif Mechanic.Utils:CountSecrets(resultData.results or {}) > 0 then
+		elseif CountSecrets(resultData.results or {}) > 0 then
 			status = "SCRT"
 			secretCount = secretCount + 1
 		else
@@ -1616,8 +1814,19 @@ end
 --- Serialize a value for SavedVariables (handles functions, userdata, etc.)
 local function SerializeForSV(value, depth)
 	depth = depth or 0
-	if depth > 10 then return "<max depth>" end
-	
+	if depth > 10 then
+		return "<max depth>"
+	end
+
+	-- Secret values must never be indexed, measured or stored; keep only a marker
+	if IsSecret(value) then
+		return "<secret>"
+	end
+	local isSecretTable = _G.issecrettable
+	if type(value) == "table" and isSecretTable and isSecretTable(value) then
+		return "<secret>"
+	end
+
 	local vtype = type(value)
 	if vtype == "nil" then
 		return nil
@@ -1652,13 +1861,23 @@ local function SerializeForSV(value, depth)
 		return tostring(value)
 	end
 end
+APIModule.SerializeForSV = SerializeForSV
+
+--- Serialize inside pcall so one odd value can never abort a run or a queue.
+local function SafeSerializeForSV(value)
+	local ok, serialized = pcall(SerializeForSV, value)
+	if ok then
+		return serialized
+	end
+	return "<unserializable>"
+end
 
 function APIModule:SaveAPIResult(apiKey, resultData)
 	Mechanic.db.profile.apiTests = Mechanic.db.profile.apiTests or {}
 	Mechanic.db.profile.apiTests[apiKey] = Mechanic.db.profile.apiTests[apiKey] or {}
 
 	local saved = Mechanic.db.profile.apiTests[apiKey]
-	local secretCount = Mechanic.Utils:CountSecrets(resultData.results or {})
+	local secretCount = CountSecrets(resultData.results or {})
 	
 	saved.lastRun = resultData.timestamp
 	saved.lastRunTime = date("%Y-%m-%d %H:%M:%S")
@@ -1687,7 +1906,7 @@ function APIModule:SaveAPIResult(apiKey, resultData)
 	
 	-- Store serialized results (safe for SavedVariables)
 	if resultData.results then
-		saved.results = SerializeForSV(resultData.results)
+		saved.results = SafeSerializeForSV(resultData.results)
 	end
 	
 	-- Store API definition info for agent-friendly output
@@ -1811,7 +2030,7 @@ end
 --------------------------------------------------------------------------------
 
 function APIModule:DisplayProtectedError(apiDef)
-	local contentFrame = self:GetContentFrame(apiDef.key)
+	local contentFrame = self.detailFrame
 	if contentFrame and contentFrame.statusLabel then
 		contentFrame.statusLabel:SetText(
 			string.format("|cffff0000%s|r - %s", L["PROTECTED"] or "PROTECTED", L["Cannot call from addon code"] or "Cannot call from addon code")
@@ -1826,7 +2045,7 @@ function APIModule:DisplayProtectedError(apiDef)
 end
 
 function APIModule:DisplayMissingFuncError(apiDef)
-	local contentFrame = self:GetContentFrame(apiDef.key)
+	local contentFrame = self.detailFrame
 	if contentFrame and contentFrame.statusLabel then
 		contentFrame.statusLabel:SetText(string.format("|cffff8800%s|r - %s", L["MISSING"] or "MISSING", L["Function not found"] or "Function not found"))
 	end
@@ -1851,20 +2070,16 @@ function APIModule:OnShow()
 		self:ApplyFilters()
 	end
 
-	-- Show selected content
-	if self.selectedAPI then
-		local contentFrame = self:GetContentFrame(self.selectedAPI)
-		local apiDef = API_DEFINITIONS[self.selectedAPI]
-		if contentFrame and apiDef then
-			self:BuildAPIPanel(contentFrame, apiDef)
-		end
+	-- The detail panel persists (keeping typed parameters); just make sure it is visible
+	if self.selectedAPI and self.detailFrame then
+		self.detailFrame:Show()
 	end
 end
 
 function APIModule:OnHide() end
 
 function APIModule:Export()
-	local namespace = self.selectedAPI and API_DEFINITIONS[self.selectedAPI] and API_DEFINITIONS[self.selectedAPI].category
+	local namespace = self.selectedAPI and API_DEFINITIONS[self.selectedAPI] and GetAPINamespace(self.selectedAPI)
 	local navName = namespace or "All"
 	local title = string.format("API : %s : Export", navName)
 
@@ -1876,7 +2091,7 @@ function APIModule:GetCopyText(includeHeader)
 	if self.selectedAPI then
 		local apiDef = API_DEFINITIONS[self.selectedAPI]
 		if apiDef then
-			return self:GetCategoryReport(apiDef.category)
+			return self:GetCategoryReport(GetAPINamespace(self.selectedAPI))
 		end
 	end
 	return L["No API selected."] or "No API selected."
