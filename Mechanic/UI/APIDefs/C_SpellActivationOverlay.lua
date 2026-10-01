@@ -5,13 +5,11 @@ local APIDefs = ns.APIDefinitions
 APIDefs["C_SpellActivationOverlay.IsSpellOverlayed"] = {
     key = "C_SpellActivationOverlay.IsSpellOverlayed",
     name = "IsSpellOverlayed",
-    category = "combat_midnight",
+    category = "spell",
     subcategory = "c_spellactivationoverlay",
-    func = _G["C_SpellActivationOverlay"] and _G["C_SpellActivationOverlay"]["IsSpellOverlayed"],
     funcPath = "C_SpellActivationOverlay.IsSpellOverlayed",
     params = { { name = "spellID", type = "number", default = nil } },
     returns = { { name = "isSpellOverlayed", type = "bool", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

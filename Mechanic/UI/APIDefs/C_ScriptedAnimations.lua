@@ -7,7 +7,6 @@ APIDefs["C_ScriptedAnimations.GetAllScriptedAnimationEffects"] = {
     name = "GetAllScriptedAnimationEffects",
     category = "general",
     subcategory = "c_scriptedanimations",
-    func = _G["C_ScriptedAnimations"] and _G["C_ScriptedAnimations"]["GetAllScriptedAnimationEffects"],
     funcPath = "C_ScriptedAnimations.GetAllScriptedAnimationEffects",
     params = {  },
     returns = { { name = "scriptedAnimationEffects", type = "table", canBeSecret = false } },

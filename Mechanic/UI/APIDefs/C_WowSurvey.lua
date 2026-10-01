@@ -7,7 +7,6 @@ APIDefs["C_WowSurvey.OpenSurvey"] = {
     name = "OpenSurvey",
     category = "general",
     subcategory = "c_wowsurvey",
-    func = _G["C_WowSurvey"] and _G["C_WowSurvey"]["OpenSurvey"],
     funcPath = "C_WowSurvey.OpenSurvey",
     params = {  },
     returns = {  },
@@ -17,13 +16,11 @@ APIDefs["C_WowSurvey.OpenSurvey"] = {
 APIDefs["C_WowSurvey.TriggerSurveyServe"] = {
     key = "C_WowSurvey.TriggerSurveyServe",
     name = "TriggerSurveyServe",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_wowsurvey",
-    func = _G["C_WowSurvey"] and _G["C_WowSurvey"]["TriggerSurveyServe"],
     funcPath = "C_WowSurvey.TriggerSurveyServe",
     params = { { name = "deliveryMoment", type = "SurveyDeliveryMoment", default = nil } },
     returns = {  },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

@@ -5,13 +5,11 @@ local APIDefs = ns.APIDefinitions
 APIDefs["C_ClassColor.GetClassColor"] = {
     key = "C_ClassColor.GetClassColor",
     name = "GetClassColor",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_classcolor",
-    func = _G["C_ClassColor"] and _G["C_ClassColor"]["GetClassColor"],
     funcPath = "C_ClassColor.GetClassColor",
     params = { { name = "className", type = "string", default = nil } },
     returns = { { name = "classColor", type = "colorRGB", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenTainted",
 }

@@ -5,28 +5,24 @@ local APIDefs = ns.APIDefinitions
 APIDefs["C_RestrictedActions.CheckAllowProtectedFunctions"] = {
     key = "C_RestrictedActions.CheckAllowProtectedFunctions",
     name = "CheckAllowProtectedFunctions",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_restrictedactions",
-    func = _G["C_RestrictedActions"] and _G["C_RestrictedActions"]["CheckAllowProtectedFunctions"],
     funcPath = "C_RestrictedActions.CheckAllowProtectedFunctions",
     params = { { name = "object", type = "FrameScriptObject", default = nil }, { name = "silent", type = "bool", default = false } },
     returns = { { name = "protectedFunctionsAllowed", type = "bool", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_RestrictedActions.GetAddOnRestrictionState"] = {
     key = "C_RestrictedActions.GetAddOnRestrictionState",
     name = "GetAddOnRestrictionState",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_restrictedactions",
-    func = _G["C_RestrictedActions"] and _G["C_RestrictedActions"]["GetAddOnRestrictionState"],
     funcPath = "C_RestrictedActions.GetAddOnRestrictionState",
     params = { { name = "type", type = "AddOnRestrictionType", default = nil } },
     returns = { { name = "state", type = "AddOnRestrictionState", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
@@ -35,7 +31,6 @@ APIDefs["C_RestrictedActions.InCombatLockdown"] = {
     name = "InCombatLockdown",
     category = "general",
     subcategory = "c_restrictedactions",
-    func = _G["C_RestrictedActions"] and _G["C_RestrictedActions"]["InCombatLockdown"],
     funcPath = "C_RestrictedActions.InCombatLockdown",
     params = {  },
     returns = { { name = "inCombatLockdown", type = "bool", canBeSecret = false } },
@@ -45,13 +40,11 @@ APIDefs["C_RestrictedActions.InCombatLockdown"] = {
 APIDefs["C_RestrictedActions.IsAddOnRestrictionActive"] = {
     key = "C_RestrictedActions.IsAddOnRestrictionActive",
     name = "IsAddOnRestrictionActive",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_restrictedactions",
-    func = _G["C_RestrictedActions"] and _G["C_RestrictedActions"]["IsAddOnRestrictionActive"],
     funcPath = "C_RestrictedActions.IsAddOnRestrictionActive",
     params = { { name = "type", type = "AddOnRestrictionType", default = nil } },
     returns = { { name = "active", type = "bool", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

@@ -7,7 +7,6 @@ APIDefs["C_InstanceLeaver.IsPlayerLeaver"] = {
     name = "IsPlayerLeaver",
     category = "general",
     subcategory = "c_instanceleaver",
-    func = _G["C_InstanceLeaver"] and _G["C_InstanceLeaver"]["IsPlayerLeaver"],
     funcPath = "C_InstanceLeaver.IsPlayerLeaver",
     params = {  },
     returns = { { name = "isLeaver", type = "bool", canBeSecret = false } },

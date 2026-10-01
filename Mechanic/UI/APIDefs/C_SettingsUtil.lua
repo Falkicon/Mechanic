@@ -7,7 +7,6 @@ APIDefs["C_SettingsUtil.NotifySettingsLoaded"] = {
     name = "NotifySettingsLoaded",
     category = "ui",
     subcategory = "c_settingsutil",
-    func = _G["C_SettingsUtil"] and _G["C_SettingsUtil"]["NotifySettingsLoaded"],
     funcPath = "C_SettingsUtil.NotifySettingsLoaded",
     params = {  },
     returns = {  },
@@ -17,13 +16,11 @@ APIDefs["C_SettingsUtil.NotifySettingsLoaded"] = {
 APIDefs["C_SettingsUtil.OpenSettingsPanel"] = {
     key = "C_SettingsUtil.OpenSettingsPanel",
     name = "OpenSettingsPanel",
-    category = "combat_midnight",
+    category = "ui",
     subcategory = "c_settingsutil",
-    func = _G["C_SettingsUtil"] and _G["C_SettingsUtil"]["OpenSettingsPanel"],
     funcPath = "C_SettingsUtil.OpenSettingsPanel",
     params = { { name = "openToCategoryID", type = "number", default = nil }, { name = "scrollToElementName", type = "stringView", default = nil } },
     returns = {  },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

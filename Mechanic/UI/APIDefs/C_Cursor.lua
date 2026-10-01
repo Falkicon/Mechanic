@@ -7,7 +7,6 @@ APIDefs["C_Cursor.GetCursorItem"] = {
     name = "GetCursorItem",
     category = "general",
     subcategory = "c_cursor",
-    func = _G["C_Cursor"] and _G["C_Cursor"]["GetCursorItem"],
     funcPath = "C_Cursor.GetCursorItem",
     params = {  },
     returns = { { name = "item", type = "ItemLocation", canBeSecret = false } },

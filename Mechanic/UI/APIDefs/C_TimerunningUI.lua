@@ -7,7 +7,6 @@ APIDefs["C_TimerunningUI.GetActiveTimerunningSeasonID"] = {
     name = "GetActiveTimerunningSeasonID",
     category = "general",
     subcategory = "c_timerunningui",
-    func = _G["C_TimerunningUI"] and _G["C_TimerunningUI"]["GetActiveTimerunningSeasonID"],
     funcPath = "C_TimerunningUI.GetActiveTimerunningSeasonID",
     params = {  },
     returns = { { name = "activeTimerunningSeasonID", type = "number", canBeSecret = false } },
