@@ -167,6 +167,14 @@ class MechanicConfig:
             self._config["wow_root"] = os.environ["MECHANIC_WOW_ROOT"]
         if "MECHANIC_DEV_PATH" in os.environ:
             self._config["dev_path"] = os.environ["MECHANIC_DEV_PATH"]
+        if "MECHANIC_ADDITIONAL_WOW_ROOTS" in os.environ:
+            self._config["additional_wow_roots"] = [
+                part
+                for part in os.environ["MECHANIC_ADDITIONAL_WOW_ROOTS"].split(
+                    os.pathsep
+                )
+                if part.strip()
+            ]
 
         self._loaded = True
 
@@ -207,6 +215,33 @@ class MechanicConfig:
                     return self._wow_root
 
         return None
+
+    @property
+    def additional_wow_roots(self) -> List[Path]:
+        """
+        Extra WoW installations searched for diagnostic data, for example a
+        client installed on another drive (``D:/Programs/World of Warcraft``).
+
+        Set ``additional_wow_roots`` to a list of paths in the user config, or
+        ``MECHANIC_ADDITIONAL_WOW_ROOTS`` to paths separated by ``os.pathsep``.
+        Entries that are not non-empty strings are ignored.
+        """
+        value = self._config.get("additional_wow_roots")
+        if not isinstance(value, list):
+            return []
+        return [Path(item) for item in value if isinstance(item, str) and item.strip()]
+
+    def all_wow_roots(self) -> List[Path]:
+        """The primary root, the additional roots, then common locations, without duplicates."""
+        roots: List[Path] = []
+        for root in (
+            self.wow_root,
+            *self.additional_wow_roots,
+            *get_common_wow_roots(),
+        ):
+            if root is not None and root not in roots:
+                roots.append(root)
+        return roots
 
     @property
     def dev_path(self) -> Optional[Path]:
@@ -311,6 +346,7 @@ class MechanicConfig:
         """Export current configuration as a dictionary."""
         return {
             "wow_root": str(self.wow_root) if self.wow_root else None,
+            "additional_wow_roots": [str(p) for p in self.additional_wow_roots],
             "dev_path": str(self.dev_path) if self.dev_path else None,
             "template_path": str(self.template_path) if self.template_path else None,
             "flavors": self.flavors,
@@ -420,11 +456,7 @@ def discover_saved_variables() -> List[Path]:
     config = get_config()
     found_paths = set()
 
-    # Build list of WoW roots to search
-    wow_roots = []
-    if config.wow_root:
-        wow_roots.append(config.wow_root)
-    wow_roots.extend(get_common_wow_roots())
+    wow_roots = config.all_wow_roots()
 
     flavors = config.flavors + ["_dev_"]
 

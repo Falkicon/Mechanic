@@ -1,7 +1,8 @@
 {
   "wow_root": "C:/Program Files (x86)/World of Warcraft",
+  "additional_wow_roots": [],
   "dev_path": "C:/Program Files (x86)/World of Warcraft/_dev_",
-  "flavors": ["_retail_", "_beta_", "_ptr_"],
+  "flavors": ["_retail_", "_beta_", "_ptr_", "_classic_beta_"],
   "addon_search_paths": [],
   "template_path": null
 }
