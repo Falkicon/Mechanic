@@ -73,7 +73,7 @@ export MECHANIC_DEV_PATH="$MECHANIC_WOW_ROOT/_dev_"
 export MECHANIC_DATA_DIR="$HOME/.mechanic/data"
 ~~~
 
-Explicit process environment variables take precedence over .env files. In a source checkout the loader reads desktop/.env then ~/.mechanic/.env; an installed wheel reads only ~/.mechanic/.env. `MECHANIC_DATA_DIR` defaults to ~/.mechanic/data; it stores the history database and caches. If dev_path is not configured, discovery uses <wow_root>/_dev_ when that directory exists. The default flavor list is ["_retail_", "_beta_", "_ptr_"]; addon_search_paths can add extra addon roots, and `template_path` points `addon.create` at a template folder (default: `_TemplateAddon` under `<dev_path>/Mechanic/` or `<dev_path>/`).
+Explicit process environment variables take precedence over .env files. In a source checkout the loader reads desktop/.env then ~/.mechanic/.env; an installed wheel reads only ~/.mechanic/.env. `MECHANIC_DATA_DIR` defaults to ~/.mechanic/data; it stores the history database and caches. If dev_path is not configured, discovery uses <wow_root>/_dev_ when that directory exists. The default flavor list is ["_retail_", "_beta_", "_ptr_", "_classic_beta_"]; `additional_wow_roots` lists extra WoW installations to search for diagnostic data (for example a client on another drive); addon_search_paths can add extra addon roots, and `template_path` points `addon.create` at a template folder (default: `_TemplateAddon` under `<dev_path>/Mechanic/` or `<dev_path>/`).
 
 Other variables the code reads:
 
@@ -81,11 +81,12 @@ Other variables the code reads:
 |----------|---------|
 | `GEMINI_API_KEY` | Gemini key for the optional `research.query` command |
 | `MECHANIC_GEMINI_FAST_MODEL`, `MECHANIC_GEMINI_THINKING_MODEL` | Override the Gemini model IDs `research.query` uses for `fast` / `thinking` |
+| `MECHANIC_ADDITIONAL_WOW_ROOTS` | Extra WoW installations to search (paths separated by `;` on Windows, `:` elsewhere); replaces `additional_wow_roots` from the config file |
 | `MECHANIC_LUA` | Path to a Lua 5.1 executable for `sandbox.*` and the Python-to-Lua contract tests (otherwise `bin/`, then `PATH`) |
 | `XDG_CONFIG_HOME` | Location of `mechanic/config.json` on non-Windows systems |
 | `SOURCE_DATE_EPOCH` | Fixes the date `docs.generate` writes; the file is not rewritten when only the date would change |
 
-WoW root discovery has common fallbacks for Windows, macOS, and Linux Wine/Lutris layouts. It is still safe to set `MECHANIC_WOW_ROOT` and `MECHANIC_DEV_PATH` explicitly when several installations are present.
+WoW root discovery has common fallbacks for Windows, macOS, and Linux Wine/Lutris layouts. It is still safe to set `MECHANIC_WOW_ROOT` and `MECHANIC_DEV_PATH` explicitly when several installations are present. `diagnostic.targets`, `sv.discover` and the file watcher also search every root in `additional_wow_roots`, so a second install (such as a WoW: Forever client under `D:/Programs/World of Warcraft`) shows up as its own client. Only the primary `wow_root` is used for `addon.sync` and `env.status`.
 
 ## CLI usage
 

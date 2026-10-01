@@ -70,6 +70,7 @@ Node regressions live in `tests/dashboard_*_regressions.cjs` (shared helper `tes
 | Setting | Meaning |
 |---|---|
 | `MECHANIC_WOW_ROOT` | WoW installation root (overrides discovery and `~/.mechanic/config.json`) |
+| `MECHANIC_ADDITIONAL_WOW_ROOTS` | Extra WoW installs searched for diagnostic targets (`;`-separated on Windows); same as `additional_wow_roots` in the config file |
 | `MECHANIC_DEV_PATH` | The `_dev_` folder where addons are looked up |
 | `MECHANIC_DATA_DIR` | History/data directory (default `~/.mechanic/data`) |
 | `GEMINI_API_KEY` | Needed by `research.query` (`desktop/.env` or `~/.mechanic/.env`) |

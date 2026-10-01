@@ -8,6 +8,12 @@ The desktop package is versioned separately from the addons (`mechanic-desktop`,
 
 ## [Unreleased]
 
+### Added
+- `additional_wow_roots` config setting (and `MECHANIC_ADDITIONAL_WOW_ROOTS`) adds extra WoW installations, such as a client on another drive, to diagnostic discovery. `diagnostic.targets`, `sv.discover` and the file watcher search them in addition to `wow_root`; `addon.sync` and `env.status` still use only `wow_root`.
+
+### Fixed
+- The README and `config.json.example` listed the default flavors without `_classic_beta_`, which the code includes.
+
 ## [0.5.0] - 2026-09-30
 
 ### Added
