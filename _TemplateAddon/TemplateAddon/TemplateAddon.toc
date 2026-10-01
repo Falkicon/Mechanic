@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 16001
 ## Title: TemplateAddon
 ## Notes: Minimalist Ace3-based addon template.
 ## Author: YourName

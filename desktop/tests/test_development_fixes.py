@@ -49,7 +49,7 @@ async def test_validate_accepts_current_and_classic_interface_values(addon):
     assert data.valid, data.errors
     assert data.interface_version == "120100, 16001"
     assert data.file_count == 2
-    assert any("16001" in w for w in data.warnings)  # unknown classic-style value
+    assert not any("16001" in w for w in data.warnings)  # a current target, no warning
     assert data.errors == []
 
 
@@ -69,10 +69,21 @@ def test_interface_version_errors(interface, fragment):
 
 
 def test_interface_version_multi_value_and_known_classic():
-    assert development.check_interface_versions(["120001", "120000"]) == ([], [])
-    assert development.check_interface_versions(["50503"]) == ([], [])
-    errors, warnings = development.check_interface_versions(["100207", "120100"])
-    assert errors == [] and warnings == []
+    # Stale retail pairs and classic-only lists are outdated: a current target is required.
+    for stale in (["120001", "120000"], ["50503"]):
+        errors, _ = development.check_interface_versions(stale)
+        assert errors and "outdated" in errors[0]
+        for version in development.VALID_INTERFACE_VERSIONS:
+            assert version in errors[0]
+    # Any current target in a multi-client list is enough; known classic values are quiet.
+    assert development.check_interface_versions(["100207", "120100"]) == ([], [])
+    assert development.check_interface_versions(["11508", "50503", "120100"]) == (
+        [],
+        [],
+    )
+    # Unknown five-digit values pass syntactically but warn.
+    errors, warnings = development.check_interface_versions(["99999", "16001"])
+    assert errors == [] and len(warnings) == 1 and "99999" in warnings[0]
 
 
 @pytest.mark.asyncio

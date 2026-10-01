@@ -36,7 +36,6 @@ The desktop package is versioned separately from the addons (`mechanic-desktop`,
 - `server.shutdown` stops the supervisor gracefully and returns `NOT_RUNNING` outside a dashboard process.
 - `addon.output` and `docs` exit 1 on failure, `docs --json` emits real JSON, `mech shell` survives a bad JSON argument, and `mech --agent addon.output` works.
 - The watcher skips unrelated SavedVariables files, parses in a thread, and matches the reload window exactly with a 15 second timeout.
-- `addon.validate` accepts any six-digit interface of 110000 or higher (and five-digit classic values with a warning) and comma lists, so Mechanic's own `120100, 16001` passes.
 - `addon.create` and `addon.sync` validate names, require the `.toc`, skip uninstalled clients (`NO_TOC`, `NO_CLIENT_FOUND`), and `addon.create` also rewrites suffix-less files such as `.pkgmeta` and `.luacheckrc`.
 - `changelog.add` inserts before the first `## [` heading and validates versions; `git.commit` commits only the addon pathspec; `libs.sync --force` replaces files with a backup.
 - `addon.lint` and `addon.format` run in the addon folder, and `locale.validate` reports `missing_count`.
@@ -44,6 +43,7 @@ The desktop package is versioned separately from the addons (`mechanic-desktop`,
 - Sandbox: `sandbox.exec` and `sandbox.test` run in a restricted environment (whitelisted globals; no `os`, `io`, `package`, `debug`, `require`, `dofile`, `loadfile`, `load`, `getfenv`, `setfenv` or `string.dump`; time and output limits; memory is not limited), `sandbox.test` no longer needs a generated framework and honours `filter`, and `sandbox.generate` merges namespaces.
 - Analyzers run on a real Lua tokenizer: fewer false positives (on `Mechanic/`, dead-code findings dropped from 1005 to 125, deep-nesting from 417 to 8, security findings from 12 to 2), nesting depth counts real blocks, library folders are excluded case-insensitively, and `docs.stale` ignores code blocks and changelogs for version drift.
 - Dashboard: a non-numeric counter no longer injects markup, the Settings "Add Addon" crash is fixed, and shortcuts ignore modifier keys.
+- TOC validation now accepts current Retail 12.1 (`120100`) and WoW: Forever (`16001`) interfaces, and its error lists the current targets instead of stale 12.0 versions. A comma-separated list passes when any entry is a current target; malformed values are rejected and unrecognised five-digit values only warn. The addon template TOC declares both.
 - Generate valid positional-JSON CLI documentation with schema-derived types and escaped Markdown tables.
 - Correct MCP handler signatures, local dashboard request validation, SQLite connection cleanup, watcher shutdown, environment precedence, and dashboard wheel packaging.
 - Safely encode queue parameters/labels, constrain performance baseline filenames, and treat API search patterns as wildcards rather than regular expressions.
