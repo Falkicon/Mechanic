@@ -93,14 +93,17 @@ def main() -> int:
         # Runtime data files must be packaged rather than found next to a checkout.
         from mechanic.resources import resource_path
 
-        resource_dir = SOURCE_ROOT / "src" / "mechanic" / "resources"
+        source_src = SOURCE_ROOT / "src"
+        resource_dir = source_src / "mechanic" / "resources"
         packaged = sorted(
             p.name for p in resource_dir.iterdir() if p.suffix in {".lua", ".json"}
         )
         assert "checksums.json" in packaged, packaged
         for name in packaged:
             assert resource_path(name).is_file(), f"missing packaged resource {name}"
-            assert not resource_path(name).resolve().is_relative_to(SOURCE_ROOT), name
+            # The throwaway venv may live inside the checkout (CI uses desktop/wheel-env),
+            # so only the source package directory counts as "next to a checkout".
+            assert not resource_path(name).resolve().is_relative_to(source_src), name
 
         # The installed entry point must start, and --help must not create history.
         data_dir = Path(os.environ["MECHANIC_DATA_DIR"])

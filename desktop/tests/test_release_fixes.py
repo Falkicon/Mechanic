@@ -202,6 +202,8 @@ async def test_commit_rejects_empty_message(repo):
 async def test_commit_reports_git_failure_with_suggestion(repo):
     hook = repo / ".git" / "hooks" / "pre-commit"
     hook.write_bytes(b"#!/bin/sh\necho 'rejected by hook' >&2\nexit 1\n")
+    # POSIX git only runs executable hooks; Windows git ignores the bit.
+    hook.chmod(0o755)
     (repo / "Demo" / "Core.lua").write_text("print(3)\n", encoding="utf-8")
 
     result = await call("git.commit", repo, message="blocked")
