@@ -45,10 +45,14 @@ class ValidationResult(BaseModel):
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Retail interface numbers are six digits (WWXXYY) from 11.0 on. Classic and
-# "forever" clients use five-digit numbers; those Mechanic does not recognise
-# are accepted with a warning instead of being rejected.
-MIN_RETAIL_INTERFACE = 110000
+# Interface versions for the game clients addons should currently target.
+# Update when a client patch changes its TOC interface number.
+VALID_INTERFACE_VERSIONS = {
+    "120100": "Retail 12.1",
+    "16001": "WoW: Forever 1.60.1",
+}
+# Classic-era five-digit interface numbers Mechanic recognises; other five-digit
+# values are accepted syntactically but reported with a warning.
 KNOWN_CLASSIC_INTERFACES = frozenset(
     {"11507", "11508", "20505", "30403", "40402", "50503", "50504"}
 )
@@ -112,31 +116,36 @@ def parse_toc_file(toc_path: Path) -> Dict[str, Any]:
 
 
 def check_interface_versions(versions: List[str]) -> Tuple[List[str], List[str]]:
-    """Return (errors, warnings) for the values of a TOC ``## Interface`` line."""
+    """Return (errors, warnings) for the values of a TOC ``## Interface`` line.
+
+    Every value must be a numeric build. The list is valid when it contains at
+    least one current target (``VALID_INTERFACE_VERSIONS``), so multi-client TOCs
+    such as ``11508, 50503, 120100`` pass.
+    """
     if not versions:
         return ["Missing ## Interface directive"], []
 
     errors: List[str] = []
     warnings: List[str] = []
-    accepted = 0
     for version in versions:
         if not re.fullmatch(r"\d{5,6}", version):
             errors.append(
-                f"Invalid Interface value '{version}': use the numeric build, e.g. 120001"
+                f"Invalid Interface value '{version}': use the numeric build, e.g. 120100"
             )
-        elif len(version) == 6:
-            if int(version) >= MIN_RETAIL_INTERFACE:
-                accepted += 1
-        else:
-            accepted += 1
-            if version not in KNOWN_CLASSIC_INTERFACES:
-                warnings.append(
-                    f"Interface {version} is a classic-style value Mechanic does not recognise"
-                )
-    if not errors and not accepted:
+        elif (
+            len(version) == 5
+            and version not in KNOWN_CLASSIC_INTERFACES
+            and version not in VALID_INTERFACE_VERSIONS
+        ):
+            warnings.append(
+                f"Interface {version} is a classic-style value Mechanic does not recognise"
+            )
+    if not errors and not any(v in VALID_INTERFACE_VERSIONS for v in versions):
         errors.append(
-            f"Interface version outdated: {', '.join(versions)}. "
-            f"Should include a retail version >= {MIN_RETAIL_INTERFACE}"
+            f"Interface version outdated: {', '.join(versions)}. Should include one of: "
+            + ", ".join(
+                f"{v} ({label})" for v, label in VALID_INTERFACE_VERSIONS.items()
+            )
         )
     return errors, warnings
 
