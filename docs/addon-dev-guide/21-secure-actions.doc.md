@@ -1,6 +1,6 @@
 # Secure Actions
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2025-12-18
 

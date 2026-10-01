@@ -1,6 +1,6 @@
 # Slash Commands
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2025-12-18
 
@@ -188,7 +188,7 @@ end
 
 function commands.debug()
     print("=== MyAddon Debug ===")
-    print("Version:", GetAddOnMetadata("MyAddon", "Version"))
+    print("Version:", C_AddOns.GetAddOnMetadata("MyAddon", "Version"))
     print("Interface:", select(4, GetBuildInfo()))
     print("Enabled:", AddonDB.enabled)
     print("In Combat:", InCombatLockdown())
@@ -318,6 +318,6 @@ end
 
 - [Debugging](./10-debugging.doc.md) - Debug command patterns
 - [Localization](./16-localization.doc.md) - Localizing command output
-- [Library Index](../AGENTS.md#library-index) - AceConsole-3.0
+- [Library Index](../integration/libraries.md#library-index) - AceConsole-3.0
 
 

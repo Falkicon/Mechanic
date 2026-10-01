@@ -5,10 +5,11 @@ Scans and searches Blizzard UI atlas icons.
 Migrated from ADDON_DEV/Tools/AtlasScanner.
 """
 
+import asyncio
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
@@ -41,7 +42,7 @@ class AtlasSearchInput(BaseModel):
     query: str = Field(
         ..., description="Search query for atlas icons (supports * wildcards)"
     )
-    limit: int = Field(default=20, description="Maximum results to return")
+    limit: int = Field(default=20, ge=1, description="Maximum results to return")
     include_files: bool = Field(
         default=False, description="Include source file paths in results"
     )
@@ -84,35 +85,9 @@ def _get_default_index_path() -> Path:
 
 
 def _find_atlas_index() -> Optional[Path]:
-    """Find atlas_index.json in configured locations."""
-    config = get_config()
-    search_paths = []
-
-    # Check data directory first
-    search_paths.append(get_data_dir(create=False) / "atlas_index.json")
-
-    # Check legacy locations
-    if config.dev_path:
-        search_paths.extend(
-            [
-                config.dev_path
-                / "ADDON_DEV"
-                / "Tools"
-                / "AtlasScanner"
-                / "atlases.json",
-                config.dev_path
-                / "ADDON_DEV"
-                / "Tools"
-                / "AtlasScanner"
-                / "atlas_index.json",
-            ]
-        )
-
-    for path in search_paths:
-        if path.exists():
-            return path
-
-    return None
+    """Find atlas_index.json in the Mechanic data directory."""
+    path = get_data_dir(create=False) / "atlas_index.json"
+    return path if path.exists() else None
 
 
 def _wildcard_to_regex(pattern: str) -> re.Pattern:
@@ -120,6 +95,33 @@ def _wildcard_to_regex(pattern: str) -> re.Pattern:
     # Escape special regex chars except *
     escaped = re.escape(pattern).replace(r"\*", ".*")
     return re.compile(f"^{escaped}$", re.IGNORECASE)
+
+
+def _scan_atlases(
+    addons_path: Path, source_path: Path
+) -> Tuple[Dict[str, Dict[str, set]], int, int]:
+    """Blocking scan of every .xml/.lua file under ``addons_path``."""
+    atlases: Dict[str, Dict[str, set]] = {}
+    counts = {"xml": 0, "lua": 0}
+    patterns = {"xml": XML_ATLAS_RE, "lua": LUA_ATLAS_RE}
+
+    for suffix, regex in patterns.items():
+        for file_path in addons_path.rglob(f"*.{suffix}"):
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            try:
+                rel_path = str(file_path.relative_to(source_path))
+            except ValueError:
+                rel_path = str(file_path)
+            for match in regex.findall(content):
+                entry = atlases.setdefault(match, {"files": set(), "types": set()})
+                entry["files"].add(rel_path)
+                entry["types"].add(suffix)
+                counts[suffix] += 1
+
+    return atlases, counts["xml"], counts["lua"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -167,46 +169,9 @@ async def _atlas_scan(
     )
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Scan for atlases
-    atlases: Dict[str, Dict] = {}
-    xml_count = 0
-    lua_count = 0
-
-    for file_path in addons_path.rglob("*"):
-        if file_path.suffix not in [".xml", ".lua"]:
-            continue
-
-        try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
-
-            if file_path.suffix == ".xml":
-                matches = XML_ATLAS_RE.findall(content)
-                for match in matches:
-                    if match not in atlases:
-                        atlases[match] = {"files": set(), "types": set()}
-                    try:
-                        rel_path = str(file_path.relative_to(source_path))
-                    except ValueError:
-                        rel_path = str(file_path)
-                    atlases[match]["files"].add(rel_path)
-                    atlases[match]["types"].add("xml")
-                    xml_count += 1
-
-            elif file_path.suffix == ".lua":
-                matches = LUA_ATLAS_RE.findall(content)
-                for match in matches:
-                    if match not in atlases:
-                        atlases[match] = {"files": set(), "types": set()}
-                    try:
-                        rel_path = str(file_path.relative_to(source_path))
-                    except ValueError:
-                        rel_path = str(file_path)
-                    atlases[match]["files"].add(rel_path)
-                    atlases[match]["types"].add("lua")
-                    lua_count += 1
-
-        except Exception:
-            continue
+    atlases, xml_count, lua_count = await asyncio.to_thread(
+        _scan_atlases, addons_path, source_path
+    )
 
     # Convert to serializable format
     index_data = {

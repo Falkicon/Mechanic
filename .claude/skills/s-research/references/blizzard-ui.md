@@ -1,6 +1,6 @@
 # Blizzard UI Source Reference
 
-The official Blizzard UI source code is mirrored locally and should be your primary reference for understanding Blizzard's UI implementation.
+The official Blizzard UI source code should be your primary reference for understanding Blizzard's UI implementation. The paths below are the maintainer's convention (mirrors next to the addons, relative to the WoW installation root); if you have none, clone `https://github.com/Gethe/wow-ui-source` and use that path (the same path feeds `atlas.scan` and `api.populate`).
 
 ## Local Repositories
 

@@ -6,6 +6,20 @@ local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
+-- Tab key -> module table name on Mechanic and the method that builds its frame
+local TAB_MODULES = {
+	console = { module = "Console", initialize = "InitializeConsole" },
+	errors = { module = "Errors", initialize = "InitializeErrors" },
+	tests = { module = "Tests", initialize = "InitializeTests" },
+	tools = { module = "Tools", initialize = "InitializeTools" },
+	api = { module = "API", initialize = "InitializeAPI" },
+	inspect = { module = "Inspect", initialize = "InitializeInspect" },
+	perf = { module = "Perf", initialize = "InitializePerformance" },
+}
+
+-- Modules that own a tab and therefore receive OnShow/OnHide from the main frame
+local LIFECYCLE_MODULES = { "Console", "Errors", "Tests", "Tools", "API", "Inspect", "Perf" }
+
 function Mechanic:CreateMainFrame()
 	if self.frame then
 		return
@@ -153,7 +167,7 @@ function Mechanic:CreateMainFrame()
 	-- Parent visibility changes do not call the modules' Lua lifecycle methods.
 	-- Forward them so closing the panel stops polling and pick-mode handlers.
 	local function notifyShownModules(method)
-		for _, name in ipairs({ "Console", "Errors", "Tests", "Tools", "API", "Inspect", "Perf" }) do
+		for _, name in ipairs(LIFECYCLE_MODULES) do
 			local module = self[name]
 			if module and module.frame and module.frame:IsShown() and module[method] then
 				module[method](module)
@@ -178,119 +192,29 @@ function Mechanic:OnTabChanged(key)
 	end
 
 	-- Hide all module frames
-	if self.Console and self.Console.frame then
-		self.Console.frame:Hide()
-		if self.Console.OnHide then
-			self.Console:OnHide()
-		end
-	end
-	if self.Errors and self.Errors.frame then
-		self.Errors.frame:Hide()
-		if self.Errors.OnHide then
-			self.Errors:OnHide()
-		end
-	end
-	if self.Tests and self.Tests.frame then
-		self.Tests.frame:Hide()
-		if self.Tests.OnHide then
-			self.Tests:OnHide()
-		end
-	end
-	if self.Tools and self.Tools.frame then
-		self.Tools.frame:Hide()
-		if self.Tools.OnHide then
-			self.Tools:OnHide()
-		end
-	end
-	if self.API and self.API.frame then
-		self.API.frame:Hide()
-		if self.API.OnHide then
-			self.API:OnHide()
-		end
-	end
-	if self.Inspect and self.Inspect.frame then
-		self.Inspect.frame:Hide()
-		if self.Inspect.OnHide then
-			self.Inspect:OnHide()
-		end
-	end
-	if self.Perf and self.Perf.frame then
-		self.Perf.frame:Hide()
-		if self.Perf.OnHide then
-			self.Perf:OnHide()
+	for _, name in ipairs(LIFECYCLE_MODULES) do
+		local module = self[name]
+		if module and module.frame then
+			module.frame:Hide()
+			if module.OnHide then
+				module:OnHide()
+			end
 		end
 	end
 
 	-- Show selected module
-	if key == "console" then
-		if not self.Console or not self.Console.frame then
-			self:InitializeConsole()
-		end
-		if self.Console and self.Console.frame then
-			self.Console.frame:Show()
-			if self.Console.OnShow then
-				self.Console:OnShow()
-			end
-		end
-	elseif key == "errors" then
-		if not self.Errors or not self.Errors.frame then
-			self:InitializeErrors()
-		end
-		if self.Errors and self.Errors.frame then
-			self.Errors.frame:Show()
-			if self.Errors.OnShow then
-				self.Errors:OnShow()
-			end
-		end
-	elseif key == "tests" then
-		if not self.Tests or not self.Tests.frame then
-			self:InitializeTests()
-		end
-		if self.Tests and self.Tests.frame then
-			self.Tests.frame:Show()
-			if self.Tests.OnShow then
-				self.Tests:OnShow()
-			end
-		end
-	elseif key == "tools" then
-		if not self.Tools or not self.Tools.frame then
-			self:InitializeTools()
-		end
-		if self.Tools and self.Tools.frame then
-			self.Tools.frame:Show()
-			if self.Tools.OnShow then
-				self.Tools:OnShow()
-			end
-		end
-	elseif key == "api" then
-		if not self.API or not self.API.frame then
-			self:InitializeAPI()
-		end
-		if self.API and self.API.frame then
-			self.API.frame:Show()
-			if self.API.OnShow then
-				self.API:OnShow()
-			end
-		end
-	elseif key == "inspect" then
-		if not self.Inspect or not self.Inspect.frame then
-			self:InitializeInspect()
-		end
-		if self.Inspect and self.Inspect.frame then
-			self.Inspect.frame:Show()
-			if self.Inspect.OnShow then
-				self.Inspect:OnShow()
-			end
-		end
-	elseif key == "perf" then
-		if not self.Perf or not self.Perf.frame then
-			self:InitializePerformance()
-		end
-		if self.Perf and self.Perf.frame then
-			self.Perf.frame:Show()
-			if self.Perf.OnShow then
-				self.Perf:OnShow()
-			end
+	local tab = TAB_MODULES[key]
+	if not tab then
+		return
+	end
+	if not self[tab.module] or not self[tab.module].frame then
+		self[tab.initialize](self)
+	end
+	local module = self[tab.module]
+	if module and module.frame then
+		module.frame:Show()
+		if module.OnShow then
+			module:OnShow()
 		end
 	end
 end

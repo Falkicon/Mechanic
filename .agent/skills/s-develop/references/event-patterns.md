@@ -57,7 +57,7 @@ frame:RegisterUnitEvent("UNIT_AURA", "player", "target")
 
 ### Bucket Events (Ace3)
 
-Batch rapid-fire events:
+Batch rapid-fire events. `RegisterBucketEvent` needs the **AceBucket-3.0** library, which is not part of the Mechanic template's `Libs/` (add it and mix it in with `NewAddon(name, "AceBucket-3.0")`), otherwise use manual throttling below:
 
 ```lua
 -- Fires at most once per 0.2 seconds

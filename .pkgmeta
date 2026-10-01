@@ -12,6 +12,11 @@ ignore:
   - .agent
   - .claude
   - .ruff_cache
+  - .pytest_cache
+  - node_modules
+  - .mcp.json
+  - .claudeignore
+  - .ignore
   - .github
   - .gitignore
   - .luacheckrc

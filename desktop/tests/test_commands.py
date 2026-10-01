@@ -7,6 +7,7 @@ Tests verify all 39 commands follow structured patterns:
 - Schema validation
 """
 
+import asyncio
 import pytest
 import io
 import tempfile
@@ -22,6 +23,14 @@ from afd.testing.assertions import (
     assert_has_reasoning,
     assert_has_sources,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sandbox_output(tmp_path, monkeypatch):
+    """Sandbox commands resolve the repo checkout; keep their output in tmp_path."""
+    from mechanic.commands import sandbox
+
+    monkeypatch.setattr(sandbox, "find_sandbox_folder", lambda: tmp_path / "sandbox")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -213,8 +222,9 @@ async def test_libs_sync_missing_addon():
 
 
 @pytest.mark.asyncio
-async def test_api_search():
+async def test_api_search(monkeypatch):
     """Test api.search reports missing APIDefs deterministically."""
+    monkeypatch.setattr("mechanic.commands.api.get_apidefs_path", lambda: None)
     server = get_server()
     result = await server.execute("api.search", {"query": "UnitHealth"})
 
@@ -222,8 +232,9 @@ async def test_api_search():
 
 
 @pytest.mark.asyncio
-async def test_api_search_no_results():
+async def test_api_search_no_results(monkeypatch):
     """Test api.search handles no matches gracefully."""
+    monkeypatch.setattr("mechanic.commands.api.get_apidefs_path", lambda: None)
     server = get_server()
     result = await server.execute("api.search", {"query": "xyznonexistent12345"})
 
@@ -431,12 +442,12 @@ async def test_changelog_add_missing_addon():
         {
             "addon": "NonExistentAddon12345",
             "version": "1.0.0",
-            "changes": ["Test change"],
+            "message": "Test change",
         },
     )
 
     assert not result.success
-    assert result.error is not None
+    assert result.error.code == "ADDON_NOT_FOUND"
 
 
 @pytest.mark.asyncio
@@ -566,17 +577,27 @@ async def test_dashboard_metrics():
 
 
 @pytest.mark.asyncio
-async def test_server_shutdown():
-    """Test server.shutdown returns proper response.
+async def test_server_shutdown(monkeypatch):
+    """server.shutdown asks the hosting supervisor to stop; it never kills the process."""
+    from mechanic import server as http
 
-    Note: This actually triggers shutdown after 500ms delay,
-    so we only verify the immediate response.
-    """
+    stopped = asyncio.Event()
+    monkeypatch.setattr(http, "_shutdown_handler", stopped.set)
     server = get_server()
     result = await server.execute("server.shutdown", {})
 
     data = assert_success(result)
     assert data.status == "shutting_down"
+    await asyncio.wait_for(stopped.wait(), 2)
+
+
+@pytest.mark.asyncio
+async def test_server_shutdown_without_dashboard_is_an_error(monkeypatch):
+    from mechanic import server as http
+
+    monkeypatch.setattr(http, "_shutdown_handler", None)
+    result = await get_server().execute("server.shutdown", {})
+    assert_error(result, "NOT_RUNNING")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
 -- !Mechanic - Performance Tab Module (Phase 3)
 --
 -- Provides memory/CPU metrics per addon, extended metrics (FPS, latency),
--- and optional event frequency tracking.
+-- and per-addon CPU rates.
 
 local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
@@ -14,13 +14,18 @@ Mechanic.Perf = PerformanceModule
 PerformanceModule.autoRefresh = true
 PerformanceModule.refreshTimer = nil
 PerformanceModule.trackingStart = nil
-PerformanceModule.eventCounts = {}
 PerformanceModule.sortColumn = "memory"
 PerformanceModule.sortDesc = true
 PerformanceModule.visible = false
-PerformanceModule.exportMode = false
-PerformanceModule.navDirty = true
 PerformanceModule.selectedAddon = "general"
+PerformanceModule.cpuEnabled = false
+PerformanceModule.cpuPrev = nil -- name -> cumulative ms at the previous sample
+PerformanceModule.cpuPrevTime = nil
+PerformanceModule.cpuRate = {} -- name -> ms/s over the last sample window
+PerformanceModule.collected = {} -- reused per-tick row data
+
+-- CPU samples closer together than this reuse the previous rates (manual refresh spam)
+local MIN_CPU_SAMPLE_SECONDS = 0.5
 
 -- Register static popup for CPU profiling
 _G.StaticPopupDialogs["MECHANIC_CPU_PROFILING"] = {
@@ -62,6 +67,8 @@ function Mechanic:InitializePerformance()
 	if PerformanceModule.frame then
 		return
 	end
+
+	PerformanceModule.trackingStart = GetTime()
 
 	-- Initialize state tables early to prevent nil errors during restored selection
 	PerformanceModule.addonRows = {}
@@ -221,7 +228,7 @@ function Mechanic:InitializePerformance()
 	headerRow:SetHeight(24)
 	headerRow:SetPoint("TOPLEFT", metricsRow, "BOTTOMLEFT", 0, -4)
 	headerRow:SetPoint("TOPRIGHT", -27, 0) -- Adjusted for scrollbar
-	PerformanceModule:CreateHeaderRow(headerRow, COLUMNS)
+	PerformanceModule:CreateHeaderRow(headerRow, COLUMNS, true)
 	PerformanceModule.headerRow = headerRow
 
 	-- Addon List (ScrollFrame)
@@ -250,8 +257,6 @@ function Mechanic:InitializePerformance()
 
 	-- --- Addon Details View UI ---
 
-	-- Initial state
-	PerformanceModule:OnEnable()
 end
 
 function PerformanceModule:OnShow()
@@ -272,13 +277,11 @@ function PerformanceModule:OnShow()
 	self:UpdateDisplay()
 	self:StartAutoRefresh()
 	self:UpdateCPUButtonState()
-	self:EnableEventTracking()
 end
 
 function PerformanceModule:OnHide()
 	self.visible = false
 	self:StopAutoRefresh()
-	self:DisableEventTracking()
 end
 
 function PerformanceModule:GetNavItems()
@@ -316,7 +319,6 @@ end
 
 function PerformanceModule:RefreshNavItems()
 	self.layout:SetItems(self:GetNavItems())
-	self.navDirty = false
 end
 
 function PerformanceModule:OnNavSelected(key)
@@ -349,40 +351,35 @@ function PerformanceModule:CreateAddonRow(parent, columns)
 	end
 	row.labels = labels
 
-	-- Only main list rows handle sorting via click
-	if columns == COLUMNS then
-		row:SetScript("OnMouseDown", function(_, button)
-			if button == "LeftButton" then
-				local x = GetCursorPosition()
-				local currentX = row:GetLeft()
-				for _, col in ipairs(columns) do
-					if x >= currentX and x < currentX + col.width then
-						PerformanceModule:SortBy(col.key)
-						break
-					end
-					currentX = currentX + col.width + 4
-				end
-			end
-		end)
-	end
-
 	return row
 end
 
-function PerformanceModule:CreateHeaderRow(parent, columns)
+function PerformanceModule:CreateHeaderRow(parent, columns, sortable)
 	parent.labels = {}
 	local xOffset = 0
 	local font = FenUI:GetFont("fontMono")
 
 	for _, col in ipairs(columns) do
-		local headerLabel = parent:CreateFontString(nil, "OVERLAY", font)
+		local labelParent = parent
+		if sortable then
+			-- Sortable headers are buttons so clicks need no cursor/scale math
+			local button = CreateFrame("Button", nil, parent)
+			button:SetSize(col.width, parent:GetHeight())
+			button:SetPoint("LEFT", xOffset, 0)
+			button:RegisterForClicks("LeftButtonUp")
+			button:SetScript("OnClick", function()
+				PerformanceModule:SortBy(col.key)
+			end)
+			labelParent = button
+		end
+		local headerLabel = labelParent:CreateFontString(nil, "OVERLAY", font)
 
 		-- Defensive check: if font failed to set during creation, fallback explicitly
 		if not headerLabel:GetFont() then
 			headerLabel:SetFontObject("ChatFontNormal")
 		end
 
-		headerLabel:SetPoint("LEFT", xOffset, 0)
+		headerLabel:SetPoint("LEFT", sortable and 0 or xOffset, 0)
 		headerLabel:SetWidth(col.width)
 		headerLabel:SetJustifyH("LEFT")
 		headerLabel:SetText(col.label or "")
@@ -471,8 +468,6 @@ function PerformanceModule:Refresh()
 		)
 	)
 
-	self:UpdateCPUButtonState()
-
 	-- Smart refresh: Update the active view
 	if self.selectedAddon == "general" then
 		self:UpdateAddonList()
@@ -483,46 +478,94 @@ function PerformanceModule:Refresh()
 	self.blocks.uiRefresh = debugprofilestop() - refreshStart
 end
 
+--- Convert each entry's cumulative CPU ms (`cpuRaw`) into ms/s over the window since the
+--- previous sample and store it in `cpu`. Returns the total rate. Samples closer than
+--- MIN_CPU_SAMPLE_SECONDS reuse the last rates so manual refreshes do not add noise.
+function PerformanceModule:UpdateCPURates(entries, now)
+	local prev, rate = self.cpuPrev, self.cpuRate
+	if not prev then
+		prev = {}
+		self.cpuPrev = prev
+	end
+
+	local baseline = self.cpuPrevTime == nil
+	local dt = baseline and 0 or (now - self.cpuPrevTime)
+	local resample = baseline or dt >= MIN_CPU_SAMPLE_SECONDS
+
+	local total = 0
+	for i = 1, #entries do
+		local entry = entries[i]
+		local name = entry.name
+		if resample then
+			local last = prev[name]
+			local delta = last and (entry.cpuRaw - last) or 0
+			if baseline or delta < 0 or dt <= 0 then
+				rate[name] = 0 -- first sample or counter reset: no window yet
+			else
+				rate[name] = delta / dt
+			end
+			prev[name] = entry.cpuRaw
+		end
+		entry.cpu = rate[name] or 0
+		total = total + entry.cpu
+	end
+	if resample then
+		self.cpuPrevTime = now
+	end
+	return total
+end
+
+function PerformanceModule:ResetCPURates()
+	self.cpuPrevTime = nil
+	if self.cpuPrev then
+		wipe(self.cpuPrev)
+	end
+	wipe(self.cpuRate)
+end
+
 function PerformanceModule:CollectAddonData()
-	local addonMemory = {}
-	local totalMemory = 0
-	local numAddons = C_AddOns.GetNumAddOns()
+	-- Row tables are reused every tick instead of reallocated
+	local data = self.collected
+	local count, totalMemory = 0, 0
+	local cpuEnabled = GetCVarBool("scriptProfile")
+	self.cpuEnabled = cpuEnabled
 
 	UpdateAddOnMemoryUsage()
-	for i = 1, numAddons do
+	if cpuEnabled then
+		UpdateAddOnCPUUsage()
+	end
+	for i = 1, C_AddOns.GetNumAddOns() do
 		if C_AddOns.IsAddOnLoaded(i) then
-			local name = C_AddOns.GetAddOnInfo(i)
+			count = count + 1
+			local entry = data[count]
+			if not entry then
+				entry = {}
+				data[count] = entry
+			end
 			local mem = GetAddOnMemoryUsage(i)
-			addonMemory[name] = mem
+			entry.name = C_AddOns.GetAddOnInfo(i)
+			entry.memory = mem
+			entry.cpuRaw = cpuEnabled and GetAddOnCPUUsage(i) or 0
 			totalMemory = totalMemory + mem
 		end
 	end
-
-	local addonCPU = {}
-	local totalCPU = 0
-	local cpuEnabled = GetCVarBool("scriptProfile")
-	if cpuEnabled then
-		UpdateAddOnCPUUsage()
-		for i = 1, numAddons do
-			if C_AddOns.IsAddOnLoaded(i) then
-				local name = C_AddOns.GetAddOnInfo(i)
-				local cpu = GetAddOnCPUUsage(i)
-				addonCPU[name] = cpu
-				totalCPU = totalCPU + cpu
-			end
-		end
+	for i = #data, count + 1, -1 do
+		data[i] = nil
 	end
 
-	local data = {}
-	for addonName, mem in pairs(addonMemory) do
-		local cpu = addonCPU[addonName] or 0
-		table.insert(data, {
-			name = addonName,
-			memory = mem,
-			memoryPercent = totalMemory > 0 and (mem / totalMemory) * 100 or 0,
-			cpu = cpu,
-			cpuPercent = totalCPU > 0 and (cpu / totalCPU) * 100 or 0,
-		})
+	local totalCPU = 0
+	if cpuEnabled then
+		totalCPU = self:UpdateCPURates(data, GetTime())
+	else
+		self:ResetCPURates()
+		for i = 1, count do
+			data[i].cpu = 0
+		end
+	end
+	for i = 1, count do
+		local entry = data[i]
+		entry.memoryPercent = totalMemory > 0 and (entry.memory / totalMemory) * 100 or 0
+		entry.cpuPercent = totalCPU > 0 and (entry.cpu / totalCPU) * 100 or 0
 	end
 	return data, cpuEnabled
 end
@@ -551,8 +594,19 @@ function PerformanceModule:SortAddonData(data)
 	end)
 end
 
+-- Avoid re-laying out a FontString when the text did not change between ticks
+local function SetLabelText(label, text)
+	if label.lastText ~= text then
+		label.lastText = text
+		label:SetText(text)
+	end
+end
+
 function PerformanceModule:UpdateAddonList()
-	local data = self:CollectAddonData()
+	self:RenderAddonList((self:CollectAddonData()))
+end
+
+function PerformanceModule:RenderAddonList(data)
 	self:SortAddonData(data)
 
 	for _, col in ipairs(COLUMNS) do
@@ -563,11 +617,13 @@ function PerformanceModule:UpdateAddonList()
 				sortIndicator = self.sortDesc and " |A:common-icon-downarrow:14:14|a"
 					or " |A:common-icon-uparrow:14:14|a"
 			end
-			headerLabel:SetText(tostring(col.label or "") .. sortIndicator)
+			SetLabelText(headerLabel, tostring(col.label or "") .. sortIndicator)
 		end
 	end
 
 	-- Update rows
+	local cpuEnabled = self.cpuEnabled
+	local dash = L["-"] or "-"
 	local yOffset = 0
 	for i, rowData in ipairs(data) do
 		local row = self.addonRows[i]
@@ -575,17 +631,21 @@ function PerformanceModule:UpdateAddonList()
 			row = self:CreateAddonRow(self.content, COLUMNS)
 			table.insert(self.addonRows, row)
 		end
-		row:SetPoint("TOPLEFT", 0, -yOffset)
-		row:SetPoint("TOPRIGHT", 0, -yOffset)
-		row.labels.name:SetText(tostring(rowData.name or "Unknown"))
-		row.labels.memory:SetText(Mechanic.Utils:FormatMemory(rowData.memory or 0))
-		row.labels.memoryPercent:SetText(string.format("%.1f%%", tonumber(rowData.memoryPercent) or 0))
-		if GetCVarBool("scriptProfile") then
-			row.labels.cpu:SetText(string.format("%.2f", tonumber(rowData.cpu) or 0))
-			row.labels.cpuPercent:SetText(string.format("%.1f%%", tonumber(rowData.cpuPercent) or 0))
+		if row.layoutY ~= yOffset then
+			row.layoutY = yOffset
+			row:SetPoint("TOPLEFT", 0, -yOffset)
+			row:SetPoint("TOPRIGHT", 0, -yOffset)
+		end
+		local labels = row.labels
+		SetLabelText(labels.name, tostring(rowData.name or "Unknown"))
+		SetLabelText(labels.memory, Mechanic.Utils:FormatMemory(rowData.memory or 0))
+		SetLabelText(labels.memoryPercent, string.format("%.1f%%", tonumber(rowData.memoryPercent) or 0))
+		if cpuEnabled then
+			SetLabelText(labels.cpu, string.format("%.2f", tonumber(rowData.cpu) or 0))
+			SetLabelText(labels.cpuPercent, string.format("%.1f%%", tonumber(rowData.cpuPercent) or 0))
 		else
-			row.labels.cpu:SetText(L["-"] or "-")
-			row.labels.cpuPercent:SetText(L["-"] or "-")
+			SetLabelText(labels.cpu, dash)
+			SetLabelText(labels.cpuPercent, dash)
 		end
 		row:Show()
 		yOffset = yOffset + 20
@@ -606,7 +666,12 @@ function PerformanceModule:SortBy(column)
 		self.sortColumn = column
 		self.sortDesc = true -- Default to descending for new column
 	end
-	self:UpdateAddonList()
+	-- Re-sort the last sample; re-collecting would perturb the CPU rate window
+	if #self.collected > 0 then
+		self:RenderAddonList(self.collected)
+	else
+		self:UpdateAddonList()
+	end
 end
 
 function PerformanceModule:ShowAddonDetails(addonName)
@@ -929,54 +994,19 @@ end
 function PerformanceModule:ResetStats()
 	self.trackingStart = GetTime()
 	ResetCPUUsage()
+	self:ResetCPURates()
+	-- Full collection only on this explicit user action, so memory reads restart from a clean baseline
 	collectgarbage("collect")
 	self:Refresh()
 	Mechanic:Print(L["Performance stats reset."])
 end
 
 --------------------------------------------------------------------------------
--- Event Frequency Tracking (Optional)
+-- Deprecated
 --------------------------------------------------------------------------------
 
-function PerformanceModule:EnableEventTracking()
-	if not Mechanic.db.profile.trackEventFrequency then
-		return
-	end
-
-	self.eventCounts = {}
-	self.eventTrackingStart = GetTime()
-
-	-- Create tracking frame
-	if not self.eventFrame then
-		self.eventFrame = CreateFrame("Frame")
-		self.eventFrame:SetScript("OnEvent", function(_, event)
-			if self.eventCounts[event] then
-				self.eventCounts[event].count = self.eventCounts[event].count + 1
-			end
-		end)
-	end
-
-	-- Register for common high-frequency events
-	local events = {
-		"UNIT_HEALTH",
-		"UNIT_POWER_UPDATE",
-		"UNIT_AURA",
-		"COMBAT_LOG_EVENT_UNFILTERED",
-		"SPELL_UPDATE_COOLDOWN",
-	}
-	for _, event in ipairs(events) do
-		self.eventCounts[event] = { count = 0 }
-		self.eventFrame:RegisterEvent(event)
-	end
-end
-
-function PerformanceModule:DisableEventTracking()
-	if self.eventFrame then
-		self.eventFrame:UnregisterAllEvents()
-	end
-end
-
-function PerformanceModule:OnEnable()
-	-- Initial registration or setup if needed
-end
-
+-- Event frequency tracking was removed (its counts were never displayed). Core.lua still
+-- calls EnableEventTracking when an old profile has trackEventFrequency set; these no-ops
+-- keep that call safe until the call site is dropped.
+function PerformanceModule:EnableEventTracking() end
+function PerformanceModule:DisableEventTracking() end

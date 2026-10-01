@@ -1,8 +1,8 @@
 # Localization
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-18
+Last updated: 2026-09-30
 
 ---
 
@@ -329,29 +329,27 @@ print(L["START_FLIGHT"])
 
 ## Localization Automation
 
-This workspace includes tools to automate the extraction and validation of localized strings.
+Mechanic Desktop provides commands to extract and validate localized strings.
 
 ### Key Tools
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| **Extractor** | `addon-dev localize extract <Addon>` | Find all `L["KEY"]` in source code |
-| **Validator** | `addon-dev localize validate <Addon>` | Check coverage across all locale files |
-| **Scaffolder** | `addon-dev localize scaffold <Addon>` | Create missing locale `.lua` files |
+| **Extractor** | `locale.extract` | Find candidate localizable strings in source code |
+| **Validator** | `locale.validate` | Check coverage across locale files against the enUS baseline |
+
+There is no scaffolding command; copy `enUS.lua` to create each new locale file.
 
 ### Standard Workflow
 
-1.  **Extract**: Identify all strings used in your code.
+1.  **Extract**: Identify strings used in your code.
     ```bash
-    addon-dev localize extract "Weekly"
+    mech call locale.extract '{"addon": "Weekly"}'
     ```
-2.  **Scaffold**: Generate placeholder files for all 11 supported locales.
-    ```bash
-    addon-dev localize scaffold "Weekly"
-    ```
+2.  **Create locale files**: Add one file per supported locale (copy `enUS.lua` and translate).
 3.  **Validate**: Verify that all locales have been updated.
     ```bash
-    addon-dev localize validate "Weekly"
+    mech call locale.validate '{"addon": "Weekly"}'
     ```
 
 ---
@@ -359,6 +357,6 @@ This workspace includes tools to automate the extraction and validation of local
 ## See Also
 
 - [Style Guide](./17-style-guide.doc.md) - Text conventions for translatable strings
-- [Library Index](../AGENTS.md#library-index) - AceLocale-3.0 documentation
+- [Library Index](../integration/libraries.md#library-index) - AceLocale-3.0 documentation
 
 

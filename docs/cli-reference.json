@@ -12,38 +12,45 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "categories",
-        "type": "string",
+        "type": "array | null",
         "required": false,
         "description": "Specific categories to check (default: all)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "max_nesting",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Maximum allowed nesting depth",
         "default": "5"
       },
       {
         "name": "max_function_lines",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Maximum lines per function",
         "default": "100"
       },
       {
         "name": "max_file_lines",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Maximum lines per file",
         "default": "500"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Maximum issues returned, most severe first (counts cover all issues)",
+        "default": "200"
       }
     ]
   },
@@ -60,17 +67,17 @@
       },
       {
         "name": "template",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Template to use (defaults to _TemplateAddon)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "author",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Author name for metadata",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -87,17 +94,17 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "categories",
-        "type": "string",
+        "type": "array | null",
         "required": false,
         "description": "Specific categories to check (default: all)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "include_suspicious",
@@ -105,12 +112,19 @@
         "required": false,
         "description": "Include lower-confidence findings",
         "default": "True"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Maximum issues returned, most severe first (counts cover all issues)",
+        "default": "200"
       }
     ]
   },
   {
     "name": "addon.deprecations",
-    "description": "Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)",
+    "description": "Scan a WoW addon's Lua files for deprecated API calls",
     "parameters": [
       {
         "name": "addon",
@@ -121,24 +135,17 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
-      },
-      {
-        "name": "fix",
-        "type": "boolean",
-        "required": false,
-        "description": "Attempt to auto-fix deprecated calls",
-        "default": "False"
+        "default": "None"
       },
       {
         "name": "category",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Filter by category (e.g., spells, items, containers)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "min_severity",
@@ -162,10 +169,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "check",
@@ -189,17 +196,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
-      },
-      {
-        "name": "fix",
-        "type": "boolean",
-        "required": false,
-        "description": "Not applicable for Luacheck (read-only)",
-        "default": "False"
+        "default": "None"
       }
     ]
   },
@@ -207,6 +207,13 @@
     "name": "addon.output",
     "description": "Get all addon output (errors, tests, console) for agent consumption. Use agent_mode=true for compressed output.",
     "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
       {
         "name": "agent_mode",
         "type": "boolean",
@@ -229,17 +236,17 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "categories",
-        "type": "string",
+        "type": "array | null",
         "required": false,
         "description": "Specific categories to check (default: all)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "include_suspicious",
@@ -247,12 +254,19 @@
         "required": false,
         "description": "Include lower-confidence findings",
         "default": "True"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Maximum issues returned, most severe first (counts cover all issues)",
+        "default": "200"
       }
     ]
   },
   {
     "name": "addon.sync",
-    "description": "Create junction links from development addon to WoW client folders",
+    "description": "Preflight and create addon junction links; supports dry_run",
     "parameters": [
       {
         "name": "addon",
@@ -263,10 +277,17 @@
       },
       {
         "name": "flavors",
-        "type": "string",
+        "type": "array | null",
         "required": false,
         "description": "WoW flavors to sync to (defaults to all)",
-        "default": null
+        "default": "None"
+      },
+      {
+        "name": "dry_run",
+        "type": "boolean",
+        "required": false,
+        "description": "Validate and preview junctions without creating directories or links",
+        "default": "False"
       }
     ]
   },
@@ -283,10 +304,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "coverage",
@@ -310,10 +331,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -323,17 +344,17 @@
     "parameters": [
       {
         "name": "build_id",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Specific build ID to download (e.g., '64889'). If not provided, fetches latest.",
-        "default": null
+        "description": "Build ID to download (digits only, e.g., '64889'). Required.",
+        "default": "None"
       },
       {
         "name": "output_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Where to extract the download. Defaults to _dev_/framexml/{version}",
-        "default": null
+        "description": "Where to extract the download. Defaults to <data_dir>/framexml/{version}",
+        "default": "None"
       },
       {
         "name": "refresh",
@@ -346,21 +367,28 @@
   },
   {
     "name": "api.generate",
-    "description": "Generate APIDefs Lua files from api_database.json for Mechanic",
+    "description": "Generate APIDefs Lua files from api_database.json for Mechanic (defaults to the repository's Mechanic/UI/APIDefs)",
     "parameters": [
       {
         "name": "database_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Path to api_database.json (defaults to data_dir)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "output_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Output path for APIDefs (defaults to Mechanic/UI/APIDefs)",
-        "default": null
+        "description": "Output folder for APIDefs (defaults to the repository's Mechanic/UI/APIDefs). Must be named 'APIDefs' unless allow_any_output_dir is set.",
+        "default": "None"
+      },
+      {
+        "name": "allow_any_output_dir",
+        "type": "boolean",
+        "required": false,
+        "description": "Allow an output folder that is not named 'APIDefs'",
+        "default": "False"
       }
     ]
   },
@@ -383,21 +411,21 @@
     "parameters": [
       {
         "name": "namespace",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Namespace to list (e.g., C_Spell)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "category",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Category to list",
-        "default": null
+        "default": "None"
       },
       {
         "name": "limit",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Max results",
         "default": "50"
@@ -417,10 +445,10 @@
       },
       {
         "name": "output_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Output path for api_database.json (defaults to data_dir)",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -428,6 +456,13 @@
     "name": "api.queue",
     "description": "Queue API tests for in-game execution. After running this, /reload in WoW to execute tests.",
     "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
       {
         "name": "apis",
         "type": "array",
@@ -437,10 +472,10 @@
       },
       {
         "name": "params",
-        "type": "string",
+        "type": "object | null",
         "required": false,
         "description": "Optional parameters per API: {'C_Spell.GetSpellInfo': {'spellID': 8690}}",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -454,6 +489,27 @@
         "required": true,
         "description": "Path to wow-ui-source repository root or Townlong Yak extract",
         "default": null
+      },
+      {
+        "name": "output_path",
+        "type": "string | null",
+        "required": false,
+        "description": "APIDefs output folder (see api.generate)",
+        "default": "None"
+      },
+      {
+        "name": "database_path",
+        "type": "string | null",
+        "required": false,
+        "description": "api_database.json location (defaults to data_dir)",
+        "default": "None"
+      },
+      {
+        "name": "allow_any_output_dir",
+        "type": "boolean",
+        "required": false,
+        "description": "Allow an output folder that is not named 'APIDefs'",
+        "default": "False"
       }
     ]
   },
@@ -470,21 +526,21 @@
       },
       {
         "name": "category",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Filter by category",
-        "default": null
+        "default": "None"
       },
       {
         "name": "namespace",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Filter by namespace",
-        "default": null
+        "default": "None"
       },
       {
         "name": "limit",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Max results to return",
         "default": "20"
@@ -511,7 +567,7 @@
   },
   {
     "name": "assets.sync",
-    "description": "Sync addon assets: convert PNG to TGA and copy other files from assets_source to assets",
+    "description": "Sync addon assets: convert PNG to TGA and copy other files from assets_source to assets; removes only files a previous sync generated; supports dry_run",
     "parameters": [
       {
         "name": "addon",
@@ -521,10 +577,10 @@
         "default": null
       },
       {
-        "name": "verbose",
+        "name": "dry_run",
         "type": "boolean",
         "required": false,
-        "description": "Show detailed output",
+        "description": "Report what would be converted, copied and removed without changing files",
         "default": "False"
       }
     ]
@@ -542,10 +598,10 @@
       },
       {
         "name": "output_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Output path for atlas_index.json (defaults to data_dir)",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -562,7 +618,7 @@
       },
       {
         "name": "limit",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Maximum results to return",
         "default": "20"
@@ -605,21 +661,44 @@
         "name": "category",
         "type": "string",
         "required": false,
-        "description": "Category: Added, Changed, Fixed, Removed",
+        "description": "Category: Added, Changed, Deprecated, Removed, Fixed, Security",
         "default": "'Changed'"
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
   {
+    "name": "commands.list",
+    "description": "List command schemas and mutation metadata",
+    "parameters": []
+  },
+  {
     "name": "dashboard.metrics",
     "description": "Get the latest reload and test metrics from the local history",
+    "parameters": []
+  },
+  {
+    "name": "diagnostic.metrics",
+    "description": "Read bounded desktop overhead and optional explicitly selected addon snapshot",
+    "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "Explicit target to include its last saved addon overhead snapshot",
+        "default": "None"
+      }
+    ]
+  },
+  {
+    "name": "diagnostic.targets",
+    "description": "List deterministic client/account/character/profile diagnostic targets",
     "parameters": []
   },
   {
@@ -628,10 +707,10 @@
     "parameters": [
       {
         "name": "output_path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Output file path. Defaults to docs/cli-reference.md",
-        "default": null
+        "default": "None"
       },
       {
         "name": "format",
@@ -655,10 +734,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       },
       {
         "name": "include_suspicious",
@@ -669,10 +748,17 @@
       },
       {
         "name": "commits_threshold",
-        "type": "number",
+        "type": "integer",
         "required": false,
-        "description": "Flag docs not updated in this many commits",
+        "description": "Flag docs not updated in this many code commits",
         "default": "10"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Maximum issues returned, most severe first (counts cover all issues)",
+        "default": "200"
       }
     ]
   },
@@ -684,12 +770,27 @@
   {
     "name": "fencore-catalog",
     "description": "Get full catalog of FenCore logic domains and functions",
-    "parameters": []
+    "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      }
+    ]
   },
   {
     "name": "fencore-info",
     "description": "Get detailed info about a specific FenCore function",
     "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
       {
         "name": "domain",
         "type": "string",
@@ -711,6 +812,13 @@
     "description": "Search FenCore functions by name or description",
     "parameters": [
       {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
+      {
         "name": "query",
         "type": "string",
         "required": true,
@@ -719,7 +827,7 @@
       },
       {
         "name": "limit",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Maximum results to return",
         "default": "20"
@@ -728,7 +836,7 @@
   },
   {
     "name": "git.commit",
-    "description": "Stage all addon changes and create a git commit",
+    "description": "Stage all addon changes and create a git commit limited to the addon folder",
     "parameters": [
       {
         "name": "addon",
@@ -746,10 +854,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -773,17 +881,17 @@
       },
       {
         "name": "message",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Tag message (defaults to version)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -840,10 +948,10 @@
       },
       {
         "name": "source",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Source library path (defaults to ADDON_DEV Libs)",
-        "default": null
+        "description": "Source library path (defaults to <dev_path>/Libs, then <dev_path>/MechanicLocal/Libs)",
+        "default": "None"
       },
       {
         "name": "dry_run",
@@ -881,10 +989,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -901,10 +1009,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   },
@@ -912,6 +1020,13 @@
     "name": "lua.queue",
     "description": "Queue Lua code snippets for in-game execution. After running this, /reload in WoW to execute.",
     "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
       {
         "name": "code",
         "type": "array",
@@ -921,17 +1036,25 @@
       },
       {
         "name": "labels",
-        "type": "string",
+        "type": "array | null",
         "required": false,
         "description": "Optional labels for each snippet (for easier identification in results)",
-        "default": null
+        "default": "None"
       }
     ]
   },
   {
     "name": "lua.results",
     "description": "Get results from the last Lua eval queue execution",
-    "parameters": []
+    "parameters": [
+      {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      }
+    ]
   },
   {
     "name": "perf.baseline",
@@ -1026,7 +1149,7 @@
       },
       {
         "name": "limit",
-        "type": "number",
+        "type": "integer",
         "required": false,
         "description": "Number of recent measurements to show",
         "default": "10"
@@ -1035,7 +1158,7 @@
   },
   {
     "name": "release.all",
-    "description": "Run version bump, changelog, commit, and tag as one release workflow",
+    "description": "Preflight and run version bump, changelog, commit and tag; supports dry_run",
     "parameters": [
       {
         "name": "addon",
@@ -1067,10 +1190,17 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path",
-        "default": null
+        "default": "None"
+      },
+      {
+        "name": "dry_run",
+        "type": "boolean",
+        "required": false,
+        "description": "Validate and preview without changing files, index, commits or tags",
+        "default": "False"
       }
     ]
   },
@@ -1103,7 +1233,7 @@
   },
   {
     "name": "sandbox.exec",
-    "description": "Execute Lua code in sandbox environment with WoW API stubs",
+    "description": "Execute Lua code in a restricted sandbox with WoW API stubs. User code sees only whitelisted globals (no os, io, package, debug, require, dofile, loadfile, string.dump or bytecode loading); runs for at most 30s and prints at most 256 KB.",
     "parameters": [
       {
         "name": "code",
@@ -1114,10 +1244,10 @@
       },
       {
         "name": "addon",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Name of addon to load before execution (looks in _dev_ folder)",
-        "default": null
+        "default": "None"
       },
       {
         "name": "load_stubs",
@@ -1130,20 +1260,20 @@
   },
   {
     "name": "sandbox.generate",
-    "description": "Generate WoW API stubs from APIDefs database for sandbox testing",
+    "description": "Generate WoW API stubs from APIDefs for sandbox testing. A namespace is regenerated in place; existing stubs are kept unless force is set or the APIDefs are newer.",
     "parameters": [
       {
         "name": "namespace",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Specific namespace to generate (e.g., 'C_Spell'). If not provided, generates all.",
-        "default": null
+        "description": "Specific namespace to regenerate in place (e.g., 'C_Spell'); the other namespaces in an existing stubs file are kept. If not provided, generates all.",
+        "default": "None"
       },
       {
         "name": "force",
         "type": "boolean",
         "required": false,
-        "description": "Regenerate even if stubs exist",
+        "description": "Regenerate all stubs even if they are newer than the APIDefs",
         "default": "False"
       }
     ]
@@ -1155,7 +1285,7 @@
   },
   {
     "name": "sandbox.test",
-    "description": "Run Busted tests for an addon's Core layer with WoW API stubs",
+    "description": "Run an addon's *_spec.lua tests (Core/ and Tests/) in the restricted sandbox with WoW API stubs and the bundled busted-style framework. filter limits tests by name; failures are listed first.",
     "parameters": [
       {
         "name": "addon",
@@ -1166,10 +1296,10 @@
       },
       {
         "name": "filter",
-        "type": "string",
+        "type": "string | null",
         "required": false,
-        "description": "Filter pattern for test names",
-        "default": null
+        "description": "Only run tests whose full name contains this text (case-insensitive)",
+        "default": "None"
       }
     ]
   },
@@ -1188,6 +1318,13 @@
     "description": "Parse a WoW SavedVariables file and extract !Mechanic data",
     "parameters": [
       {
+        "name": "target",
+        "type": "object | null",
+        "required": false,
+        "description": "",
+        "default": "None"
+      },
+      {
         "name": "file_path",
         "type": "string",
         "required": true,
@@ -1198,7 +1335,7 @@
   },
   {
     "name": "system.pick_file",
-    "description": "Open a native file picker dialog to select a file",
+    "description": "Open a native file picker dialog to select a file (Windows only)",
     "parameters": [
       {
         "name": "title",
@@ -1241,10 +1378,10 @@
       },
       {
         "name": "path",
-        "type": "string",
+        "type": "string | null",
         "required": false,
         "description": "Override path to addon folder",
-        "default": null
+        "default": "None"
       }
     ]
   }

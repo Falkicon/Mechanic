@@ -1,198 +1,36 @@
 # Skill Architecture
 
-Guidance for organizing skills and deciding skill boundaries.
+Where skill boundaries go and how this repository's set is organized.
 
-## When to Create a New Skill
+## Current set
 
-### Create Separate Skills When
+| Group | Skills |
+|-------|--------|
+| Protocol | `using-mechanic` |
+| Knowledge (`k-`) | `k-ecosystem`, `k-mechanic`, `k-desktop`, `k-apidefs`, `k-fenui`, `k-fencore`, `k-docs`, `k-create-skill` |
+| Actions (`s-`, each with a `c-` command) | `s-audit`, `s-clean`, `s-debug`, `s-develop`, `s-lint`, `s-release`, `s-research`, `s-test` |
 
-- **Distinct domains** — Content design vs. component specs
-- **Different audiences** — Developer docs vs. user-facing UI
-- **Independent usage** — One skill useful without the other
-- **Large scope** — Too much content for one skill
+`c-review` orchestrates several skills and has no skill of its own.
 
-### Keep as One Skill When
+## Where to put things
 
-- **Related content** — All aspects of content design
-- **Shared principles** — Same underlying rules apply
-- **Cross-referencing needed** — Topics frequently used together
-- **Manageable size** — < 30-40 reference files
+- Always-loaded, short context: `k-ecosystem` (also mirrored to `.agent/rules/ecosystem.md`). Keep it small.
+- Protocol that must be identical everywhere: `using-mechanic` only.
+- A new tool or workflow: extend the owning skill first; add a skill only when the topic has its own triggers and more than a few paragraphs.
+- Generated or volatile facts (command lists, counts, versions): do not write them in skills; link to generated files or tell the reader to call `commands.list`.
 
-## Skill Sizing
+## Size guidance
 
-### Too Small
+| Skill size | Layout |
+|------------|--------|
+| Small | SKILL.md only (under about 150 lines) |
+| Medium | SKILL.md plus 2-6 references |
+| Large | Split into several skills instead of growing one |
 
-```
-❌ skill-button-labels/
-❌ skill-error-messages/
-❌ skill-tooltips/
-```
+## Split signals
 
-**Problem:** Fragmented, hard to route, inefficient.
+Split when the description needs "and" three times, the body exceeds about 200 lines, or two groups of users never need the same half.
 
-### Too Large
+## Mirroring
 
-```
-❌ skill-everything/
-   └── references/ (100+ files)
-```
-
-**Problem:** Slow loading, unfocused, hard to maintain.
-
-### Right Size
-
-```
-✓ content-design/
-   └── references/
-       ├── style/ (10 files)
-       ├── patterns/ (15 files)
-       ├── terminology/ (10 files)
-       └── strategy/ (3 files)
-```
-
-**Sweet spot:** 20-40 reference files, clear domain boundary.
-
-## Organizing Multiple Skills
-
-### Recommended Skill Breakdown
-
-For a UX system:
-
-```
-.github/skills/
-├── content-design/       # UI text, style guide, terminology
-├── component-specs/      # Component patterns, props, usage
-├── accessibility/        # A11y guidelines, WCAG compliance
-├── design-tokens/        # Colors, spacing, typography
-└── skill-creation/       # Meta-skill for creating skills
-```
-
-### Naming Convention
-
-- Use kebab-case
-- Be descriptive but concise
-- Reflect the domain, not the format
-
-```
-✓ content-design
-✓ component-specs
-✓ accessibility-guidelines
-
-✗ content
-✗ specs
-✗ a11y
-```
-
-## Reference Organization
-
-### Flat Structure
-
-For small skills (< 10 references):
-
-```
-references/
-├── grammar.md
-├── punctuation.md
-├── word-choice.md
-└── capitalization.md
-```
-
-### Categorized Structure
-
-For larger skills:
-
-```
-references/
-├── style/
-│   ├── grammar.md
-│   └── punctuation.md
-├── patterns/
-│   ├── errors.md
-│   └── empty-states.md
-└── terminology/
-    ├── power-bi.md
-    └── fabric-core.md
-```
-
-### Deep Structure
-
-For very large skills (use sparingly):
-
-```
-references/
-├── style/
-│   ├── mechanics/
-│   │   ├── grammar.md
-│   │   └── punctuation.md
-│   └── voice/
-│       ├── tone.md
-│       └── word-choice.md
-```
-
-## Skill Interdependencies
-
-### Acceptable
-
-- Skills reference each other rarely
-- Each skill works independently
-- Shared concepts explained in each skill
-
-### Problematic
-
-- Skills require each other to function
-- Circular dependencies
-- Frequent cross-skill routing
-
-### Solution for Shared Content
-
-Create a `shared/` or `common/` folder within each skill that needs it, or create a dedicated shared skill:
-
-```
-.github/skills/
-├── fabric-common/        # Shared terminology, principles
-├── content-design/       # References fabric-common
-└── component-specs/      # References fabric-common
-```
-
-## Evolution Strategy
-
-### Starting Out
-
-1. Start with one skill
-2. Add references as needed
-3. Monitor for natural boundaries
-
-### Growing
-
-1. When skill exceeds ~40 references, evaluate split
-2. Look for distinct sub-domains
-3. Split along natural boundaries
-
-### Mature State
-
-1. Stable set of 3-6 skills
-2. Clear domain ownership
-3. Regular reference updates
-
-## Skill Discovery
-
-### Help Users Find Skills
-
-In your repo README or docs:
-
-```markdown
-## Available Skills
-
-| Skill | Use for |
-|-------|---------|
-| content-design | UI text, error messages, terminology |
-| component-specs | Component patterns, props, examples |
-| accessibility | A11y guidelines, WCAG compliance |
-```
-
-### Skill Discoverability Checklist
-
-- [ ] Description includes clear triggers
-- [ ] Skill name is intuitive
-- [ ] Documentation lists available skills
-- [ ] Examples show when to use each skill
+`.agent/` (skills, workflows, `rules/ecosystem.md`) is generated by `python .claude/sync_ide.py`; `pytest desktop/tests/test_agent_docs.py` fails when it is stale. Never edit `.agent/` except `.agent/AGENTS.md`.

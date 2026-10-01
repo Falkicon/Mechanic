@@ -1,8 +1,8 @@
 # First-Run Checklist
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-25
+Last updated: 2026-09-30
 
 ---
 
@@ -18,10 +18,10 @@ Use this checklist before releasing or after major changes to ensure your addon 
 
 Before individual addon validation, ensure your overall development environment is healthy.
 
-- [ ] **Doctor**: `addon-dev doctor` reports all systems OK
-- [ ] **Workspace Status**: `addon-dev status` shows all addons are passing basic checks
-- [ ] **Visual Dashboard**: `addon-dev dashboard` shows a clean report for the entire workspace
-- [ ] **Setup**: If binaries are missing, run `addon-dev setup`
+- [ ] **Tools**: `mech call tools.status` reports Luacheck, StyLua and Lua as available
+- [ ] **Environment**: `mech call env.status` shows your WoW root, dev path and installed flavors
+- [ ] **Dashboard**: `mech dashboard` opens and shows your diagnostic target
+- [ ] **Setup**: If binaries are missing, run `mech setup`
 
 ---
 
@@ -29,8 +29,8 @@ Before individual addon validation, ensure your overall development environment 
 
 ### Environment and Setup
 
-- [ ] `addon-dev doctor` reports all systems OK
-- [ ] Required binaries (`lua.exe`, `luacheck.exe`, `stylua.exe`) are in `Tools/bin/`
+- [ ] `mech call tools.status` reports all tools available
+- [ ] Required binaries (`lua`, `luacheck`, `stylua`) are installed by `mech setup`
 - [ ] API keys (e.g., `GEMINI_API_KEY`) are set in `.env`
 
 ### TOC and Loading
@@ -66,7 +66,7 @@ Before individual addon validation, ensure your overall development environment 
 
 ```lua
 -- Check addon loaded
-/run print(IsAddOnLoaded("YourAddon"))
+/run print(C_AddOns.IsAddOnLoaded("YourAddon"))
 
 -- Check interface version
 /dump select(4, GetBuildInfo())
@@ -163,7 +163,7 @@ Before individual addon validation, ensure your overall development environment 
 
 ### Midnight Release Additional
 
-- [ ] Interface version set to 120000 (or multi-version)
+- [ ] Interface version set to the current client (for example `120100`, or multi-version such as `120100, 16001`)
 - [ ] Compat layer included
 - [ ] Degradation tested in instances
 - [ ] Release notes explain Midnight limitations

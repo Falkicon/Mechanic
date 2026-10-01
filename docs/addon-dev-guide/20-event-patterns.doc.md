@@ -1,6 +1,6 @@
 # Event Patterns
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2025-12-18
 
@@ -362,6 +362,6 @@ end
 - [Combat Lockdown](./07-combat-lockdown.doc.md) - Combat event handling
 - [Performance](./08-performance.doc.md) - Throttling patterns
 - [Midnight Readiness](./12-midnight-readiness.doc.md) - Event restrictions
-- [Library Index](../AGENTS.md#library-index) - AceEvent-3.0
+- [Library Index](../integration/libraries.md#library-index) - AceEvent-3.0
 
 

@@ -3,20 +3,60 @@ Lua Sandbox Commands for Mechanic Desktop.
 
 Provides offline testing of addon logic:
 - sandbox.generate: Generate WoW API stubs from APIDefs
-- sandbox.exec: Execute Lua code in sandbox with stubs
+- sandbox.status: Report on the generated stubs
+- sandbox.exec: Execute Lua code in a restricted environment with the stubs
+- sandbox.test: Run an addon's *_spec.lua files with the packaged test framework
+
+All Lua that these commands run (stubs, addon files, specs and user code)
+executes through ``resources/sandbox_runner.lua`` against a whitelist of safe
+globals: ``os``, ``io``, ``package``, ``debug``, ``require``, ``dofile``,
+``loadfile``, ``load``, ``getfenv``/``setfenv`` and ``string.dump`` are not
+reachable, and ``loadstring`` refuses precompiled bytecode.  The runner caps
+printed output and the host enforces a wall-clock timeout; memory use is not
+limited.
 """
 
 import asyncio
 import re
+import secrets
 import subprocess
+import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
 from ..config import get_config, find_addon_path
+from ..lua_strings import quote_lua_string
+from ..pipeline_paths import find_lua_exe, find_repo_root, get_apidefs_dir
+from ..resources import resource_path
+from .api import parse_lua_table_simple
+
+EXEC_TIMEOUT_SECONDS = 30
+TEST_TIMEOUT_SECONDS = 60
+MAX_SANDBOX_OUTPUT = 256 * 1024  # enforced inside the runner (print) ...
+MAX_CAPTURED_BYTES = 1024 * 1024  # ... and again on the captured streams
+MAX_LISTED_TESTS = 200
+MAX_LISTED_PASSES = 50
+
+# Names the runner's environment already provides; stubs must not replace them.
+RESERVED_GLOBALS = frozenset(
+    """
+assert error ipairs next pairs pcall rawequal rawget rawset select setmetatable
+tonumber tostring type unpack xpcall math string table coroutine print getmetatable
+collectgarbage loadstring require describe it before_each after_each before_all
+after_all setup teardown
+""".split()
+)
+
+_NAMESPACE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_API_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$")
+_SECTION_RE = re.compile(r"^-- @@ns (\S+)\n(.*?)^-- @@end\n", re.MULTILINE | re.DOTALL)
+GLOBAL_SECTION = "_GLOBAL"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -27,9 +67,16 @@ from ..config import get_config, find_addon_path
 class GenerateInput(BaseModel):
     namespace: Optional[str] = Field(
         None,
-        description="Specific namespace to generate (e.g., 'C_Spell'). If not provided, generates all.",
+        description=(
+            "Specific namespace to regenerate in place (e.g., 'C_Spell'); the "
+            "other namespaces in an existing stubs file are kept. If not "
+            "provided, generates all."
+        ),
     )
-    force: bool = Field(False, description="Regenerate even if stubs exist")
+    force: bool = Field(
+        False,
+        description="Regenerate all stubs even if they are newer than the APIDefs",
+    )
 
 
 class GenerateResult(BaseModel):
@@ -71,7 +118,10 @@ class ExecResult(BaseModel):
 
 class TestInput(BaseModel):
     addon: str = Field(..., description="Name of addon to test (looks in _dev_ folder)")
-    filter: Optional[str] = Field(None, description="Filter pattern for test names")
+    filter: Optional[str] = Field(
+        None,
+        description="Only run tests whose full name contains this text (case-insensitive)",
+    )
 
 
 class TestCase(BaseModel):
@@ -95,17 +145,13 @@ class TestResult(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PATHS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def find_mechanic_addon_path() -> Optional[Path]:
-    """Find the Mechanic repo folder (with UI/APIDefs)."""
-    config = get_config()
-    if config.dev_path:
-        # Check for Mechanic repo: _dev_/Mechanic/UI/APIDefs
-        mechanic_repo = config.dev_path / "Mechanic"
-        if (mechanic_repo / "UI" / "APIDefs").exists():
-            return mechanic_repo
-    return None
+    """Find the Mechanic repository root (the folder holding Mechanic/Mechanic.toc)."""
+    return find_repo_root()
 
 
 def find_dev_addon_path(addon_name: str) -> Optional[Path]:
@@ -115,12 +161,20 @@ def find_dev_addon_path(addon_name: str) -> Optional[Path]:
 
 
 def find_sandbox_folder() -> Path:
-    """Get the sandbox folder path."""
-    config = get_config()
-    if config.dev_path:
-        return config.dev_path / "Mechanic" / "sandbox"
-    # Fallback: relative to this file (for development)
-    return Path(__file__).parent.parent.parent.parent.parent / "sandbox"
+    """Folder for generated sandbox files (``<repo>/sandbox``, else the data dir)."""
+    root = find_repo_root()
+    if root:
+        return root / "sandbox"
+    return get_config().data_dir / "sandbox"
+
+
+def _stubs_path() -> Path:
+    return find_sandbox_folder() / "generated" / "wow_stubs.lua"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STUB GENERATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def parse_apidef_file(filepath: Path) -> List[Dict[str, Any]]:
@@ -130,157 +184,289 @@ def parse_apidef_file(filepath: Path) -> List[Dict[str, Any]]:
     Returns a list of API definitions with:
     - key: Full API path (e.g., "C_Spell.GetSpellInfo")
     - funcPath: Same as key
-    - params: List of {name, type}
-    - returns: List of {name, type, canBeSecret}
-    - midnightImpact: "NORMAL", "RESTRICTED", "CONDITIONAL"
+    - params / returns: lists of {name, type, ...}
+    - midnightImpact: "NORMAL", "RESTRICTED", "CONDITIONAL", "HIGH"
     - protected: bool
     """
     content = filepath.read_text(encoding="utf-8", errors="replace")
-
     apis = []
-
-    # More robust approach: find each APIDefs["..."] line, then extract the block
-    # by counting braces until we close the main table
-    lines = content.split("\n")
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        # Look for APIDefs["key"] = {
-        key_match = re.match(r'APIDefs\["([^"]+)"\]\s*=\s*\{', line)
-        if key_match:
-            key = key_match.group(1)
-
-            # Collect lines until brace count returns to 0
-            brace_count = 1  # We found the opening brace
-            block_lines = [line]
-            i += 1
-
-            while i < len(lines) and brace_count > 0:
-                block_lines.append(lines[i])
-                brace_count += lines[i].count("{") - lines[i].count("}")
-                i += 1
-
-            # Now parse the full block
-            block = "\n".join(block_lines)
-
-            api = {
+    for key, entry in parse_lua_table_simple(content).items():
+        apis.append(
+            {
                 "key": key,
                 "funcPath": key,
-                "params": [],
-                "returns": [],
-                "midnightImpact": "NORMAL",
-                "protected": False,
+                "params": entry.get("params", []),
+                "returns": entry.get("returns", []),
+                "midnightImpact": entry.get("midnightImpact", "NORMAL"),
+                "protected": bool(entry.get("protected", False)),
             }
-
-            # Extract midnightImpact
-            impact_match = re.search(r'midnightImpact\s*=\s*"([^"]+)"', block)
-            if impact_match:
-                api["midnightImpact"] = impact_match.group(1)
-
-            # Extract protected - look for protected = true anywhere in block
-            if re.search(r"protected\s*=\s*true", block):
-                api["protected"] = True
-
-            # Extract returns count (simplified)
-            returns_match = re.search(r"returns\s*=\s*\{(.+?)\}", block, re.DOTALL)
-            if returns_match:
-                returns_content = returns_match.group(1)
-                return_entries = re.findall(r'name\s*=\s*"([^"]+)"', returns_content)
-                api["returns"] = [{"name": name} for name in return_entries]
-
-            apis.append(api)
-        else:
-            i += 1
-
+        )
     return apis
+
+
+def _is_protected(api: Dict[str, Any]) -> bool:
+    return bool(api.get("protected")) or api.get("midnightImpact") == "RESTRICTED"
+
+
+def _stub_namespace(key: str) -> str:
+    return key.split(".")[0] if "." in key else GLOBAL_SECTION
+
+
+def _stub_is_usable(key: str) -> bool:
+    """Only plain ``Name`` / ``Namespace.Name`` identifiers that do not shadow runner globals."""
+    if not _API_KEY_RE.match(key):
+        return False
+    if "." not in key:
+        return key not in RESERVED_GLOBALS
+    return key.split(".")[0] not in RESERVED_GLOBALS
 
 
 def generate_stub_code(api: Dict[str, Any]) -> str:
     """Generate Lua stub code for a single API."""
     key = api["key"]
-    protected = api.get("protected", False)
-    impact = api.get("midnightImpact", "NORMAL")
     returns = api.get("returns", [])
 
-    # Generate stub based on protection status
-    if protected or impact == "RESTRICTED":
-        # Error stub for protected APIs
-        stub = f'''function {key}(...)
-    error("{key} is protected/restricted - cannot be called in sandbox", 2)
-end'''
+    if _is_protected(api):
+        message = quote_lua_string(
+            f"{key} is protected/restricted - cannot be called in sandbox"
+        )
+        return f"function {key}(...)\n    error({message}, 2)\nend"
+
+    if len(returns) == 0:
+        return_val = ""
+    elif len(returns) == 1:
+        return_val = "return nil  -- mock"
     else:
-        # Generate mock return values
-        if len(returns) == 0:
-            return_val = ""
-        elif len(returns) == 1:
-            return_val = "return nil  -- mock"
-        else:
-            return_val = f"return {', '.join(['nil'] * len(returns))}  -- mock"
+        return_val = f"return {', '.join(['nil'] * len(returns))}  -- mock"
 
-        stub = f"""function {key}(...)
-    {return_val}
-end"""
+    return f"function {key}(...)\n    {return_val}\nend"
 
-    return stub
+
+def _render_section(namespace: str, apis: List[Dict[str, Any]]) -> str:
+    lines = [f"-- @@ns {namespace}"]
+    if namespace != GLOBAL_SECTION:
+        lines.append(f"{namespace} = {namespace} or {{}}")
+    for api in sorted(apis, key=lambda item: item["key"]):
+        lines.append(generate_stub_code(api))
+        lines.append("")
+    lines.append("-- @@end")
+    return "\n".join(lines) + "\n"
+
+
+def _group_sections(apis: List[Dict[str, Any]]) -> Tuple[Dict[str, str], int]:
+    """Render one section per namespace; returns (sections, skipped_api_count)."""
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    skipped = 0
+    for api in apis:
+        if not _stub_is_usable(api["key"]):
+            skipped += 1
+            continue
+        grouped.setdefault(_stub_namespace(api["key"]), []).append(api)
+    return {ns: _render_section(ns, items) for ns, items in grouped.items()}, skipped
+
+
+def _render_stubs_file(sections: Dict[str, str]) -> str:
+    header = [
+        "-- WoW API Stubs for Sandbox Testing",
+        "-- Auto-generated from Mechanic/UI/APIDefs",
+        f"-- Generated: {datetime.now().isoformat()}",
+        '-- Sections are delimited by "-- @@ns <name>" / "-- @@end" so a single',
+        "-- namespace can be regenerated in place.",
+        "",
+    ]
+    body = "".join(sections[ns] + "\n" for ns in sorted(sections))
+    return "\n".join(header) + body
+
+
+def _read_sections(text: str) -> Dict[str, str]:
+    return {
+        match.group(1): match.group(0).rstrip("\n") + "\n"
+        for match in _SECTION_RE.finditer(text)
+    }
+
+
+def _count_stubs(text: str) -> Tuple[int, int, int]:
+    """(total, protected, normal) function stubs in a stubs file."""
+    total = len(re.findall(r"^function [A-Za-z_]", text, re.MULTILINE))
+    protected = len(re.findall(r'error\("[^"]+is protected/restricted', text))
+    return total, protected, total - protected
 
 
 def generate_stubs_file(
     apis: List[Dict[str, Any]], output_path: Path
 ) -> Dict[str, int]:
     """Generate the complete wow_stubs.lua file."""
-    lines = [
-        "-- WoW API Stubs for Sandbox Testing",
-        "-- Auto-generated from Mechanic/UI/APIDefs",
-        f"-- Generated: {__import__('datetime').datetime.now().isoformat()}",
-        "",
-        "-- Namespace setup",
-    ]
-
-    # Collect unique namespaces
-    namespaces = set()
-    for api in apis:
-        parts = api["key"].split(".")
-        if len(parts) == 2:
-            namespaces.add(parts[0])
-
-    # Initialize namespaces
-    for ns in sorted(namespaces):
-        lines.append(f"{ns} = {ns} or {{}}")
-
-    lines.append("")
-    lines.append("-- Basic WoW globals")
-    lines.append("_G = _G or {}")
-    lines.append("")
-
-    # Group APIs by namespace
-    by_namespace: Dict[str, List[Dict]] = {}
-    for api in apis:
-        parts = api["key"].split(".")
-        ns = parts[0] if len(parts) == 2 else "_GLOBAL"
-        by_namespace.setdefault(ns, []).append(api)
-
-    protected_count = 0
-    normal_count = 0
-
-    # Generate stubs by namespace
-    for ns in sorted(by_namespace.keys()):
-        lines.append(f"-- {ns}")
-        for api in by_namespace[ns]:
-            stub = generate_stub_code(api)
-            lines.append(stub)
-            lines.append("")
-
-            if api.get("protected") or api.get("midnightImpact") == "RESTRICTED":
-                protected_count += 1
-            else:
-                normal_count += 1
-
-    # Write file
+    sections, skipped = _group_sections(apis)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines), encoding="utf-8")
+    output_path.write_text(_render_stubs_file(sections), encoding="utf-8", newline="\n")
+    total, protected, normal = _count_stubs(output_path.read_text(encoding="utf-8"))
+    return {"protected": protected, "normal": normal, "skipped": skipped}
 
-    return {"protected": protected_count, "normal": normal_count}
+
+def _apidefs_files(apidefs_path: Path, namespace: Optional[str]) -> List[Path]:
+    if namespace:
+        candidate = apidefs_path / f"{namespace}.lua"
+        return [candidate] if candidate.is_file() else []
+    return sorted(apidefs_path.glob("*.lua"))
+
+
+def _generate_sync(
+    apidefs_path: Path, namespace: Optional[str], force: bool
+) -> Tuple[str, Dict[str, Any]]:
+    """Returns ("error", {code,message,suggestion}) or ("ok", result fields)."""
+    lua_files = _apidefs_files(apidefs_path, namespace)
+    if not lua_files:
+        return "error", {
+            "code": "NO_APIDEFS",
+            "message": (
+                f"No APIDefs file found for namespace '{namespace}'"
+                if namespace
+                else "No APIDefs files found"
+            ),
+            "suggestion": "Check that APIDefs/*.lua files exist",
+        }
+
+    output_path = _stubs_path()
+    existing_text = (
+        output_path.read_text(encoding="utf-8", errors="replace")
+        if output_path.exists()
+        else ""
+    )
+    existing_sections = _read_sections(existing_text)
+
+    if namespace and not existing_sections:
+        return "error", {
+            "code": "STUBS_NOT_GENERATED",
+            "message": (
+                "Cannot regenerate one namespace: no sectioned stubs file exists"
+                if not existing_text
+                else "Existing stubs file predates sectioned stubs"
+            ),
+            "suggestion": "Run sandbox.generate without a namespace first",
+        }
+
+    if not namespace and not force and existing_sections:
+        newest_source = max(path.stat().st_mtime for path in lua_files)
+        if output_path.stat().st_mtime >= newest_source:
+            total, protected, normal = _count_stubs(existing_text)
+            return "ok", {
+                "stubs_generated": total,
+                "namespaces_processed": sorted(existing_sections),
+                "output_path": str(output_path),
+                "protected_count": protected,
+                "normal_count": normal,
+                "up_to_date": True,
+                "skipped": 0,
+            }
+
+    apis: List[Dict[str, Any]] = []
+    for lua_file in lua_files:
+        apis.extend(parse_apidef_file(lua_file))
+
+    new_sections, skipped = _group_sections(apis)
+    if namespace:
+        sections = dict(existing_sections)
+        wanted = GLOBAL_SECTION if namespace == "Global" else namespace
+        sections.pop(wanted, None)
+        sections.update(new_sections)
+    else:
+        sections = new_sections
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    text = _render_stubs_file(sections)
+    output_path.write_text(text, encoding="utf-8", newline="\n")
+    total, protected, normal = _count_stubs(text)
+    return "ok", {
+        "stubs_generated": total,
+        "namespaces_processed": sorted(new_sections),
+        "output_path": str(output_path),
+        "protected_count": protected,
+        "normal_count": normal,
+        "up_to_date": False,
+        "skipped": skipped,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUNNER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _lua_config(values: Dict[str, Any]) -> str:
+    """Serialise the runner config as a Lua chunk that returns a table."""
+
+    def encode(value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return repr(value)
+        if isinstance(value, str):
+            return quote_lua_string(value)
+        if isinstance(value, (list, tuple)):
+            return "{" + ", ".join(encode(item) for item in value) + "}"
+        if isinstance(value, dict):
+            return (
+                "{"
+                + ", ".join(
+                    f"[{quote_lua_string(str(k))}] = {encode(v)}"
+                    for k, v in value.items()
+                )
+                + "}"
+            )
+        raise TypeError(f"Cannot encode {type(value).__name__} for the Lua runner")
+
+    return "return " + encode(values) + "\n"
+
+
+def _truncate(text: str, limit: int = MAX_CAPTURED_BYTES) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n[output truncated]"
+
+
+def _run_runner(
+    lua_path: Path,
+    config: Dict[str, Any],
+    user_code: Optional[str],
+    timeout: int,
+    cwd: Optional[Path] = None,
+) -> "subprocess.CompletedProcess[str]":
+    """Run sandbox_runner.lua with a config written to a temp dir.
+
+    Raises subprocess.TimeoutExpired or OSError; callers turn them into errors.
+    """
+    runner = resource_path("sandbox_runner.lua")
+    with tempfile.TemporaryDirectory(prefix="mechanic-sandbox-") as tmp:
+        tmp_dir = Path(tmp)
+        values = dict(config)
+        values["max_output"] = MAX_SANDBOX_OUTPUT
+        if user_code is not None:
+            code_file = tmp_dir / "user.lua"
+            code_file.write_text(user_code, encoding="utf-8", newline="\n")
+            values["code_file"] = str(code_file)
+        config_file = tmp_dir / "config.lua"
+        config_file.write_text(_lua_config(values), encoding="utf-8", newline="\n")
+
+        result = subprocess.run(
+            [str(lua_path), str(runner), str(config_file)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            cwd=str(cwd or tmp_dir),
+        )
+    result.stdout = _truncate(result.stdout or "")
+    result.stderr = _truncate(result.stderr or "")
+    return result
+
+
+def _lua_missing() -> CommandResult[Any]:
+    return error(
+        code="LUA_NOT_FOUND",
+        message="Lua executable not found in bin/ folder, MECHANIC_LUA, or PATH",
+        suggestion="Run 'mech setup', set MECHANIC_LUA, or place lua.exe in desktop/bin/",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -293,58 +479,50 @@ def register_commands(server):
 
     @server.command(
         name="sandbox.generate",
-        description="Generate WoW API stubs from APIDefs database for sandbox testing",
+        description=(
+            "Generate WoW API stubs from APIDefs for sandbox testing. A namespace "
+            "is regenerated in place; existing stubs are kept unless force is set "
+            "or the APIDefs are newer."
+        ),
         input_schema=GenerateInput,
         output_schema=GenerateResult,
     )
     async def sandbox_generate(
         input: GenerateInput, context: Any = None
     ) -> CommandResult[GenerateResult]:
-        mechanic_path = find_mechanic_addon_path()
-
-        if not mechanic_path:
+        if input.namespace and not (_NAMESPACE_RE.match(input.namespace)):
             return error(
-                code="MECHANIC_NOT_FOUND",
-                message="Could not find Mechanic repo folder",
-                suggestion="Ensure Mechanic repo is in _dev_ folder",
+                code="INVALID_NAMESPACE",
+                message=f"Invalid namespace name: {input.namespace!r}",
+                suggestion="Use a namespace such as C_Spell",
             )
 
-        apidefs_path = mechanic_path / "UI" / "APIDefs"
+        apidefs_path = get_apidefs_dir()
+        if apidefs_path is None:
+            return error(
+                code="MECHANIC_NOT_FOUND",
+                message="Could not find the Mechanic repository (Mechanic/Mechanic.toc)",
+                suggestion="Run from the Mechanic repository or set dev_path",
+            )
         if not apidefs_path.exists():
             return error(
                 code="APIDEFS_NOT_FOUND",
                 message=f"APIDefs folder not found at {apidefs_path}",
-                suggestion="Ensure Mechanic repo has UI/APIDefs folder",
+                suggestion="Run api.refresh to generate Mechanic/UI/APIDefs",
             )
 
-        # Find all API definition files
-        if input.namespace:
-            lua_files = list(apidefs_path.glob(f"{input.namespace}.lua"))
-        else:
-            lua_files = list(apidefs_path.glob("*.lua"))
-
-        if not lua_files:
+        try:
+            status, payload = await asyncio.to_thread(
+                _generate_sync, apidefs_path, input.namespace, input.force
+            )
+        except OSError as exc:
             return error(
-                code="NO_APIDEFS",
-                message="No APIDefs files found",
-                suggestion="Check that APIDefs/*.lua files exist",
+                code="WRITE_FAILED",
+                message=f"Could not write sandbox stubs: {exc}",
+                suggestion="Check that the sandbox folder is writable",
             )
-
-        # Parse all files
-        all_apis = []
-        namespaces = []
-
-        for lua_file in lua_files:
-            namespace = lua_file.stem
-            namespaces.append(namespace)
-            apis = parse_apidef_file(lua_file)
-            all_apis.extend(apis)
-
-        # Generate stubs file
-        sandbox_folder = find_sandbox_folder()
-        output_path = sandbox_folder / "generated" / "wow_stubs.lua"
-
-        stats = generate_stubs_file(all_apis, output_path)
+        if status == "error":
+            return error(**payload)
 
         src = create_source(
             type="file",
@@ -352,16 +530,32 @@ def register_commands(server):
             title="APIDefs Database",
             location=str(apidefs_path),
         )
+        if payload["up_to_date"]:
+            reasoning = (
+                f"Stubs are up to date ({payload['stubs_generated']} APIs); "
+                "use force to regenerate."
+            )
+        else:
+            reasoning = (
+                f"Generated {payload['stubs_generated']} API stubs for "
+                f"{len(payload['namespaces_processed'])} namespaces. "
+                f"{payload['protected_count']} protected (will error), "
+                f"{payload['normal_count']} normal (mocked)."
+            )
+            if payload["skipped"]:
+                reasoning += (
+                    f" Skipped {payload['skipped']} entries with unusable names."
+                )
 
         return success(
             data=GenerateResult(
-                stubs_generated=len(all_apis),
-                namespaces_processed=sorted(namespaces),
-                output_path=str(output_path),
-                protected_count=stats["protected"],
-                normal_count=stats["normal"],
+                stubs_generated=payload["stubs_generated"],
+                namespaces_processed=payload["namespaces_processed"],
+                output_path=payload["output_path"],
+                protected_count=payload["protected_count"],
+                normal_count=payload["normal_count"],
             ),
-            reasoning=f"Generated {len(all_apis)} API stubs from {len(namespaces)} namespaces. {stats['protected']} protected (will error), {stats['normal']} normal (mocked).",
+            reasoning=reasoning,
             sources=[src],
             confidence=1.0,
         )
@@ -375,8 +569,7 @@ def register_commands(server):
     async def sandbox_status(
         input: StatusInput, context: Any = None
     ) -> CommandResult[StatusResult]:
-        sandbox_folder = find_sandbox_folder()
-        stubs_path = sandbox_folder / "generated" / "wow_stubs.lua"
+        stubs_path = _stubs_path()
 
         if not stubs_path.exists():
             return success(
@@ -384,25 +577,9 @@ def register_commands(server):
                 reasoning="No stubs generated yet. Run sandbox.generate first.",
             )
 
-        # Get file stats
-        from datetime import datetime
-
-        stat = stubs_path.stat()
-        last_modified = datetime.fromtimestamp(stat.st_mtime).isoformat()
-
-        # Count APIs by parsing the generated file
+        last_modified = datetime.fromtimestamp(stubs_path.stat().st_mtime).isoformat()
         content = stubs_path.read_text(encoding="utf-8", errors="replace")
-
-        # Count function definitions
-        import re
-
-        functions = re.findall(r"^function [A-Z]", content, re.MULTILINE)
-        total_count = len(functions)
-
-        # Count protected (those that throw errors)
-        protected = re.findall(r'error\("[^"]+is protected/restricted', content)
-        protected_count = len(protected)
-        normal_count = total_count - protected_count
+        total_count, protected_count, normal_count = _count_stubs(content)
 
         return success(
             data=StatusResult(
@@ -418,36 +595,27 @@ def register_commands(server):
 
     @server.command(
         name="sandbox.exec",
-        description="Execute Lua code in sandbox environment with WoW API stubs",
+        description=(
+            "Execute Lua code in a restricted sandbox with WoW API stubs. User code "
+            "sees only whitelisted globals (no os, io, package, debug, require, "
+            "dofile, loadfile, string.dump or bytecode loading); runs for at most "
+            f"{EXEC_TIMEOUT_SECONDS}s and prints at most {MAX_SANDBOX_OUTPUT // 1024} KB."
+        ),
         input_schema=ExecInput,
         output_schema=ExecResult,
     )
     async def sandbox_exec(
         input: ExecInput, context: Any = None
     ) -> CommandResult[ExecResult]:
-        # Find Lua using the same pattern as other tools
-        from ..setup import find_tool
-
-        lua_path = find_tool("lua")
-
+        lua_path = find_lua_exe()
         if not lua_path:
-            return error(
-                code="LUA_NOT_FOUND",
-                message="Lua executable not found in bin/ folder or PATH",
-                suggestion="Run 'mech setup' or place lua.exe in desktop/bin/",
-            )
+            return _lua_missing()
 
-        sandbox_folder = find_sandbox_folder()
-        stubs_path = sandbox_folder / "generated" / "wow_stubs.lua"
-
-        # Build the Lua script to execute
-        lua_script_parts = []
-
-        # Load stubs if requested
+        stubs_path = _stubs_path()
+        config: Dict[str, Any] = {"mode": "exec", "marker": secrets.token_hex(8)}
         if input.load_stubs and stubs_path.exists():
-            lua_script_parts.append(f'dofile("{stubs_path.as_posix()}")')
+            config["stubs"] = str(stubs_path)
 
-        # Load addon if specified
         if input.addon:
             addon_path = find_dev_addon_path(input.addon)
             if not addon_path:
@@ -456,60 +624,36 @@ def register_commands(server):
                     message=f"Addon '{input.addon}' not found in _dev_ folder",
                     suggestion="Check addon name or path",
                 )
-
-            # Find Core/ layer files if they exist
             core_path = addon_path / "Core"
             if core_path.exists():
-                for lua_file in sorted(core_path.rglob("*.lua")):
-                    lua_script_parts.append(f'dofile("{lua_file.as_posix()}")')
+                config["sources"] = [
+                    str(lua_file)
+                    for lua_file in sorted(core_path.rglob("*.lua"))
+                    if not lua_file.name.endswith("_spec.lua")
+                ]
 
-        # Add user code with result capture
-        lua_script_parts.append(f"""
-local _result = (function()
-    {input.code}
-end)()
-
--- Serialize result
-if _result ~= nil then
-    if type(_result) == "table" then
-        local parts = {{}}
-        for k, v in pairs(_result) do
-            table.insert(parts, tostring(k) .. "=" .. tostring(v))
-        end
-        print("RESULT:" .. "{{" .. table.concat(parts, ", ") .. "}}")
-    else
-        print("RESULT:" .. tostring(_result))
-    end
-else
-    print("RESULT:nil")
-end
-""")
-
-        full_script = "\n".join(lua_script_parts)
-
-        # Execute Lua
         try:
             result = await asyncio.to_thread(
-                subprocess.run,
-                [str(lua_path), "-e", full_script],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=str(sandbox_folder),
+                _run_runner, lua_path, config, input.code, EXEC_TIMEOUT_SECONDS
             )
         except subprocess.TimeoutExpired:
             return error(
-                code="TIMEOUT", message="Lua execution timed out after 30 seconds"
+                code="TIMEOUT",
+                message=f"Lua execution timed out after {EXEC_TIMEOUT_SECONDS} seconds",
+            )
+        except OSError as exc:
+            return error(
+                code="LUA_FAILED",
+                message=f"Could not run Lua: {exc}",
+                suggestion="Check the Lua executable and temp folder permissions",
             )
 
-        # Parse output
-        output_lines = result.stdout.strip().split("\n") if result.stdout else []
+        marker = config["marker"] + "RESULT:"
         result_value = None
         other_output = []
-
-        for line in output_lines:
-            if line.startswith("RESULT:"):
-                result_value = line[7:]  # Strip "RESULT:" prefix
+        for line in result.stdout.splitlines():
+            if line.startswith(marker):
+                result_value = line[len(marker) :]
             else:
                 other_output.append(line)
 
@@ -517,7 +661,7 @@ end
             data=ExecResult(
                 result=result_value,
                 output="\n".join(other_output),
-                error=result.stderr if result.stderr else None,
+                error=result.stderr.strip() or None,
                 exit_code=result.returncode,
             ),
             reasoning=f"Executed Lua code. Exit code: {result.returncode}",
@@ -525,14 +669,17 @@ end
 
     @server.command(
         name="sandbox.test",
-        description="Run Busted tests for an addon's Core layer with WoW API stubs",
+        description=(
+            "Run an addon's *_spec.lua tests (Core/ and Tests/) in the restricted "
+            "sandbox with WoW API stubs and the bundled busted-style framework. "
+            "filter limits tests by name; failures are listed first."
+        ),
         input_schema=TestInput,
         output_schema=TestResult,
     )
     async def sandbox_test(
         input: TestInput, context: Any = None
     ) -> CommandResult[TestResult]:
-        # Find the addon
         addon_path = find_dev_addon_path(input.addon)
         if not addon_path:
             return error(
@@ -541,43 +688,34 @@ end
                 suggestion="Check addon name or path",
             )
 
-        # Find spec files from:
-        # 1. Core/*_spec.lua (tests alongside source)
-        # 2. Tests/**/*_spec.lua (dedicated test folder)
+        # Spec files come from Core/*_spec.lua and Tests/**/*_spec.lua.
         core_path = addon_path / "Core"
         tests_path = addon_path / "Tests"
 
-        spec_files = []
-        source_files = []
+        spec_files: List[Path] = []
+        source_files: List[Path] = []
 
-        # Collect source files from Core/ (non-spec files)
         if core_path.exists():
-            # Also check Core/ for inline spec files
             spec_files.extend(core_path.rglob("*_spec.lua"))
-            # Only load top-level Core/*.lua files to avoid dependency issues
-            # Subdirectories (Logic/, Actions/) have cross-dependencies that need
-            # proper load ordering - those should use addon.test with full TOC
+            # Only top-level Core/*.lua are loaded: subdirectories have
+            # cross-dependencies that need addon.test with the full TOC.
             all_lua = [
                 f for f in core_path.glob("*.lua") if not f.name.endswith("_spec.lua")
             ]
 
             def load_order_key(path):
                 # init.lua first, then alphabetically
-                is_init = 0 if path.name == "init.lua" else 1
-                return (is_init, str(path))
+                return (0 if path.name == "init.lua" else 1, str(path))
 
             source_files = sorted(all_lua, key=load_order_key)
 
-        # Collect spec files from Tests/ folder (preferred location)
         if tests_path.exists():
             spec_files.extend(tests_path.rglob("*_spec.lua"))
 
-        spec_files = list(spec_files)
+        spec_files = sorted(set(spec_files), key=lambda path: path.as_posix())
 
         if not spec_files:
-            has_core = core_path.exists()
-            has_tests = tests_path.exists()
-            if not has_core and not has_tests:
+            if not core_path.exists() and not tests_path.exists():
                 return error(
                     code="NO_TEST_FOLDERS",
                     message=f"No Core/ or Tests/ folder found in {input.addon}",
@@ -588,91 +726,96 @@ end
                 reasoning=f"No test files (*_spec.lua) found in {input.addon}/Core or {input.addon}/Tests",
             )
 
-        # Find Lua (using simple test framework, not Busted)
-        from ..setup import find_tool
-
-        lua_path = find_tool("lua")
+        lua_path = find_lua_exe()
         if not lua_path:
+            return _lua_missing()
+
+        framework_path = resource_path("sandbox_test_framework.lua")
+        if not framework_path.exists():
             return error(
-                code="LUA_NOT_FOUND",
-                message="Lua executable not found",
-                suggestion="Ensure lua.exe is in desktop/bin/",
+                code="FRAMEWORK_MISSING",
+                message="The packaged sandbox test framework is missing",
+                suggestion="Reinstall mechanic-desktop",
             )
 
-        # Build the test script - load stubs, framework, Core, then specs
-        sandbox_folder = find_sandbox_folder()
-        stubs_path = sandbox_folder / "generated" / "wow_stubs.lua"
-        framework_path = sandbox_folder / "generated" / "test_framework.lua"
-
-        # Build Lua script
-        lua_parts = []
-
-        # Load stubs
+        stubs_path = _stubs_path()
+        config: Dict[str, Any] = {
+            "mode": "test",
+            "framework": str(framework_path),
+            "sources": [str(path) for path in source_files],
+            "specs": [
+                {
+                    "path": str(path),
+                    "name": path.relative_to(addon_path).as_posix(),
+                }
+                for path in spec_files
+            ],
+            "require_root": addon_path.as_posix(),
+        }
         if stubs_path.exists():
-            lua_parts.append(f'dofile("{stubs_path.as_posix()}")')
-
-        # Load test framework
-        if framework_path.exists():
-            lua_parts.append(f'dofile("{framework_path.as_posix()}")')
-
-        # Load Core source files (non-spec files)
-        for lua_file in source_files:
-            lua_parts.append(f'dofile("{lua_file.as_posix()}")')
-
-        # Load spec files
-        for spec_file in spec_files:
-            lua_parts.append(f'dofile("{spec_file.as_posix()}")')
-
-        # Trigger auto-run at end
-        lua_parts.append("_SANDBOX_AUTO_RUN()")
-
-        full_script = "\n".join(lua_parts)
-
-        # Track execution time
-        import time
+            config["stubs"] = str(stubs_path)
+        if input.filter:
+            config["filter"] = input.filter
 
         start_time = time.perf_counter()
-
         try:
             result = await asyncio.to_thread(
-                subprocess.run,
-                [str(lua_path), "-e", full_script],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                cwd=str(addon_path),
+                _run_runner,
+                lua_path,
+                config,
+                None,
+                TEST_TIMEOUT_SECONDS,
+                addon_path,
             )
         except subprocess.TimeoutExpired:
-            return error(code="TIMEOUT", message="Tests timed out after 60 seconds")
-
+            return error(
+                code="TIMEOUT",
+                message=f"Tests timed out after {TEST_TIMEOUT_SECONDS} seconds",
+            )
+        except OSError as exc:
+            return error(
+                code="LUA_FAILED",
+                message=f"Could not run Lua: {exc}",
+                suggestion="Check the Lua executable and temp folder permissions",
+            )
         duration_ms = (time.perf_counter() - start_time) * 1000
 
-        # Parse output - look for SANDBOX_TESTS:passed:failed:total
-        tests = []
-        passed_count = 0
-        failed_count = 0
-        total = 0
+        stderr_text = result.stderr.strip()
+        if result.returncode != 0:
+            return error(
+                code="LUA_FAILED",
+                message=f"Lua exited with code {result.returncode}"
+                + (f": {stderr_text[:2000]}" if stderr_text else ""),
+                suggestion="Fix the error above; it occurred while loading stubs or addon files",
+            )
 
-        for line in result.stdout.split("\n"):
+        failures: List[TestCase] = []
+        passes: List[TestCase] = []
+        summary = None
+        for line in result.stdout.splitlines():
             if line.startswith("SANDBOX_TESTS:"):
                 parts = line.split(":")
-                if len(parts) >= 4:
-                    passed_count = int(parts[1])
-                    failed_count = int(parts[2])
-                    total = int(parts[3])
+                try:
+                    summary = (int(parts[1]), int(parts[2]), int(parts[3]))
+                except (IndexError, ValueError):
+                    summary = None
             elif line.startswith("PASS: "):
-                tests.append(TestCase(name=line[6:], passed=True))
+                passes.append(TestCase(name=line[6:], passed=True))
             elif line.startswith("FAIL: "):
-                fail_parts = line[6:].split(" | ", 1)
-                tests.append(
-                    TestCase(
-                        name=fail_parts[0],
-                        passed=False,
-                        error=fail_parts[1] if len(fail_parts) > 1 else None,
-                    )
-                )
+                name, _, detail = line[6:].partition(" | ")
+                failures.append(TestCase(name=name, passed=False, error=detail or None))
 
+        if summary is None:
+            return error(
+                code="NO_TEST_SUMMARY",
+                message="The sandbox produced no test summary"
+                + (f": {stderr_text[:2000]}" if stderr_text else ""),
+                suggestion="Check that the specs use describe/it from the sandbox framework",
+            )
+
+        passed_count, failed_count, total = summary
         overall_passed = failed_count == 0 and total > 0
+        listed = (failures + passes[:MAX_LISTED_PASSES])[:MAX_LISTED_TESTS]
 
         src = create_source(
             type="tool",
@@ -681,9 +824,16 @@ end
             location=str(addon_path),
         )
 
-        # Build file lists for metadata (relative paths)
-        source_file_names = [f.name for f in source_files]
-        spec_file_names = [f.relative_to(addon_path).as_posix() for f in spec_files]
+        reasoning = (
+            f"Ran {total} sandbox tests for {input.addon}: "
+            f"{passed_count} passed, {failed_count} failed"
+        )
+        if input.filter and total == 0:
+            reasoning += f" (no tests matched filter '{input.filter}')"
+        if not stubs_path.exists():
+            reasoning += "\nWoW API stubs not generated (run sandbox.generate)"
+        if stderr_text:
+            reasoning += f"\nStderr: {stderr_text[:200]}"
 
         return success(
             data=TestResult(
@@ -692,13 +842,12 @@ end
                 total=total,
                 passed_count=passed_count,
                 failed_count=failed_count,
-                tests=tests[:20],
-                source_files=source_file_names,
-                spec_files=spec_file_names,
+                tests=listed,
+                source_files=[f.name for f in source_files],
+                spec_files=[f.relative_to(addon_path).as_posix() for f in spec_files],
                 duration_ms=round(duration_ms, 1),
             ),
-            reasoning=f"Ran {total} sandbox tests for {input.addon}/Core: {passed_count} passed, {failed_count} failed"
-            + (f"\nErrors: {result.stderr[:200]}" if result.stderr else ""),
+            reasoning=reasoning,
             sources=[src],
             confidence=1.0,
         )

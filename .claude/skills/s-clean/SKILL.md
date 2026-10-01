@@ -1,84 +1,70 @@
 ---
 name: s-clean
 description: >
-  Find and remove dead code and stale documentation. Covers unused functions,
-  orphaned files, dead links, and outdated references. Use for maintenance,
-  pre-release cleanup, or codebase hygiene.
-  Triggers: clean, dead code, unused, orphan, stale, cruft, maintenance.
+  Find and remove dead code and stale documentation with addon.deadcode and
+  docs.stale. Covers orphaned files, unused functions/locals/libraries, dead
+  links and version drift, with confidence triage before deleting anything.
+  Triggers: clean, dead code, unused, orphan, stale docs, cruft, maintenance.
 ---
 
 # Cleaning WoW Addons
 
-Expert guidance for finding and removing cruft in addon codebases.
+Guidance for finding and removing cruft safely. Both analyzers are read-only; removing things is your job and must be verified.
 
 ## Related Commands
 
 - [c-clean](../../commands/c-clean.md) - Cleanup workflow
-- [c-review](../../commands/c-review.md) - Full review (includes clean step)
+- [c-review](../../commands/c-review.md) - Full review (includes the clean step)
 
 ## MCP Tools
 
 | Task | MCP Tool |
 |------|----------|
-| Find Dead Code | `addon.deadcode(addon="MyAddon")` |
-| Find Stale Docs | `docs.stale(addon="MyAddon")` |
-| Filter by Confidence | `addon.deadcode(addon="MyAddon", include_suspicious=false)` |
+| Dead code | `addon.deadcode(addon="MyAddon")` |
+| High-confidence only | `addon.deadcode(addon="MyAddon", include_suspicious=false)` |
+| Stale docs | `docs.stale(addon="MyAddon")` |
 
-## Capabilities
+Inputs: `addon`, `path`, `include_suspicious`, `limit` (default 200, max 2000), plus `categories` for deadcode and `commits_threshold` (default 10) for docs.stale. Check `truncated`, `total_issues` and `read_errors` in every result: a capped or partly unreadable result is not a complete cleanup list.
 
-1. **Dead Code Detection** — Find unused functions, orphaned files, dead exports
-2. **Stale Docs Detection** — Find broken links, outdated refs, version drift
-3. **Confidence Levels** — Definite (100%), Likely (90%+), Suspicious (70%+)
+## Detection categories
 
-## Detection Categories
-
-### Dead Code (`addon.deadcode`)
+### `addon.deadcode`
 
 | Category | Description |
-|----------|-------------|
-| `unused_function` | Functions defined but never called |
-| `orphaned_file` | Lua files not in TOC |
-| `dead_export` | Exported values never used |
-| `unused_library` | Libraries in Libs/ never used |
-| `stale_event` | Event handlers for unregistered events |
-| `commented_code` | Large blocks of commented-out code |
+|---|---|
+| `orphaned_file` | Lua file not listed in the TOC (or loaded by XML) |
+| `unused_function` | Function defined but never referenced |
+| `unused_local` | Local assigned but never read |
+| `unused_library` | Library under `Libs/` nothing uses |
+| `stale_event` | Event registered while the OnEvent handler is empty |
+| `dead_export` | Exported value referenced only inside its own file |
+| `unused_locale` | Locale key never used |
+| `unreachable_code` | Statements after `return`/`break` in the same block |
+| `commented_code` | Large commented-out blocks |
 
-### Stale Docs (`docs.stale`)
+### `docs.stale`
 
 | Category | Description |
-|----------|-------------|
-| `dead_link` | Internal links to non-existent files |
-| `dead_reference` | Mentions of functions/files that don't exist |
-| `version_drift` | Old version numbers in documentation |
-| `relative_staleness` | Docs not updated in many commits |
+|---|---|
+| `dead_link` | Link to a file that does not exist |
+| `dead_reference` | Mention of a function or file that does not exist |
+| `version_drift` | Old version numbers (code blocks and CHANGELOG/HISTORY files are ignored) |
+| `relative_staleness` | Doc not updated while many code commits landed |
 
 ## Workflow
 
-### Quick Cleanup
+1. Run `addon.deadcode` with `include_suspicious=false`; fix `definite` and `likely` items first.
+2. Before deleting a function, search the repository for dynamic use (`_G[...]`, string-built names, XML scripts, TOC, `hooksecurefunc` targets, MechanicLib capabilities, SavedVariables migrations).
+3. Remove in small steps, run `addon.lint` and the tests after each group.
+4. Run `docs.stale`; fix dead links and drifted versions, then re-run both analyzers to confirm.
+5. For anything user-visible, verify in game with the reload protocol ([using-mechanic](../using-mechanic/SKILL.md)).
 
-1. Run `addon.deadcode` with `include_suspicious=false` for high-confidence issues only
-2. Remove identified dead code
-3. Run `docs.stale` to find documentation issues
-4. Fix broken links and update outdated references
-
-### Deep Cleanup
-
-1. Run `addon.deadcode` with all confidence levels
-2. Manually verify suspicious findings before removal
-3. Run `docs.stale` with all techniques
-4. Update documentation to match current code
-
-## Confidence Interpretation
+## Confidence
 
 | Level | Meaning | Action |
-|-------|---------|--------|
-| **Definite** | 100% certain (e.g., file not in TOC) | Safe to remove |
-| **Likely** | 90%+ certain (e.g., function never called) | Review briefly, usually safe |
-| **Suspicious** | 70%+ certain (e.g., dynamic code patterns) | Manual verification required |
+|---|---|---|
+| `definite` | Provable (for example a file not in any TOC) | Safe after a quick look |
+| `likely` | Strong static evidence | Review briefly |
+| `suspicious` | Possible dynamic use | Verify manually |
 
-## Best Practices
-
-1. **Start with definite issues** — These are safe to fix immediately
-2. **Check dynamic patterns** — `_G`, `rawget`, `loadstring` may hide usage
-3. **Preserve intentional dead code** — Mark with `-- KEEP:` comment if needed
-4. **Update docs after code changes** — Run `docs.stale` after refactoring
+The analyzers do not honour suppression comments; record intentional dead code in the review notes instead. Rerun `docs.stale` after refactors.

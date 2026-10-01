@@ -1,39 +1,42 @@
 # .agent System Documentation
 
-Guide for the Antigravity-compatible commands/skills system in Mechanic.
+Guide for the Antigravity-compatible commands/skills layout in Mechanic. **Everything here except this file is generated from `.claude/`. Do not edit it by hand.**
 
 ## Architecture
 
-This `.agent` folder is synced from `.claude` using a PowerShell script:
+`.claude/` is canonical. `.agent/` is rebuilt by a script (Python, cross-platform):
 
-```powershell
-# Run from Mechanic folder to sync .claude → .agent
-.\.claude\sync-ide.ps1
+```bash
+python .claude/sync_ide.py            # regenerate .agent/
+python .claude/sync_ide.py --check    # fail when .agent/ is out of sync
+.\.claude\sync-ide.ps1                # PowerShell wrapper (-Check for the check)
 ```
 
+The generated directories are cleared first (no orphans from deleted sources), and relative links are re-resolved for the new layout. `desktop/tests/test_agent_docs.py` runs the check, so CI fails when `.agent/` is stale.
+
 **Mapping:**
+
 | Source | Destination |
 |--------|-------------|
-| `.claude/commands/c-*.md` | `.agent/workflows/*.md` (with YAML frontmatter) |
-| `.claude/skills/*` | `.agent/skills/*` |
+| `.claude/commands/c-*.md` | `.agent/workflows/*.md` (prefix removed, `description:` front matter added) |
+| `.claude/skills/*` (including `using-mechanic`) | `.agent/skills/*` |
 | `.claude/skills/k-ecosystem/SKILL.md` | `.agent/rules/ecosystem.md` |
 
 ## How It Works
 
 ### Always-Loaded Context
-- **`rules/ecosystem.md`** is automatically loaded at conversation start
-- Contains: component overview, reload loop, MCP tools, AFD principles
+- **`rules/ecosystem.md`** is loaded at conversation start. It carries the component overview, reload-loop summary, MCP tools and the "which skill next" map.
 
 ### On-Demand Workflows
-Trigger via `/workflow-name` (e.g., `/debug`):
+Trigger via `/workflow-name` (for example `/debug`):
 
 ```
-/audit    - Quality analysis (security, complexity, deprecations)
+/audit    - Quality analysis (security, complexity, deprecations, dead code)
 /clean    - Dead code and stale docs cleanup
-/debug    - Reload loop for finding and fixing issues
+/debug    - Target-based reload loop for finding and fixing issues
 /develop  - Build features following architecture patterns
-/lint     - Luacheck and StyLua code quality
-/release  - Automated release workflow
+/lint     - Luacheck and StyLua
+/release  - Release workflow (dry run, confirm, release)
 /research - WoW API research
 /review   - Full code review (orchestrates multiple skills)
 /test     - Unit testing with sandbox and Busted
@@ -42,21 +45,16 @@ Trigger via `/workflow-name` (e.g., `/debug`):
 Workflows reference skills via path links. Read the linked skill when detailed guidance is needed.
 
 ### Skills (Lazy-Loaded)
-Skills are **not** auto-loaded. They're read on-demand when:
-1. A workflow links to one
-2. You need deep context on a topic
+Skills are not auto-loaded; they are read on demand when a workflow links to one or deep context is needed.
 
-**Skill Types:**
 | Prefix | Purpose | Examples |
 |--------|---------|----------|
 | `s-*` | Action skills (how-to) | s-debug, s-lint, s-test |
-| `k-*` | Knowledge skills (context) | k-mechanic, k-fencore, k-fenui |
+| `k-*` | Knowledge skills (context) | k-mechanic, k-desktop, k-apidefs, k-fenui |
+| `using-mechanic` | Protocol: diagnostic target, reload, mutation rules | always follow before live verification |
+
+The generated command reference is `.agent/skills/using-mechanic/references/afd-commands.md`.
 
 ## Editing Content
 
-Since workflows, skills, and ecosystem.md are linked to `.claude/`, edit the source files there:
-- Commands: `.claude/commands/c-*.md`
-- Skills: `.claude/skills/*/SKILL.md`
-- Ecosystem: `.claude/skills/k-ecosystem/SKILL.md`
-
-Changes automatically reflect in both Claude and Antigravity environments.
+Edit the source files in `.claude/` (commands in `.claude/commands/c-*.md`, skills in `.claude/skills/*/`), then run `python .claude/sync_ide.py`. See [../.claude/AGENTS.md](../.claude/AGENTS.md) for conventions and templates.

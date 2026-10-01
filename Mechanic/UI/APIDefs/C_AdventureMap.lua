@@ -7,7 +7,6 @@ APIDefs["C_AdventureMap.GetAdventureMapTextureKit"] = {
     name = "GetAdventureMapTextureKit",
     category = "map",
     subcategory = "c_adventuremap",
-    func = _G["C_AdventureMap"] and _G["C_AdventureMap"]["GetAdventureMapTextureKit"],
     funcPath = "C_AdventureMap.GetAdventureMapTextureKit",
     params = {  },
     returns = { { name = "adventureMapTextureKit", type = "textureKit", canBeSecret = false } },
@@ -17,13 +16,11 @@ APIDefs["C_AdventureMap.GetAdventureMapTextureKit"] = {
 APIDefs["C_AdventureMap.GetQuestPortraitInfo"] = {
     key = "C_AdventureMap.GetQuestPortraitInfo",
     name = "GetQuestPortraitInfo",
-    category = "combat_midnight",
+    category = "map",
     subcategory = "c_adventuremap",
-    func = _G["C_AdventureMap"] and _G["C_AdventureMap"]["GetQuestPortraitInfo"],
     funcPath = "C_AdventureMap.GetQuestPortraitInfo",
     params = { { name = "questID", type = "number", default = nil } },
     returns = { { name = "info", type = "AdventureMapQuestPortraitInfo", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

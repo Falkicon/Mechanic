@@ -1,6 +1,31 @@
 # Changelog
 
-All notable changes to the Mechanic in-game addons will be documented in this file.
+All notable changes to the Mechanic in-game addons will be documented in this file. Headings show the `!Mechanic` bootstrap version first and the `Mechanic` main addon version second (the two are versioned separately). For the desktop tool, see [CHANGELOG.md](../CHANGELOG.md).
+
+## [Unreleased]
+
+TOC versions are not bumped yet (`!Mechanic` 1.4.6, `Mechanic` 1.3.7); these entries ship with the next release.
+
+### Added
+- API tab "Run Namespace" asks for confirmation first, then runs only the namespace's read-only APIs (`Get*`, `Is*`, `Has*`, `Unit*` and similar), in time-sliced steps so the client does not freeze.
+- Performance tab column headers sort when clicked.
+- API definitions were regenerated from Blizzard's 12.0.1.64914 documentation: 4,521 APIs (previously 5,133). Entries that were widget methods mis-keyed as global APIs and events mis-read as APIs are gone. Only APIs marked `SecretArguments=NotAllowed` are classed as restricted; `AllowedWhenUntainted` APIs are normal.
+
+### Changed
+- Console print capture now post-hooks `print` with `hooksecurefunc` instead of replacing `_G.print`, so other addons' wrappers and taint behavior are unaffected. Output from AceConsole `:Print()` is still not captured.
+- Tools tab panels are built once per addon instead of on every selection.
+- Performance tab CPU column shows ms per second over the refresh window; the event-frequency option was removed.
+- The API namespace export is scoped to the selected namespace.
+- Synced the bundled FenUI library to its latest release (theme-switch refresh APIs and animation fixes; see `Mechanic/Libs/FenUI/CHANGELOG.md`).
+- `/mech` help no longer lists the unimplemented `copy` command.
+
+### Fixed
+- A failing callback from a registered addon is recorded in the Health Log and leaves that section at its previous value instead of aborting the whole hub sync. The Health Log is now filled by these failures.
+- A malformed queue `target` fails closed in both the bootstrap and the main addon, so queued code is not run on a mismatched character or profile.
+- Late addon registrations appear in the settings panel, and the settings entry opens the right category.
+- The **Toggle Mechanic Panel** key binding works.
+- Inspect: "Reset All" in Properties clears pending changes; property edits on protected frames are refused during combat; frame path resolution accepts numeric segments; stale detail sections no longer remain after selection changes.
+- Errors tab: session dropdown and per-source counts.
 
 ## [1.4.6 / 1.3.7] - 2026-09-23
 
@@ -59,7 +84,19 @@ All notable changes to the Mechanic in-game addons will be documented in this fi
 - Removed the generated 711 KB API registry; navigation and statistics now derive directly from the canonical definitions.
 - Consolidated duplicate performance collection, sorting, API conversion, and module lifecycle code.
 
-## [1.3.1] - 2026-01-04
+## [1.4.1 / 1.3.2] - 2026-08-10
+
+### Changed
+- Retail interface updated for WoW 12.1.0 (`## Interface: 120100`).
+- Synced the bundled FenUI and LibStub libraries.
+
+### Fixed
+- Frame-environment helpers (`GetClientType`, `GetVersionString`, `GetInterfaceString`) fall back to the client's own build information when the FenCore method is missing.
+- The environment header resolves the specialization name for both the current and legacy `GetSpecializationInfo` return shapes.
+- Defensive `FenUI.Utils` method checks in `Utils.lua`.
+- FenUI `MultiLineEditBox` hides its orphaned scroll child.
+
+## [1.4.0 / 1.3.1] - 2026-01-04
 
 ### Added
 - **Localization**: Complete HELP translations for 5 languages (Spanish, Italian, Korean, Portuguese, Russian) - ~550 new localized strings covering all in-game help content.
@@ -222,3 +259,12 @@ Midnight compatibility verified.
 
 ### Changed
 - Initial stable release. Completed Phase 4 (Migration) and consolidated development hub features including Console, Error monitoring (BugGrabber), Test execution (MechanicLib), and Performance metrics. Improved UI with FenUI StatusRow/MultiLineEditBox and fixed various race conditions and layering issues. Added support for ActionHud and WimpyAuras integration.
+
+[Unreleased]: https://github.com/Falkicon/Mechanic/compare/v1.4.6...HEAD
+[1.4.6 / 1.3.7]: https://github.com/Falkicon/Mechanic/compare/v1.4.5...v1.4.6
+[1.4.5 / 1.3.6]: https://github.com/Falkicon/Mechanic/compare/v1.4.4...v1.4.5
+[1.4.4 / 1.3.5]: https://github.com/Falkicon/Mechanic/compare/v1.4.3...v1.4.4
+[1.4.3 / 1.3.4]: https://github.com/Falkicon/Mechanic/compare/v1.4.2...v1.4.3
+[1.4.2 / 1.3.3]: https://github.com/Falkicon/Mechanic/compare/v1.4.1...v1.4.2
+[1.4.1 / 1.3.2]: https://github.com/Falkicon/Mechanic/compare/v1.4.0...v1.4.1
+[1.4.0 / 1.3.1]: https://github.com/Falkicon/Mechanic/compare/v1.3.0...v1.4.0

@@ -7,44 +7,6 @@ local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local InspectModule = Mechanic.Inspect
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
 
--- Helper: Get a descriptive name for a frame
--- Priority: Global Name > Leaf from FrameResolver path > <ObjectType>
-local function GetDescriptiveName(frame)
-	if not frame or type(frame) ~= "table" then
-		return tostring(frame or "<nil>")
-	end
-
-	-- 1. Check for global name first (safe pcall for WoW methods)
-	if frame.GetName then
-		local ok, name = pcall(frame.GetName, frame)
-		if ok and name and type(name) == "string" and name ~= "" then
-			return name
-		end
-	end
-
-	-- 2. Try FrameResolver to get a path, then extract the leaf
-	if ns.FrameResolver then
-		local path = ns.FrameResolver:GetFramePath(frame)
-		if path and type(path) == "string" and path ~= "<anonymous>" then
-			-- Extract the leaf (last segment after last dot)
-			local leaf = path:match("%.([^%.]+)$") or path
-			if leaf and leaf ~= "?" then
-				return leaf
-			end
-		end
-	end
-
-	-- 3. Fallback to object type
-	if frame.GetObjectType then
-		local ok, objType = pcall(frame.GetObjectType, frame)
-		if ok and objType then
-			return "<" .. objType .. ">"
-		end
-	end
-
-	return "<table>"
-end
-
 function InspectModule:InitializeTree(parent)
 	self.treeHeader = self:CreateColumnHeader(parent, L["Hierarchy"])
 
@@ -63,7 +25,7 @@ function InspectModule:InitializeTree(parent)
 	self.expandedNodes = {} -- frame -> true
 end
 
-function InspectModule:UpdateTree(selectedFrame)
+local function updateTree(self, selectedFrame)
 	-- For now, a simple list of parent -> self -> children
 	-- A full tree would be more complex, but let's start with a "Contextual Tree"
 
@@ -123,12 +85,12 @@ function InspectModule:UpdateTree(selectedFrame)
 		node:SetPoint("TOPLEFT", self.treeContent, "TOPLEFT", nodeData.indent, -yOffset)
 		node:SetPoint("RIGHT", self.treeContent, "RIGHT", 0, 0)
 
-		local name = GetDescriptiveName(nodeData.frame)
+		local fullPath = ns.FrameResolver:GetFramePath(nodeData.frame)
+		local name = ns.FrameResolver:GetDisplayName(nodeData.frame, fullPath)
 		node.text:SetText(name)
 
 		-- Store the full path for tooltip
-		local fullPath = ns.FrameResolver and ns.FrameResolver:GetFramePath(nodeData.frame) or name
-		node.fullPath = fullPath
+		node.fullPath = fullPath or name
 
 		if nodeData.type == "selected" then
 			node.text:SetTextColor(FenUI:GetColorRGB("textStrong"))
@@ -149,7 +111,7 @@ function InspectModule:UpdateTree(selectedFrame)
 		-- Update visibility toggle state
 		if node.visBtn and nodeData.frame.IsVisible then
 			local ok, isVisible = pcall(nodeData.frame.IsVisible, nodeData.frame)
-			if ok then
+			if ok and not ns.SafeValue.IsSecret(isVisible) then
 				node.visBtn:SetTexture(ICON_PATH .. (isVisible and "icon-visibility-on" or "icon-visibility-off"))
 				-- Resting tint encodes the state (visible = muted, hidden = dim); hover still brightens
 				node.visBtn.config.tint = isVisible and "textMuted" or "textDisabled"
@@ -172,6 +134,11 @@ function InspectModule:UpdateTree(selectedFrame)
 	end
 
 	self.treeContent:SetHeight(yOffset)
+end
+
+function InspectModule:UpdateTree(selectedFrame)
+	-- Sibling nodes share parents; cache member scans for this pass.
+	ns.FrameResolver:WithCache(updateTree, self, selectedFrame)
 end
 
 function InspectModule:GetOrCreateTreeNode(index)
@@ -211,7 +178,7 @@ function InspectModule:GetOrCreateTreeNode(index)
 			if targetFrame then
 				_G.f = targetFrame
 				InspectModule.pinnedFrame = targetFrame
-				local name = GetDescriptiveName(targetFrame)
+				local name = ns.FrameResolver:GetDisplayName(targetFrame)
 				Mechanic:Print("|cff00ff00Pinned:|r _G.f = " .. name)
 				-- Refresh tree to update visual state of all pins
 				InspectModule:UpdateTree(InspectModule.selectedFrame)
@@ -232,12 +199,14 @@ function InspectModule:GetOrCreateTreeNode(index)
 				local isVisible = false
 				if targetFrame.IsVisible then
 					local okV, vis = pcall(targetFrame.IsVisible, targetFrame)
-					if okV then
+					if okV and not ns.SafeValue.IsSecret(vis) then
 						isVisible = vis
 					end
 				end
 
-				if targetFrame.SetShown then
+				if not InspectModule:CanModify(targetFrame) then
+					Mechanic:Print("Cannot change a protected frame during combat.")
+				elseif targetFrame.SetShown then
 					pcall(targetFrame.SetShown, targetFrame, not isVisible)
 				end
 				-- Refresh tree to update all visibility states
@@ -272,7 +241,7 @@ function InspectModule:GetOrCreateTreeNode(index)
 			end
 			if s.frame and s.frame.IsVisible then
 				local ok, visible = pcall(s.frame.IsVisible, s.frame)
-				if ok then
+				if ok and not ns.SafeValue.IsSecret(visible) then
 					GameTooltip:AddLine(visible and "Visible" or "Hidden", visible and 0 or 1, visible and 1 or 0, 0)
 				end
 			end

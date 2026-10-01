@@ -1,10 +1,9 @@
 -- MechanicLib.lua
 -- Minimal library for addon integration with !Mechanic
 --
--- This library is embedded in consuming addons via lib_sync.
--- See PLAN/MASTER_PLAN.md for full API specification.
---
--- Implementation: Phase 1 (PLAN/01-foundation.plan.md)
+-- Provided by the !Mechanic bootstrap addon. Consuming addons get it with
+-- LibStub("MechanicLib-1.0", true) and must tolerate nil when Mechanic is not installed.
+-- See docs/integration/mechaniclib.md for the registration API.
 
 local MAJOR, MINOR = "MechanicLib-1.0", 3
 local MechanicLib = LibStub:NewLibrary(MAJOR, MINOR)
@@ -63,7 +62,7 @@ end
 -- }
 
 --- Register an addon with Mechanic.
---- See PLAN/MASTER_PLAN.md for capabilities interface.
+--- See docs/integration/mechaniclib.md for the capabilities interface.
 ---@param addonName string The addon's name
 ---@param capabilities table Registration capabilities
 function MechanicLib:Register(addonName, capabilities)

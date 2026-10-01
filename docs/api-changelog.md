@@ -3,7 +3,9 @@
 > Tracking significant WoW API changes that affect addon development.  
 > Use this to quickly identify what changed since your last session.
 
-Last updated: **2026-01-16**
+Last updated: **2026-01-16** (content). Reviewed 2026-09-30: no content change.
+
+> **Coverage gap**: this page covers 12.0.1 (Midnight beta, January 2026) only. It has no entries for Retail 12.1.0, which Mechanic's TOCs target (`## Interface: 120100`), and the local `wow-ui-source` checkouts available when this was reviewed contained no 12.1 data to verify against. Mechanic's generated API definitions (`Mechanic/UI/APIDefs`, about 4,500 APIs) come from Blizzard's 12.0.1.64914 documentation, so API facts in `api.info` and the in-game API tab reflect that build, not 12.1.0. Use Blizzard's patch notes and the regenerated definitions (`api.refresh`) for newer builds.
 
 ---
 

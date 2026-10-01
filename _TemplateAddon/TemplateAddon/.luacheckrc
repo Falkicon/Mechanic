@@ -22,7 +22,7 @@ read_globals = {
     -- WoW API (common)
     "CreateFrame", "GetTime", "print", "ReloadUI",
     "UnitName", "UnitClass", "UnitLevel", "UnitHealth", "UnitHealthMax",
-    "GetSpellInfo", "GetSpellCooldown", "IsSpellKnown",
+    "C_AddOns", "C_Spell", "C_Timer",
     "hooksecurefunc", "securecall", "issecurevariable",
     -- WoW Frames
     "UIParent", "WorldFrame", "GameTooltip", "DEFAULT_CHAT_FRAME",

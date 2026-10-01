@@ -1,8 +1,8 @@
 # Addon Development Guide - Agent Overview
 
-> **Purpose**: Quick reference index for AI agents working on WoW addon development. This document summarizes all 23 guides with key cliff notes for fast context retrieval.
+> **Purpose**: Quick reference index for AI agents working on WoW addon development. This document summarizes all 24 guides with key cliff notes for fast context retrieval.
 
-**Last updated**: 2025-12-25
+**Last updated**: 2026-09-30 (tooling references moved from the retired `addon-dev` CLI to `mech`; Midnight/Interface facts below are from January 2026 unless noted)
 
 ---
 
@@ -10,11 +10,11 @@
 
 | Item | Value |
 |------|-------|
-| **Total Guides** | 23 modular documents |
-| **Current PTR Build** | 11.2.8 / 12.0.0 (Midnight pre-expansion) |
-| **Interface Version** | `120001` or `120000` (Midnight) |
-| **Midnight Pre-patch** | January 20, 2026 |
-| **Midnight Release** | March 2, 2026 |
+| **Total Guides** | 24 modular documents |
+| **Interface Version** | `120100` (Retail 12.1.0); this repository's TOCs use `120100, 16001` (adds WoW: Forever) |
+| **Midnight Pre-patch** | January 20, 2026 (as published at the time) |
+| **Midnight Release** | March 2, 2026 (as published at the time) |
+| **Blizzard source in Mechanic's API data** | 12.0.1.64914 (beta) |
 
 ---
 
@@ -96,7 +96,7 @@ These are the most important facts across all guides that agents should internal
 **Summary**: TOC file configuration for metadata, load order, and SavedVariables.
 
 **Key Points**:
-- `## Interface: 120001` - Must match client version
+- `## Interface: 120100` - Must match client version (comma-separate multiple clients)
 - Load order matters: Libraries → Compat → Core → Data → UI → Config
 - `## SavedVariables: AddonDB` - Unique names to avoid conflicts
 - Multi-version support: `## Interface-Retail`, `## Interface-Classic`
@@ -128,7 +128,7 @@ These are the most important facts across all guides that agents should internal
 **Key Points**:
 - Single root frame, widget recycling (create once, reuse)
 - Data-driven layout (LAYOUT table with padding, heights)
-- **Atlas Icons**: Use `addon-dev atlas search <keyword>` to find Blizzard icons.
+- **Atlas Icons**: Use `mech call atlas.search '{"query": "<keyword>"}'` to find Blizzard icons.
 - Throttle OnUpdate (0.1s minimum)
 - **Midnight patterns**: StatusBar passthrough, Cooldown passthrough, `SetAlpha(0)` instead of `Hide()` in combat
 - Study Blizzard: `Blizzard_ActionBar/`, `Blizzard_UnitFrame/`, `Blizzard_Cooldown/`
@@ -227,7 +227,7 @@ These are the most important facts across all guides that agents should internal
 - Changelog: Include features, fixes, breaking changes; skip refactoring
 - Platforms: CurseForge (largest), Wago.io (WeakAuras), WoWInterface (niche)
 - `.pkgmeta` for CurseForge auto-packaging
-- Pre-release: `validate_tocs()`, `check_libraries()`, `addon-dev fix-deprecations`, `@lint`
+- Pre-release: `addon.validate`, `libs.check`, `addon.deprecations`, `addon.lint`
 
 ---
 
@@ -393,7 +393,7 @@ These are the most important facts across all guides that agents should internal
 
 ---
 
-### Testing & Recovery (22-23)
+### Testing & Recovery (22-24)
 
 #### 22 - Testing Strategies
 **File**: `22-testing-strategies.doc.md`
@@ -406,9 +406,8 @@ These are the most important facts across all guides that agents should internal
 - Edge cases: Zone transitions, spec change, mount/dismount
 - **Midnight testing**: Open world -> Instance out of combat -> Instance in combat -> Exit combat -> Leave instance
 - Automated tests: `Tests/*_spec.lua`, Busted-compatible, mock WoW API
-- Run: `addon-dev test "MyAddon"` or `addon-dev test --all`
-- **Code coverage**: `addon-dev test "MyAddon" --coverage` (HTML + console reports)
-- Threshold enforcement: `addon-dev test --coverage --threshold 80`
+- Run: `mech call addon.test '{"addon": "MyAddon"}'` (Busted) or `mech call sandbox.test '{"addon": "MyAddon"}'` (sandbox)
+- **Code coverage**: `addon.test` with `"coverage": true` forwards `--coverage` to Busted (needs LuaCov); no HTML report or threshold is produced by Mechanic
 - Performance: CPU <10ms/s active, Memory <2MB active
 
 ---
@@ -429,6 +428,18 @@ These are the most important facts across all guides that agents should internal
 
 ---
 
+#### 24 - Housing APIs
+**File**: `24-housing-apis.doc.md`
+
+**Summary**: Player Housing (`C_Housing`) APIs, events, neighborhood system, tooltip and content-tracking integration (Midnight, as documented 2026-01-16).
+
+**Key Points**:
+- `C_Housing` namespace for inventory and decor management
+- Housing events and the neighborhood system
+- Secure currency transactions, tooltip and content-tracking hooks
+
+---
+
 ## Usage Patterns
 
 ### Finding Information
@@ -444,22 +455,22 @@ These are the most important facts across all guides that agents should internal
 - **Release prep**: 11 → 14 → 22
 - **Debugging**: 10 → 23 → 22
 
-### Agent Quick Commands
+### Agent Commands (MCP tool = command name with dashes)
 ```
-@lint                - Run Luacheck + Midnight pattern scanning
-@test                - Execute unit tests
-@create              - Bootstrap new addon from template
-@release             - Pre-release checklist and version tagging
-@debug-sv            - Inspect SavedVariables for corruption
+addon.lint           - Run Luacheck
+addon.test           - Run Busted unit tests (sandbox.test for the offline sandbox)
+addon.create         - Bootstrap a new addon from the template
+release.all          - Preflight, bump, changelog, commit, tag (supports dry_run)
+addon.output         - Read hub data (errors, tests, console) after a confirmed /reload
 ```
 
 ### CLI Quick Reference
 ```
-addon-dev setup                        - Download/verify dev binaries
-addon-dev watch "Addon"                - Real-time lint/test on file change
-addon-dev test "Addon" --coverage      - Run tests with coverage report
-addon-dev fix-deprecations "Addon"     - Scan/fix deprecated APIs
-addon-dev doctor                       - Check environment health
+mech setup                                                       - Download/verify dev binaries
+mech call addon.test '{"addon": "Addon", "coverage": true}'      - Run Busted with coverage
+mech call addon.deprecations '{"addon": "Addon"}'                - Scan for deprecated APIs
+mech call tools.status                                           - Check tool availability
+mech call env.status                                             - Check WoW paths and flavors
 ```
 
 ---
@@ -468,6 +479,6 @@ addon-dev doctor                       - Check environment health
 
 - **Main AGENTS.md**: `../../AGENTS.md` - Workspace-level documentation
 - **Library Reference**: `../integration/libraries.md`
-- **Blizzard UI Reference**: `../../.claude/skills/researching-apis/references/blizzard-ui.md`
+- **Blizzard UI Reference**: `../../.claude/skills/s-research/references/blizzard-ui.md`
 - **Release Workflow**: `../integration/curseforge.md`
 

@@ -6,7 +6,7 @@ Track where your addon spends CPU time with fine-grained block profiling.
 
 ## Setting Up Performance Tracking
 
-**Example:** See [Flightsim/UI.lua](../../../Flightsim/UI.lua)
+**Example:** the Flightsim addon (sibling repository) uses this pattern in its UI code.
 
 ```lua
 -- Performance Tracking Structure

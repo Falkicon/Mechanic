@@ -21,8 +21,11 @@ mech call libs.init '{"addon": "MyAddon"}'
 # Preview changes without applying (dry run)
 mech call libs.sync '{"addon": "MyAddon", "dry_run": true}'
 
-# Force update existing libraries
+# Force update existing libraries (each replaced library is backed up first)
 mech call libs.sync '{"addon": "MyAddon", "force": true}'
+
+# Also remove libraries that libs.json does not list
+mech call libs.sync '{"addon": "MyAddon", "remove_extra": true, "dry_run": true}'
 ```
 
 **DO NOT** manually update libraries in `Libs` folders. Use `libs.sync` to maintain consistency.

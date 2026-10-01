@@ -2,24 +2,25 @@
 
 Mechanic Desktop is the local companion for World of Warcraft addon development. It provides a FastAPI dashboard, a SavedVariables watcher, and a structured command registry exposed through the CLI and MCP.
 
-The dashboard is packaged for both source checkouts and built wheels as `mechanic.dashboard`. Its HTTP and WebSocket bridge is intended for local use and enforces the local same-origin boundary.
+The dashboard is packaged for both source checkouts and built wheels as `mechanic.dashboard` (`index.html` markup, `dashboard.css`, and the `render`, `state`, `api`, `views`, `app`, `ws`, `main` and `schema-form` scripts). Its HTTP and WebSocket bridge is intended for local use and enforces the local same-origin boundary.
 
 For the architecture findings and validation limits, see the [September 2026 quality review](../docs/quality-review-2026-09-05.md). The [diagnostic and command workflow](../docs/quality-improvements.md) covers target selection, schema-driven forms, previews, and metrics.
 
 ## Features
 
-- **Dashboard and watcher** - WebSocket updates from watched SavedVariables folders, with local SQLite history.
+- **Dashboard and watcher** - WebSocket updates from watched SavedVariables folders (unrelated SavedVariables files are skipped), with bounded local SQLite history.
 - **60 registered commands** - Lint, test, format, inspect, release, API, sandbox, performance, and asset workflows.
 - **Schema-driven forms** - The dashboard reads `commands.list` input/output schemas, defaults, descriptions, and mutation flags. Supported object schemas get forms; complex schemas retain a raw JSON editor.
 - **Deterministic diagnostics** - `diagnostic.targets` discovers client, account, character, and profile combinations. Pass the selected target to commands that read or write diagnostic data.
 - **Previewable operations** - `release.all`, `addon.sync`, and `libs.sync` accept `dry_run: true` to show their plan.
+- **Validated input** - Invalid command input returns `VALIDATION_ERROR` with `error.details.errors` (`field`, `message`, `type`) instead of a stack trace.
 - **Optional source-change reload** - `--auto-reload` can send a configured key after Lua source changes on Windows and macOS. A WoW /reload is still the authoritative way to reload the addon and save results.
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.10 or higher (CI covers 3.10 to 3.13)
 - World of Warcraft with both `!Mechanic` and `Mechanic` installed for the full diagnostic hub
 - Git for version-control and release commands
 - Lua 5.1 for the real bootstrap contract tests (optional for normal use)
@@ -35,14 +36,14 @@ python -m pip install -e .
 python -m pip install -c constraints-dev.txt -e ".[dev]"
 ~~~
 
-For a non-editable installation from this directory, use `python -m pip install .`. To build a wheel, install the constrained `build`, `setuptools`, and `wheel` tools and run `python -m build --wheel --no-isolation`; see [.github/workflows/ci.yml](../.github/workflows/ci.yml) for the complete build and smoke-check procedure. The installed package includes mechanic.dashboard/index.html and mechanic.dashboard/schema-form.js; the server resolves those assets from the package rather than from the source checkout.
+Installing pulls the runtime dependencies from PyPI, including the hosted [`afd`](https://pypi.org/project/afd/) command framework (`afd>=0.8.0,<0.9`); Mechanic no longer vendors a copy. For a non-editable installation from this directory, use `python -m pip install .`. To build a wheel, install the constrained `build`, `setuptools`, and `wheel` tools and run `python -m build --wheel --no-isolation`; see [.github/workflows/ci.yml](../.github/workflows/ci.yml) for the complete build and smoke-check procedure. The installed package includes the `mechanic.dashboard` assets (HTML, CSS and scripts) and `mechanic.resources` (tool checksums, Lua runner and test framework, deprecation seed); the server resolves them from the package rather than from the source checkout.
 
 The package exposes both mech and mechanic console scripts. The examples below use mech.
 
 ### Quick start
 
 ~~~bash
-# Configure paths and download luacheck/StyLua (and busted.bat on Windows)
+# Configure paths and download luacheck/StyLua/Lua (checksum-verified)
 mech setup
 
 # Auto-discover SavedVariables and open the dashboard on port 3100
@@ -72,7 +73,17 @@ export MECHANIC_DEV_PATH="$MECHANIC_WOW_ROOT/_dev_"
 export MECHANIC_DATA_DIR="$HOME/.mechanic/data"
 ~~~
 
-Explicit process environment variables take precedence over .env files. The loader accepts desktop/.env and ~/.mechanic/.env. `MECHANIC_DATA_DIR` defaults to ~/.mechanic/data; it stores the history database and caches. If dev_path is not configured, discovery uses <wow_root>/_dev_ when that directory exists. The default flavor list is ["_retail_", "_beta_", "_ptr_"]; addon_search_paths can add extra addon roots. `GEMINI_API_KEY` is used by the optional `research.query` command.
+Explicit process environment variables take precedence over .env files. In a source checkout the loader reads desktop/.env then ~/.mechanic/.env; an installed wheel reads only ~/.mechanic/.env. `MECHANIC_DATA_DIR` defaults to ~/.mechanic/data; it stores the history database and caches. If dev_path is not configured, discovery uses <wow_root>/_dev_ when that directory exists. The default flavor list is ["_retail_", "_beta_", "_ptr_"]; addon_search_paths can add extra addon roots, and `template_path` points `addon.create` at a template folder (default: `_TemplateAddon` under `<dev_path>/Mechanic/` or `<dev_path>/`).
+
+Other variables the code reads:
+
+| Variable | Purpose |
+|----------|---------|
+| `GEMINI_API_KEY` | Gemini key for the optional `research.query` command |
+| `MECHANIC_GEMINI_FAST_MODEL`, `MECHANIC_GEMINI_THINKING_MODEL` | Override the Gemini model IDs `research.query` uses for `fast` / `thinking` |
+| `MECHANIC_LUA` | Path to a Lua 5.1 executable for `sandbox.*` and the Python-to-Lua contract tests (otherwise `bin/`, then `PATH`) |
+| `XDG_CONFIG_HOME` | Location of `mechanic/config.json` on non-Windows systems |
+| `SOURCE_DATE_EPOCH` | Fixes the date `docs.generate` writes; the file is not rewritten when only the date would change |
 
 WoW root discovery has common fallbacks for Windows, macOS, and Linux Wine/Lutris layouts. It is still safe to set `MECHANIC_WOW_ROOT` and `MECHANIC_DEV_PATH` explicitly when several installations are present.
 
@@ -101,7 +112,9 @@ mech status
 mech stop --port 3100
 ~~~
 
-Other top-level commands are shell, dashboard, `addon.output`, release, setup, setup-busted, and mcp. The `release.all` registry command provides the dry-run preflight and recovery metadata described below. The older mech release shortcut uses positional arguments (mech release MyAddon 1.2.0 "Added a feature") and sequences individual version, changelog, commit, and tag commands; it does not provide `release.all`'s preview/preflight contract. Add `--skip-tag` to omit the Git tag. mech mcp uses stdio by default; install the MCP extra first and use mech mcp --transport sse --port 3100 for SSE.
+Failures exit non-zero (`addon.output` and `docs` exit 1; `--json` output is real JSON). In `mech shell`, a bad JSON argument is reported and the shell keeps running.
+
+Other top-level commands are shell, dashboard, `addon.output`, release, setup, setup-busted, mcp, status, stop and docs. `mech release ADDON VERSION MESSAGE` (for example `mech release MyAddon 1.2.0 "Added a feature"`) calls the `release.all` registry command, so it shares its preflight and recovery metadata described below; add `--dry-run` to preview and `--category` to pick the changelog section. `--skip-tag` was removed (exit status 2). `mech mcp` uses stdio by default; install the MCP extra first. `mech mcp --transport sse` serves SSE on `127.0.0.1:3101` (port 3100 belongs to the dashboard); `--host` and `--port` change the bind address. SSE is unauthenticated and exposes mutating commands, so the CLI warns on stderr; keep it on localhost.
 
 There is no mech reload command. The dashboard reload button displays the /reload instruction, and watcher events only report file changes. `--auto-reload --src PATH` sends the configured key when a Lua source file changes; the CLI option defaults to key 9, and `--reload-key` changes it. The addon binding is not assigned a WoW default key, so bind the addon action and make the CLI key match. This window-focus helper is implemented for Windows and macOS; Linux does not support it.
 
@@ -112,8 +125,10 @@ mech setup                 # Download or verify configured tools
 mech setup --verify        # Verify without downloading
 mech setup --force         # Re-download tools
 mech setup --skip-config   # Set up tools without path prompts
-mech setup-busted          # Regenerate Windows busted.bat
+mech setup-busted          # Generate the Windows busted.bat for your LuaRocks install
 ~~~
+
+Downloads are verified against the SHA-256 values in `src/mechanic/resources/checksums.json` before they are written; entries without a real checksum are refused. Tools install to `desktop/bin` in a checkout and `~/.mechanic/bin` from an installed wheel. `mech setup` merges discovered paths into `~/.mechanic/config.json` without dropping other keys. See [bin/README.md](bin/README.md).
 
 ### Optional extras
 
@@ -156,31 +171,40 @@ Use `dry_run: true` with `release.all`, `addon.sync`, or `libs.sync` to inspect 
 
 ## Dashboard and local API
 
-The dashboard listens on 127.0.0.1:3100 by default and serves at /dashboard/. It uses the local /api/execute command bridge and /ws watcher stream. The bridge validates local host and same-origin requests; it is not authentication for a remotely exposed deployment.
+The dashboard listens on 127.0.0.1:3100 by default and serves at /dashboard/. It uses the local /api/execute command bridge and /ws watcher stream; `/health` returns `{"status", "version", "port"}` (`port` is null when no HTTP server runs in the process). The bridge validates local host and same-origin requests; it is not authentication for a remotely exposed deployment.
 
-The dashboard can run without valid watch paths, but it cannot show SavedVariables updates until a real folder is supplied. Install both `!Mechanic` and `Mechanic`, select a target when prompted, run /reload in WoW, and wait for the watcher to sync the written file.
+History endpoints: `GET /api/history` returns bounded history (at most 1000 command rows and 200 reload rows are kept; results over 1 MB are stored as a stub). Entries over 100 KB come back as a stub with `truncated` and `history_id`; fetch the full entry with `GET /api/history/{id}`, or raise the inline limit with the `max_result_bytes` query parameter. `POST /api/history/clear` clears it.
+
+The dashboard can run without valid watch paths, but it cannot show SavedVariables updates until a real folder is supplied. Install both `!Mechanic` and `Mechanic`, select a target when prompted, run /reload in WoW, and wait for the watcher to sync the written file. Importing the server or running `mech --help` does not create the history database; it is created on first use.
 
 ## Project structure
 
 ~~~text
 desktop/
-├── bin/                    # Downloaded development tools
+├── bin/                    # Downloaded development tools (binaries git-ignored)
 ├── config.json.example     # JSON path configuration example
+├── .env.example            # Environment variable example
 ├── dashboard/              # Packaged static dashboard assets
-│   ├── index.html
-│   └── schema-form.js
+│   ├── index.html          # Markup only
+│   ├── dashboard.css
+│   └── render/state/api/views/app/ws/main/schema-form .js
+├── scripts/                # Wheel smoke test
 ├── src/
-│   ├── afd/                # Structured command server/runtime
 │   └── mechanic/
 │       ├── cli.py          # Click CLI entry point
 │       ├── config.py       # Configuration and path discovery
 │       ├── server.py       # FastAPI server and local bridge
+│       ├── mcp_server.py   # MCP adapter (stdio / SSE)
 │       ├── storage.py      # SQLite history
 │       ├── watcher.py      # SavedVariables/source watcher
+│       ├── setup.py        # Tool download/verification
+│       ├── validation.py   # Command input validation errors
+│       ├── lua_tokenizer.py, lua_structure.py, analysis_common.py  # Shared Lua analysis
+│       ├── resources/      # Packaged data: checksums.json, Lua runner/framework, deprecation seed
 │       └── commands/       # Registered command modules
 ├── tests/                  # Isolated Python tests
-├── constraints-dev.txt    # Pinned local validation tools
-├── pyproject.toml          # Package and optional extras
+├── constraints-dev.txt     # Pinned local validation tools
+├── pyproject.toml          # Package and optional extras (afd is a PyPI dependency)
 └── README.md
 ~~~
 
@@ -191,7 +215,7 @@ python -m pip install -c constraints-dev.txt -e ".[dev]"
 pytest -v
 ~~~
 
-The last verified local baseline (2026-09-05) passed 243 Python tests with MCP 1.28.1 and a real Lua 5.1 runtime, plus the dashboard and Lua regression harnesses. Set `MECHANIC_LUA` to a Lua 5.1 executable to run the real bootstrap contract locally.
+The suite has about 700 tests (a 2026-09-05 baseline passed 243 before the later quality work). Set `MECHANIC_LUA` to a Lua 5.1 executable to run the real bootstrap contract and sandbox tests locally. From the repository root, the Lua and dashboard harnesses are `tests/*_regressions.lua` (run with `lua5.1`) and `tests/*_regressions.cjs` (run with `node`).
 
 The offline Lua environment models only the APIs needed by its contracts. Tests do not validate WoW rendering, protected API behavior, or live SavedVariables timing. In-game behavior remains unverified until the worktree is installed in WoW and a /reload is confirmed.
 
@@ -203,7 +227,7 @@ Set `MECHANIC_WOW_ROOT` and `MECHANIC_DEV_PATH`, or create ~/.mechanic/config.js
 
 ### Luacheck, StyLua, or Busted is missing
 
-Run mech setup. On Windows, mech setup can generate desktop/bin/busted.bat when LuaRocks is installed.
+Run mech setup. On Windows, `mech setup-busted` generates desktop/bin/busted.bat (git-ignored, machine-specific) once `luarocks install busted` has run. `mech call tools.status` shows what was found.
 
 ### Dashboard will not connect
 

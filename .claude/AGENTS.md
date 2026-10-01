@@ -1,145 +1,128 @@
 # .claude System Documentation
 
-Guide for maintaining and extending the commands/skills system in Mechanic.
+Guide for maintaining and extending the commands/skills system in Mechanic. `.claude/` is the **canonical** source; `.agent/` is generated from it.
 
 ## Taxonomy Overview
 
-This system uses three prefixes to organize Claude commands and skills:
-
 | Prefix | Type | Purpose | Rule |
 |--------|------|---------|------|
-| `c-` | Commands | Action workflows with explicit steps | Always has matching `s-X` (or orchestrates multiple skills) |
-| `s-` | Skills | How-to knowledge for actions | Always has matching `c-X` |
-| `k-` | Knowledge | Context/background information | No command needed - the skill IS the context loader |
+| `c-` | Commands | Action workflows with explicit steps | Pairs with an `s-X` skill, or orchestrates several (`c-review`) |
+| `s-` | Skills | How-to knowledge for actions | Always has a matching `c-X` |
+| `k-` | Knowledge | Context/background information | No command; the skill is the context loader |
+| `using-mechanic` | Protocol | The single home of the diagnostic-target and reload protocol | Referenced by every skill that touches live game data |
 
 ## Typing Experience
 
 ```
-/c  →  c-audit, c-clean, c-debug, c-develop, c-lint, c-release, c-research, c-review, c-test
-/s  →  s-audit, s-clean, s-debug, s-develop, s-lint, s-release, s-research, s-test
-/k  →  k-create-skill, k-docs, k-ecosystem, k-fencore, k-fenui, k-mechanic
+/c  ->  c-audit, c-clean, c-debug, c-develop, c-lint, c-release, c-research, c-review, c-test
+/s  ->  s-audit, s-clean, s-debug, s-develop, s-lint, s-release, s-research, s-test
+/k  ->  k-apidefs, k-create-skill, k-desktop, k-docs, k-ecosystem, k-fencore, k-fenui, k-mechanic
 ```
-
-Three distinct letters, three distinct purposes.
 
 ## The Rules
 
-1. **`c-X` always has `s-X`** — Action commands pair with action skills using the same verb
-2. **`k-*` has no command** — Knowledge skills ARE the context loading mechanism
-3. **Orchestration commands exist** — Some `c-*` combine multiple skills (e.g., `c-review`)
-4. **Knowledge skills can have `references/`** — For deeper content when needed
-
-## Adding New Items
-
-### New Action (e.g., "deploy")
-
-1. Create `commands/c-deploy.md` with explicit steps
-2. Create `skills/s-deploy/SKILL.md` with detailed how-to guidance
-3. Add `**Skill**: [s-deploy](../skills/s-deploy/SKILL.md)` link in the command
-4. Add `## Related Commands` section in the skill linking back
-
-### New Knowledge (e.g., "blizzard-api")
-
-1. Create `skills/k-blizzard-api/SKILL.md`
-2. No command needed — invoking the skill IS studying it
-3. Optionally add `references/` folder for deeper content
-
-### New Orchestration (e.g., "ship")
-
-1. Create `commands/c-ship.md` that references multiple existing skills
-2. No new skill needed — it combines existing ones
-3. List all skills in the command's `**Skills**:` line
-
-## Naming Conventions
-
-- **Commands**: `c-{verb}` — audit, clean, debug, develop, lint, release, research, review, test
-- **Action Skills**: `s-{verb}` — same verb as the matching command
-- **Knowledge Skills**: `k-{topic}` — create-skill, docs, ecosystem, fencore, fenui, mechanic
+1. **`c-X` has `s-X`**: action commands pair with action skills using the same verb.
+2. **`k-*` has no command**: knowledge skills are the context loading mechanism.
+3. **Orchestration commands exist**: some `c-*` combine skills (`c-review`).
+4. **Knowledge skills can have `references/`** for deeper content.
+5. **MCP first**: agent-facing instructions call MCP tools directly. CLI examples belong only in user-facing pages (`k-mechanic/references/cli-commands.md`).
+6. **One source of truth**: the protocol lives in `using-mechanic`; the command reference is generated from the registry. Link, do not copy.
+7. **Verify against code**: every command, flag, port and API named in a skill must exist.
 
 ## File Structure
 
 ```
 .claude/
-├── AGENTS.md              ← This file (system documentation)
-├── commands/
-│   ├── c-audit.md         → links to s-audit
-│   ├── c-clean.md         → links to s-clean
-│   ├── c-debug.md         → links to s-debug
-│   ├── c-develop.md       → links to s-develop
-│   ├── c-lint.md          → links to s-lint
-│   ├── c-release.md       → links to s-release
-│   ├── c-research.md      → links to s-research
-│   ├── c-review.md        → orchestrates multiple skills
-│   └── c-test.md          → links to s-test
-│
-└── skills/
-    ├── s-audit/           ← Action skill (has c-audit)
-    ├── s-clean/           ← Action skill (has c-clean)
-    ├── s-debug/           ← Action skill (has c-debug)
-    ├── s-develop/         ← Action skill (has c-develop)
-    ├── s-lint/            ← Action skill (has c-lint)
-    ├── s-release/         ← Action skill (has c-release)
-    ├── s-research/        ← Action skill (has c-research)
-    ├── s-test/            ← Action skill (has c-test)
-    │
-    ├── k-create-skill/    ← Knowledge skill (NO command)
-    ├── k-docs/            ← Knowledge skill (NO command)
-    ├── k-ecosystem/       ← Knowledge skill (NO command)
-    ├── k-fencore/         ← Knowledge skill (NO command)
-    ├── k-fenui/           ← Knowledge skill (NO command)
-    └── k-mechanic/        ← Knowledge skill (NO command)
+├── AGENTS.md                    <- This file
+├── commands/                    <- c-*.md (one-line description, then steps)
+├── skills/
+│   ├── using-mechanic/          <- Protocol; references/afd-commands.md is GENERATED
+│   ├── k-*/                     <- Knowledge skills
+│   └── s-*/                     <- Action skills
+├── gen_command_reference.py     <- Generates using-mechanic/references/afd-commands.md
+├── sync_ide.py                  <- Generates .agent/ from .claude/
+├── sync-ide.ps1                 <- PowerShell wrapper for sync_ide.py
+└── settings.json                <- Shared Claude Code settings
 ```
+
+## Generated Artifacts
+
+| Artifact | Generator | Guard |
+|----------|-----------|-------|
+| `.claude/skills/using-mechanic/references/afd-commands.md` | `python .claude/gen_command_reference.py` (reads the command registry, same data as `commands.list`) | `desktop/tests/test_agent_docs.py` |
+| `.agent/skills/**`, `.agent/workflows/*.md`, `.agent/rules/ecosystem.md` | `python .claude/sync_ide.py` (or `.\.claude\sync-ide.ps1`) | `desktop/tests/test_agent_docs.py` |
+
+`.agent/AGENTS.md` is hand-written. Never edit other `.agent/` files: they are cleared and rebuilt, with relative links re-resolved for the new layout (commands become workflows). `gen_command_reference.py` imports the installed `mechanic` package (`pip install -e desktop`); `sync_ide.py` needs only Python.
+
+Run both after changing commands or skills, then `pytest desktop/tests/test_agent_docs.py`.
+
+## Adding New Items
+
+### New Action (for example "deploy")
+
+1. Create `commands/c-deploy.md` with explicit steps.
+2. Create `skills/s-deploy/SKILL.md` with detailed guidance.
+3. Link them both ways (`**Skill**:` in the command, `## Related Commands` in the skill).
+4. Add the names to the lists in this file and in `k-ecosystem` ("Which skill next") and `k-create-skill/references/architecture.md`.
+
+### New Knowledge (for example "blizzard-api")
+
+1. Create `skills/k-blizzard-api/SKILL.md`; no command.
+2. Optionally add `references/`.
+
+### New Orchestration (for example "ship")
+
+1. Create `commands/c-ship.md` listing several skills in a `**Skills**:` line.
+
+## Naming Conventions
+
+- **Commands**: `c-{verb}`; **Action skills**: `s-{verb}` (same verb); **Knowledge skills**: `k-{topic}`.
+- The `name` front matter equals the directory name.
 
 ## Templates
 
-### Command Template (Single-Skill)
+### Command (single skill)
 
 ```markdown
-[One-line description of what this workflow does.]
+One-line description of what this workflow does.
 
 **Skill**: [s-X](../skills/s-X/SKILL.md)
 
 1. **Step**: Description
 2. **Step**: Description
-3. **Step**: Description
 ```
 
-### Command Template (Orchestration)
+### Command (orchestration)
 
 ```markdown
-[One-line description of what this workflow does.]
+One-line description.
 
 **Skills**: [s-A](../skills/s-A/SKILL.md), [s-B](../skills/s-B/SKILL.md)
 
 1. **Phase**: Description (see s-A)
-2. **Phase**: Description (see s-B)
-3. **Report**: Summary
+2. **Report**: Summary
 ```
 
-### Action Skill Template
+### Action skill
 
 ```markdown
 ---
 name: s-X
 description: >
-  [Description]. Triggers: [keywords].
+  What it does and covers. Triggers: keywords.
 ---
 
-# [Title]
+# Title
 
 ## Related Commands
 
-- [c-X](../../commands/c-X.md) - [description]
+- [c-X](../../commands/c-X.md) - description
 
 ## MCP Tools
 
-| Task | Tool |
-|------|------|
-| ... | ... |
-
-## Capabilities
-
-1. **Capability** — Description
+| Task | MCP Tool |
+|------|----------|
+| ... | `tool(arg="value")` |
 
 ## Routing Logic
 
@@ -148,38 +131,30 @@ description: >
 | Topic | [references/file.md](references/file.md) |
 ```
 
-### Knowledge Skill Template
+### Knowledge skill
 
 ```markdown
 ---
 name: k-X
 description: >
-  Context for [topic]. Load this at the start of a conversation to provide
-  background knowledge. Triggers: [keywords].
+  Context for [topic]. Load when ... Triggers: keywords.
 ---
 
-# [Title]
+# Title
 
-[Overview of the knowledge domain]
-
-## Key Concepts
-
-...
-
-## Routing Logic (optional)
-
-| Request type | Load reference |
-|--------------|----------------|
-| Topic | [references/file.md](references/file.md) |
+Overview, key concepts, optional routing table.
 ```
+
+## Settings
+
+`.claude/settings.json` holds the shared Claude Code settings (permissions use the `allow`/`ask`/`deny` lists). Agents use the MCP tools, so the CLI is deliberately not pre-approved beyond read-only commands.
 
 ## Maintenance Checklist
 
-When modifying this system:
-
-- [ ] Follow the `c-`/`s-`/`k-` prefix conventions
-- [ ] Maintain bidirectional links (commands ↔ skills)
-- [ ] Use the same verb for command/skill pairs
-- [ ] Update this AGENTS.md if adding new patterns
-- [ ] Keep commands concise (steps only, no deep explanation)
-- [ ] Keep skills detailed (the "how" behind the steps)
+- [ ] Follow the `c-`/`s-`/`k-` conventions and keep links two-way
+- [ ] Name only commands, flags and APIs that exist (check `commands.list`)
+- [ ] Keep commands concise (steps only) and skills detailed
+- [ ] Put new protocol rules in `using-mechanic`, not in each skill
+- [ ] Run `python .claude/gen_command_reference.py` and `python .claude/sync_ide.py`
+- [ ] Run `pytest desktop/tests/test_agent_docs.py`
+- [ ] Update this file when adding patterns

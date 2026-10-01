@@ -1,8 +1,8 @@
 # Project Structure
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2026-01-02
+Last updated: 2026-09-30
 
 ---
 
@@ -28,35 +28,36 @@ AddonName/
 ├── Debug.lua          # Optional, if debug code grows
 ├── README.md          # User documentation
 ├── AGENTS.md          # AI agent documentation
-└── Libs/              # Local copies of shared libraries (synced via lib_sync.ps1)
+└── Libs/              # Local copies of shared libraries (managed with libs.check / libs.sync)
 ```
 
 ---
 
-## AI-Augmented Workflow
+## Tooling
 
-This workspace is configured with a unified CLI (`addon-dev`). **MANDATORY: Always use the CLI for execution tasks.** It is faster and avoids manual approval prompts. Use MCP tools only as a fallback or for specialized read/search operations.
+Addons are developed with the **Mechanic Desktop** `mech` CLI, the dashboard, and the MCP server (`mech mcp`). Every capability is a registered command: run `mech commands` for the list and `mech --json call commands.list` for the schemas. Call a command with `mech call <command> '<json>'`; MCP clients call the same commands as tools (dashes instead of dots, for example `addon-lint`).
 
-### Centralized Tools (ADDON_DEV/Tools/)
+### Commands (replacing the old `addon-dev` tools)
 
-| Tool | Purpose | CLI Command (Preferred) | Cursor Command |
-|------|---------|-------------------------|----------------|
-| **AddonCreator** | Bootstrap new addons from template | `addon-dev create` | `@create` |
-| **LintingTool** | Unified Luacheck + Pattern Scanner | `addon-dev lint` | `@lint` |
-| **TestRunner** | Execute unit tests with mock API | `addon-dev test` | `@test` |
-| **PerformanceProfiler** | Track metrics and regressions | (via MCP) | `@perf` |
-| **LocalizationTool** | Extract and validate translations | (via MCP) | (via MCP) |
-| **Formatter** | StyLua-based code formatting | `addon-dev format` | `@format` |
-| **JunctionManager** | Manage symbolic links to WoW clients | `addon-dev sync` | (part of `@create`) |
-| **ReleaseManager** | Automate versioning and tagging | `addon-dev release` | `@release` |
-| **TOCValidator** | Validate .toc metadata and files | `addon-dev validate` | (part of `@validate`) |
-| **SavedVariablesInspector**| Debug persistent data corruption | `addon-dev inspect-sv` | `@inspect-sv` |
-| **DeprecationScanner** | Scan for 12.0 API changes | (via MCP) | (via `@diagnose`) |
-| **LibraryDiff** | Check for stale shared libraries | (via MCP) | (part of `@release`) |
-| **GeminiResearch** | Web search and deep research | `addon-dev research` | `research_deep()` (MCP) |
+| Task | Command |
+|------|---------|
+| Bootstrap a new addon from `_TemplateAddon` | `addon.create` |
+| Lint (Luacheck) | `addon.lint` |
+| Unit tests (Busted) and offline sandbox tests | `addon.test`, `sandbox.test` |
+| Performance baselines and regressions | `perf.baseline`, `perf.compare`, `perf.report`, `perf.list` |
+| Extract and validate translations | `locale.extract`, `locale.validate` |
+| Format (StyLua) | `addon.format` |
+| Link addons into WoW clients | `addon.sync` |
+| Version, changelog, commit, tag | `release.all` or `mech release` |
+| Validate TOC metadata and files | `addon.validate` |
+| Deprecated API scan | `addon.deprecations` |
+| Library status and sync | `libs.check`, `libs.sync` |
+| Research (needs `GEMINI_API_KEY`) | `research.query` |
+| Atlas icon search | `atlas.scan`, `atlas.search` |
+
+The old `addon-dev` CLI is deprecated; see the [migration guide](../migration-from-addon-dev.md) for the full mapping.
 
 ---
-
 ## Why This Structure
 
 - **Keeps load order explicit** - TOC file controls exactly what loads when.

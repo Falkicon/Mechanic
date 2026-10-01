@@ -4,20 +4,37 @@ Supports Windows (direct download) and macOS (Homebrew/LuaRocks instructions).
 """
 
 import hashlib
+import io
 import json
+import os
+import re
 import shutil
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
+from .resources import resource_path
+
+
+def _resolve_bin_dir() -> Tuple[Path, bool]:
+    """Where tools are installed, and whether that is a source checkout.
+
+    In a checkout tools live in ``desktop/bin`` (git-ignored binaries). An
+    installed wheel has no such directory, so tools go to ``~/.mechanic/bin``.
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    if (root / "pyproject.toml").is_file():
+        return root / "bin", True
+    return Path.home() / ".mechanic" / "bin", False
+
 
 # Paths
-BIN_DIR = Path(__file__).parent.parent.parent / "bin"
-CHECKSUMS_FILE = BIN_DIR / "checksums.json"
+BIN_DIR, IN_CHECKOUT = _resolve_bin_dir()
+CHECKSUMS_FILE = resource_path("checksums.json")
+_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def get_platform() -> str:
@@ -37,10 +54,15 @@ def load_checksums() -> Dict[str, Any]:
     return {}
 
 
-def verify_checksum(file_path: Path, expected_hash: str) -> bool:
-    """Verify SHA256 checksum of a file."""
-    if expected_hash == "skip" or expected_hash == "placeholder":
-        return True
+def is_valid_sha256(value: Any) -> bool:
+    """True for a real 64-hex-digit digest (not ``skip``/``placeholder``/missing)."""
+    return isinstance(value, str) and bool(_SHA256.match(value))
+
+
+def verify_checksum(file_path: Path, expected_hash: Any) -> bool:
+    """Verify the SHA256 checksum of a file; unverifiable hashes never pass."""
+    if not is_valid_sha256(expected_hash):
+        return False
 
     sha256 = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -59,26 +81,27 @@ def download_file(url: str, timeout: int = 60) -> bytes:
 
 def extract_from_zip(zip_content: bytes, archive_path: str) -> bytes:
     """Extract a specific file from a zip archive."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-        tmp.write(zip_content)
-        tmp_path = Path(tmp.name)
+    with zipfile.ZipFile(io.BytesIO(zip_content), "r") as zf:
+        # Try exact path first
+        if archive_path in zf.namelist():
+            return zf.read(archive_path)
 
-    try:
-        with zipfile.ZipFile(tmp_path, "r") as zf:
-            # Try exact path first
-            if archive_path in zf.namelist():
-                return zf.read(archive_path)
+        # Try finding the file by name (in case it's nested)
+        for member in zf.namelist():
+            if member.endswith(archive_path) or member.endswith("/" + archive_path):
+                return zf.read(member)
 
-            # Try finding the file by name (in case it's nested)
-            for member in zf.namelist():
-                if member.endswith(archive_path) or member.endswith("/" + archive_path):
-                    return zf.read(member)
+        raise FileNotFoundError(
+            f"'{archive_path}' not found in archive. Contents: {zf.namelist()}"
+        )
 
-            raise FileNotFoundError(
-                f"'{archive_path}' not found in archive. Contents: {zf.namelist()}"
-            )
-    finally:
-        tmp_path.unlink()
+
+def _write_atomic(target: Path, content: bytes) -> None:
+    """Write via a temporary sibling so an interrupted write never leaves a partial tool."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".part")
+    tmp.write_bytes(content)
+    os.replace(tmp, target)
 
 
 def find_tool(name: str) -> Optional[Path]:
@@ -149,32 +172,57 @@ def download_tool_windows(
 
     filename = platform_info["filename"]
     target = BIN_DIR / filename
+    extras = platform_info.get("extra_files") or []
+
+    url = platform_info.get("url")
+    if not url:
+        # Tools without a download (busted) are generated or installed manually.
+        if target.exists():
+            return True, f"Already present: {filename}"
+        return False, platform_info.get(
+            "message"
+        ) or f"Manual install required for {name}"
+
+    expected_hash = platform_info.get("sha256")
+    if not is_valid_sha256(expected_hash):
+        return False, (
+            f"No verified checksum for {name}; refusing to download an "
+            "unverifiable executable. Install it manually."
+        )
 
     # Skip if already installed and valid
-    if target.exists() and not force:
-        if verify_checksum(target, platform_info.get("sha256", "skip")):
-            return True, f"Already installed: {filename}"
+    if (
+        target.exists()
+        and not force
+        and verify_checksum(target, expected_hash)
+        and all((BIN_DIR / extra).exists() for extra in extras)
+    ):
+        return True, f"Already installed: {filename}"
 
-    url = platform_info["url"]
     archive_path = platform_info.get("archive_path")
 
     try:
         content = download_file(url)
 
-        # Handle zip archives
-        if archive_path and url.endswith(".zip"):
-            content = extract_from_zip(content, archive_path)
+        # The checksum covers the extracted executable, which also authenticates
+        # the archive that its companion files (DLLs) are taken from.
+        archive = content if archive_path and url.endswith(".zip") else None
+        if archive is not None:
+            content = extract_from_zip(archive, archive_path)
 
-        # Write to target
-        BIN_DIR.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
+        if hashlib.sha256(content).hexdigest().lower() != expected_hash.lower():
+            return False, f"Checksum mismatch for {filename}; nothing was installed"
 
-        # Verify checksum
-        expected_hash = platform_info.get("sha256", "skip")
-        if verify_checksum(target, expected_hash):
-            return True, f"Installed: {filename} v{info.get('version', '?')}"
-        else:
-            return False, f"Checksum mismatch for {filename}"
+        companions = {}
+        for extra in extras:
+            if archive is None:
+                return False, f"Cannot install {extra}: {name} is not a zip archive"
+            companions[extra] = extract_from_zip(archive, extra)
+
+        _write_atomic(target, content)
+        for extra, data in companions.items():
+            _write_atomic(BIN_DIR / extra, data)
+        return True, f"Installed: {filename} v{info.get('version', '?')}"
 
     except HTTPError as e:
         return False, f"Download failed ({e.code}): {url}"
@@ -212,7 +260,11 @@ def setup_tools(force: bool = False, verify_only: bool = False) -> List[Dict[str
     checksums = load_checksums()
     if not checksums:
         return [
-            {"name": "error", "installed": False, "message": "checksums.json not found"}
+            {
+                "name": "error",
+                "installed": False,
+                "message": "checksums.json resource not found in this installation",
+            }
         ]
 
     platform = get_platform()
@@ -315,6 +367,8 @@ def get_setup_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "missing_count": len(missing),
         "required_missing": len(required_missing),
         "platform": get_platform(),
+        "bin_dir": str(BIN_DIR),
+        "source_checkout": IN_CHECKOUT,
         "tools": results,
     }
 
@@ -372,6 +426,7 @@ def find_luarocks_paths() -> Optional[Dict[str, Path]]:
                         "share_path": share_path,
                         "lib_path": lib_path,
                         "busted_bin": busted_bin,
+                        "busted_version": latest.name,
                     }
 
     return None
@@ -413,7 +468,7 @@ def generate_busted_bat(output_path: Optional[Path] = None) -> Tuple[bool, str]:
     bat_content = f'''@echo off
 setlocal
 set "LUAROCKS_SYSCONFDIR=C:\\Program Files\\luarocks"
-"{lua_path}" -e "package.path=\\"{share_lua}\\\\?.lua;{share_lua}\\\\?\\\\init.lua;\\"..package.path;package.cpath=\\"{lib_lua}\\\\?.dll;\\"..package.cpath;local k,l,_=pcall(require,'luarocks.loader') _=k and l.add_context('busted','2.2.0-1')" "{busted_lua}" %*
+"{lua_path}" -e "package.path=\\"{share_lua}\\\\?.lua;{share_lua}\\\\?\\\\init.lua;\\"..package.path;package.cpath=\\"{lib_lua}\\\\?.dll;\\"..package.cpath;local k,l,_=pcall(require,'luarocks.loader') _=k and l.add_context('busted','{paths["busted_version"]}')" "{busted_lua}" %*
 exit /b %ERRORLEVEL%
 '''
 

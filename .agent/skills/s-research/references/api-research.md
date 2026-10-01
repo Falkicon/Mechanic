@@ -1,49 +1,43 @@
 # API Research
 
-Finding WoW API documentation and examples.
+Finding WoW API documentation and examples. All tools below are MCP tools ([using-mechanic](../../using-mechanic/SKILL.md)).
 
-## Research Commands
+## Research tools
 
-```bash
-# Quick question
-mech call research.query '{"query": "How to detect combat"}'
-
-# Search specific topic
-mech call research.query '{"query": "SecureActionButton attributes"}'
+```
+research.query(query="How to detect combat")        # web search via Gemini; network + GEMINI_API_KEY; only when asked
+research.query(query="SecureActionButton attributes")
 ```
 
-## Key API Resources
+## Key API resources
 
 ### Online
 
 - **Warcraft Wiki**: https://warcraft.wiki.gg/
-- **Townlong Yak**: https://www.townlong-yak.com/framexml/
-- **WoWPedia API**: https://wowpedia.fandom.com/wiki/World_of_Warcraft_API
+- **Townlong Yak** (FrameXML browser): https://www.townlong-yak.com/framexml/
+- **Blizzard UI source**: https://github.com/Gethe/wow-ui-source
 
 ### Local
 
-```bash
-# Search Blizzard source with ripgrep
-rg "GetSpellInfo" "_dev_/wow-ui-source-live/" -g "*.lua"
+Search a local `wow-ui-source` checkout with ripgrep (adjust the path to your mirror):
 
-# Search for specific patterns
+```bash
+rg "GetSpellInfo" "_dev_/wow-ui-source-live/" -g "*.lua"
 rg "SecureActionButton" "_dev_/wow-ui-source-live/" -g "*.xml"
 ```
 
-## Offline API Search
+## Offline API search
 
-```bash
-# Search APIs by pattern
-mech call api.search '{"query": "GetSpell*"}'
-
-# Get info about specific API
-mech call api.info '{"api_name": "C_Spell.GetSpellInfo"}'
-
-# List APIs by namespace
-mech call api.list '{"namespace": "C_Spell"}'
+```
+api.search(query="GetSpell*")                  # wildcard pattern, not a regex
+api.info(api_name="C_Spell.GetSpellInfo")      # signature, params, returns, secret-value flags
+api.list(namespace="C_Spell")
+api.stats()
 ```
 
-## Common API Categories
+The data comes from the generated `Mechanic/UI/APIDefs` tree. Refreshing it is a maintenance task ([k-apidefs](../../k-apidefs/SKILL.md)).
+
+## Common API namespaces
 
 | Namespace | Purpose |
 |-----------|---------|
@@ -54,30 +48,24 @@ mech call api.list '{"namespace": "C_Spell"}'
 | C_Container | Bag/inventory |
 | C_QuestLog | Quest tracking |
 | C_UnitAuras | Buff/debuff info |
+| C_AddOns | Addon metadata and loading |
 
-## API Discovery Pattern
+## Trying an API in game
 
-```bash
-# Queue API tests to run in-game
-mech call lua.queue '{"code": ["return C_Map.GetBestMapForUnit(\"player\")", "return C_Spell.GetSpellInfo(12345)"]}'
-
-# After /reload, get results
-mech call lua.results
+```
+diagnostic.targets()                                   # pick a target once
+lua.queue(code=["return C_Map.GetBestMapForUnit(\"player\")", "return C_Spell.GetSpellInfo(12345)"],
+          labels=["map", "spell"], target=<chosen target>)
+# Ask the user to /reload and wait for confirmation, then:
+lua.results(target=<chosen target>)
 ```
 
-## Deprecation Checking
+`api.queue(apis=[...], params={...}, target=...)` queues API-bench tests the same way; read them with `addon.output`.
 
-```bash
-# Scan addon for deprecated APIs
-mech call addon.deprecations '{"addon": "MyAddon"}'
+## Deprecation checking
 
-# Research replacement
-mech call research.query '{"query": "GetSpellInfo replacement 12.0"}'
-```
+`addon.deprecations(addon="MyAddon")` scans for known deprecated calls, but its database is currently a small seed (it warns `DEPRECATION_DB_LIMITED`). Complement it by reading `Blizzard_Deprecated` in the UI source and with `research.query(query="GetSpellInfo replacement 12.0")`.
 
-## Version-Specific Research
+## Version-specific research
 
-Include version in queries:
-- "12.0 API changes"
-- "Midnight expansion new APIs"
-- "deprecated in War Within"
+Include the version in queries: "12.0 API changes", "Midnight new APIs", "deprecated in War Within".

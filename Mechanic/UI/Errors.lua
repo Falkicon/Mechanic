@@ -141,11 +141,23 @@ function Mechanic:InitializeErrors()
 	editBox:SetPoint("BOTTOMRIGHT", 0, 0)
 	ErrorsModule.editBox = editBox
 
-	-- Initial state
-	ErrorsModule:OnEnable()
+	-- Initial state. Core enables this module before the UI exists (to capture errors
+	-- early), so a module that is already enabled still has to fill the new widgets.
+	if ErrorsModule.enabled then
+		ErrorsModule:UpdateSessionList()
+		ErrorsModule:RefreshErrors()
+		ErrorsModule.currentIndex = #ErrorsModule.errors
+		ErrorsModule:UpdateDisplay()
+	else
+		ErrorsModule:OnEnable()
+	end
 end
 
 function ErrorsModule:OnShow()
+	-- BugGrabber may have loaded after the first attempt
+	if not self.enabled then
+		self:OnEnable()
+	end
 	self:RefreshSourceList()
 	self:UpdateDisplay()
 end
@@ -153,14 +165,17 @@ end
 function ErrorsModule:OnHide() end
 
 function ErrorsModule:RefreshSourceList()
+	-- Counts come from the session-filtered list so the other sources stay reachable
+	-- while one source is selected.
+	local sessionErrors = self.sessionErrors or self.errors
 	local items = {
-		{ key = "all", text = string.format("%s (%d)", L["All Sessions"] or "All Sessions", #self.errors) },
+		{ key = "all", text = string.format("%s (%d)", L["All"] or "All", #sessionErrors) },
 	}
 
 	-- Group errors by detected addon
 	local sourceCounts = {}
-	for _, err in ipairs(self.errors) do
-		local source = Mechanic.Utils:DetectErrorSource(err.message) or "Unknown"
+	for _, err in ipairs(sessionErrors) do
+		local source = self:GetErrorSource(err)
 		sourceCounts[source] = (sourceCounts[source] or 0) + 1
 	end
 
@@ -213,7 +228,6 @@ function ErrorsModule:OnEnable()
 	self.currentIndex = #self.errors
 	self:UpdateDisplay()
 
-	local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 	Mechanic:UpdateMinimapIcon()
 
 	self.enabled = true
@@ -253,16 +267,16 @@ function ErrorsModule:OnBugGrabbed(event, errorObject)
 
 	self:RefreshErrors()
 
-	if self.frame and self.frame:IsVisible() then
-		self:RefreshSourceList()
-	end
-
 	-- Auto-navigate to newest if we were already at the end
 	if self.currentIndex == #self.errors - 1 or self.currentIndex == 0 then
 		self.currentIndex = #self.errors
 	end
 
-	self:UpdateDisplay()
+	-- Hidden tab: OnShow redraws; avoid formatting stack traces nobody sees
+	if self.frame and self.frame:IsVisible() then
+		self:RefreshSourceList()
+		self:UpdateDisplay()
+	end
 	Mechanic:UpdateMinimapIcon()
 end
 
@@ -273,30 +287,34 @@ function ErrorsModule:RefreshErrors()
 
 	local session = self.currentSession
 	local allErrors = _G.BugGrabber:GetDB()
+	self.sessionErrors = {}
 	self.errors = {}
 
 	local filterSource = self.selectedSource and self.selectedSource ~= "all" and self.selectedSource
 
 	for _, err in ipairs(allErrors) do
-		local match = true
-
 		-- Session filter
-		if session ~= "all" and err.session ~= session then
-			match = false
-		end
+		if session == "all" or err.session == session then
+			table.insert(self.sessionErrors, err)
 
-		-- Source filter (Phase 6)
-		if match and filterSource then
-			local source = Mechanic.Utils:DetectErrorSource(err.message) or "Unknown"
-			if source ~= filterSource then
-				match = false
+			-- Source filter (Phase 6)
+			if not filterSource or self:GetErrorSource(err) == filterSource then
+				table.insert(self.errors, err)
 			end
 		end
-
-		if match then
-			table.insert(self.errors, err)
-		end
 	end
+end
+
+-- Detected source per error object; BugGrabber keeps the objects, so cache on them weakly
+local sourceCache = setmetatable({}, { __mode = "k" })
+
+function ErrorsModule:GetErrorSource(err)
+	local source = sourceCache[err]
+	if not source then
+		source = Mechanic.Utils:DetectErrorSource(err.message) or "Unknown"
+		sourceCache[err] = source
+	end
+	return source
 end
 
 function ErrorsModule:Navigate(delta)
@@ -314,6 +332,11 @@ end
 
 function ErrorsModule:UpdateDisplay()
 	if not self.editBox then
+		return
+	end
+
+	if not _G.BugGrabber then
+		self:ShowInstallMessage()
 		return
 	end
 

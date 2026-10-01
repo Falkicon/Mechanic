@@ -66,9 +66,9 @@ The `.toc` file must have:
 
 1. **Interface version** (required for loading):
 ```
-## Interface: 120001, 120000
+## Interface: 120100, 16001
 ```
-> Use multi-version format for broad compatibility. Current baseline: `120001, 120000`.
+> Use the multi-version format to target Retail and other clients in one TOC. This repository's own TOCs use `120100, 16001` (Retail 12.1.0 and WoW: Forever). Check the current Interface number for each client you ship to; `addon.validate` accepts comma-separated lists.
 
 2. **Version line** (matches release tags):
 ```
@@ -97,6 +97,9 @@ CurseForge determines release type based on git tags:
 Use the `mech` CLI for the complete release workflow:
 
 ```bash
+# Preview the preflight first (nothing is changed)
+mech release MyAddon 1.0.2 "Description of changes" --dry-run
+
 # Full release in one command (bump, changelog, commit, tag)
 mech release MyAddon 1.0.2 "Description of changes"
 ```

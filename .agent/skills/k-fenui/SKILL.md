@@ -1,141 +1,72 @@
 ---
 name: k-fenui
 description: >
-  Context for FenUI - the UI widget library for WoW addons. Covers
-  frames, layouts, buttons, panels, and theming. Load this when
-  building addon UI or working with FenUI widgets.
-  Triggers: fenui, ui, widget, frame, layout, panel, button, tabs.
+  Context for FenUI, the Blizzard-first UI widget library vendored in
+  Mechanic/Libs/FenUI. Covers the real factory API (FenUI:CreatePanel, CreateButton,
+  CreateStack, CreateTabGroup, CreateGrid), design tokens, themes and graceful
+  degradation. Load when building or changing addon UI. Triggers: fenui, ui,
+  widget, panel, layout, stack, tabs, grid, theme, tokens.
 ---
 
-# FenUI Library
+# FenUI
 
-FenUI is a UI widget library for WoW addons - pre-built components with consistent styling and behavior.
+FenUI is a progressive-enhancement widget layer over Blizzard's frames and templates, with a design-token theme system. The copy in `Mechanic/Libs/FenUI/` is synced from the FenUI source repo (`_dev_/Libs/FenUI`); fix FenUI in its own repo and re-sync rather than patching the vendored copy. Authoritative docs: `Mechanic/Libs/FenUI/README.md` and `Mechanic/Libs/FenUI/AGENTS.md`.
 
-## Design Philosophy
+## Access and degradation
 
-- **Composable**: Build complex UIs from simple widgets
-- **Themeable**: Consistent look across all widgets
-- **Declarative**: Describe what you want, not how to build it
-- **Accessible**: Proper focus handling and keyboard navigation
-
-## Widget Categories
-
-| Category | Widgets | Purpose |
-|----------|---------|---------|
-| **Containers** | `Panel`, `Frame`, `Window` | Hold other widgets |
-| **Layout** | `Layout`, `Grid`, `Stack` | Arrange children |
-| **Input** | `Button`, `EditBox`, `Slider`, `Checkbox` | User interaction |
-| **Display** | `Label`, `Icon`, `ProgressBar`, `Texture` | Show information |
-| **Navigation** | `Tabs`, `ScrollFrame`, `Dropdown` | Navigate content |
-
-## Usage Pattern
+`FenUI` is a plain global (`FenUI = FenUI or {}` in `Core/FenUI.lua`), not a LibStub library. The library is embedded through `Libs\FenUI\FenUI.xml`. Always guard when FenUI is optional:
 
 ```lua
-local FenUI = LibStub("FenUI")
-
--- Create a panel with children
-local panel = FenUI.Panel:Create(parent, {
-    width = 300,
-    height = 200,
-    title = "My Panel",
-})
-
--- Add a button
-local button = FenUI.Button:Create(panel, {
-    text = "Click Me",
-    onClick = function() print("Clicked!") end,
-})
+if FenUI and FenUI.CreatePanel then
+    frame = FenUI:CreatePanel(parent, config)
+else
+    frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")  -- fallback
+end
 ```
 
-## Layout System
+## Factories
 
-FenUI uses a declarative layout system:
+Pattern: `FenUI:Create<Widget>(parent, config)` returns a Blizzard frame with a mixin applied. A string config is accepted by `CreatePanel` (title) and `CreateButton` (text). Builder forms exist for a few: `FenUI.Panel(parent):title("..."):build()`, `FenUI.Flex`, `FenUI.Stack`, `FenUI.TabGroup`, `FenUI.Group`.
+
+| Area | Factories |
+|---|---|
+| Containers | `CreatePanel`, `CreateInset`, `CreateScrollPanel`, `CreateScrollInset`, `CreateCard`, `CreateDialog`, `CreateSection`, `CreateGroup` |
+| Layout | `CreateLayout`, `CreateStack`, `CreateFlex`, `CreateGrid`, `CreateSplitLayout`, `CreateToolbar` |
+| Controls | `CreateButton`, `CreateIconButton`, `CreateCloseButton`, `CreateImageButton`, `CreateCheckbox`, `CreateInput`, `CreateMultiLineEditBox`, `CreateDropdown`, `CreateScrollBar` |
+| Navigation and lists | `CreateTabGroup`, `CreateTree`, `CreateVirtualList` |
+| Display | `CreateImage`, `CreateSectionHeader`, `CreateStatusRow`, `CreateInfoPanel`, `CreateEmptyState`, `CreateRoundedBox`, `CreateChevron` |
+| Theming UI | `CreateThemePicker`, `CreateThemeOption`, `CreateSettingsGroup` |
 
 ```lua
-local layout = FenUI.Layout:Create(parent, {
-    direction = "vertical",  -- or "horizontal"
-    spacing = 8,
-    padding = { top = 10, bottom = 10, left = 10, right = 10 },
+local panel = FenUI:CreatePanel(UIParent, { title = "My Window", width = 400, height = 300,
+    movable = true, resizable = true, closable = true })
+
+local stack = FenUI:CreateStack(panel, { direction = "vertical", gap = "md", align = "stretch", padding = "sm" })
+stack:AddChild(topButton)
+stack:AddChild(spacer, { grow = 1 })
+
+local tabs = FenUI:CreateTabGroup(panel, {
+    tabs = { { key = "main", text = "Main" }, { key = "settings", text = "Settings", badge = "!" } },
+    onChange = function(key) end,
 })
 
--- Children are automatically arranged
-layout:AddChild(widget1)
-layout:AddChild(widget2)
-layout:AddChild(widget3)
+local grid = FenUI:CreateGrid(panel, { columns = { 24, "1fr", "auto" }, rowHeight = 24,
+    onRowClick = function(row, data) end })
+
+local button = FenUI:CreateButton(panel, { text = "Click me", onClick = function() end })
 ```
 
-## Common Widgets
+Sizes accept numbers, percentages (`"50%"`), viewport units and `"auto"`; `minWidth/maxWidth/aspectRatio` constrain layouts. Check the factory's `config` handling in `Widgets/<Name>.lua` for the exact keys before using one you have not used.
 
-### Panel
+## Tokens and themes
 
-```lua
-FenUI.Panel:Create(parent, {
-    width = 300,
-    height = 200,
-    title = "Title",        -- Optional header
-    closable = true,        -- Show close button
-    movable = true,         -- Allow dragging
-})
-```
+- Colors: `FenUI:GetColor(token)`, `GetColorRGB`, `GetColorHex`, `GetColorTable`; spacing `FenUI:GetSpacing("spacingPanel")`; radius `FenUI:GetRadius("radiusControl")`. Three tiers: primitive, semantic, component. Use semantic tokens (`textDefault`, `textHeading`, `surfacePanel`), not raw colors.
+- Themes: `FenUI:GetThemeList()`, `FenUI:SetGlobalTheme(name)`, `FenUI:GetGlobalTheme()`, `FenUI:OnThemeChanged(callback)`. A global theme change re-colors live widgets; a custom widget that resolves token colors once defines `RefreshTheme()` and calls `FenUI:RegisterThemedFrame(widget)`.
+- Blizzard scroll frames can be skinned with `FenUI:SkinScrollFrame`.
 
-### Button
+## Mechanic conventions
 
-```lua
-FenUI.Button:Create(parent, {
-    text = "Click Me",
-    width = 100,
-    height = 24,
-    onClick = function() end,
-    onEnter = function() end,  -- Hover
-    onLeave = function() end,
-})
-```
-
-### Tabs
-
-```lua
-FenUI.Tabs:Create(parent, {
-    tabs = {
-        { id = "tab1", label = "First", content = frame1 },
-        { id = "tab2", label = "Second", content = frame2 },
-    },
-    defaultTab = "tab1",
-    onTabChanged = function(tabId) end,
-})
-```
-
-### Grid
-
-```lua
-FenUI.Grid:Create(parent, {
-    columns = 3,
-    rowHeight = 30,
-    columnWidth = 100,
-    spacing = 4,
-})
-```
-
-## Theming
-
-FenUI supports theming via a theme table:
-
-```lua
-FenUI:SetTheme({
-    colors = {
-        background = { 0.1, 0.1, 0.1, 0.9 },
-        text = { 1, 1, 1, 1 },
-        accent = { 0.2, 0.6, 1, 1 },
-    },
-    fonts = {
-        normal = "GameFontNormal",
-        header = "GameFontNormalLarge",
-    },
-})
-```
-
-## Best Practices
-
-1. **Use Layout** - Don't manually position widgets; use Layout containers
-2. **Prefer FenUI widgets** - Don't create raw frames when a FenUI widget exists
-3. **Keep View layer thin** - UI code should just display data from Bridge layer
-4. **Test at different scales** - Check UI at various UI scale settings
+- Use FenUI widgets instead of raw frames where one exists; add new widgets to FenUI itself.
+- Type scale and neutral headings follow the Obsidian look (`Mechanic/CHANGELOG.md` 1.3.7): gold only for the window title, active tab, selection and focus.
+- Keep the view layer thin and test at several UI scales.
+- Mechanic's `Utils.lua` falls back gracefully when FenUI helpers are missing.

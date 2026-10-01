@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 Visual polish and quality pass, then the Obsidian aesthetic pass.
 
+### Fixed (theme switching)
+- **Theme changes now re-color every widget** - `SetGlobalTheme` used to refresh only registered Panels. Layout backgrounds (color and gradient), cell backgrounds, custom-pack borders, drop shadows, Grid rows (including pooled ones), the Tabs underline and baseline, Image/ImageButton token tints, and the ThemePicker selection bar kept the old theme's colors until they were rebuilt. They now re-resolve their tokens on the next theme change.
+- **Explicit borders survive theme changes** - `ThemeManager:ApplyToFrame` replaced any frame's border with `theme.layout`. Now a Panel created with `layout = "..."`, or any Layout whose border was set with `SetBorder`, keeps its border and only picks up the new colors. A Panel with no `layout` still follows the theme.
+- Borders applied directly with `FenUI:ApplyBorder` (outside a Layout) are re-colored on theme change. A state color set through `FenUI:SetBorderColor` is kept.
+- Switching a Layout from a custom border pack to a Blizzard NineSlice layout hides the old custom edges, which used to stay drawn on top of the NineSlice.
+
+### Added (theme switching)
+- Themed frame registry: `FenUI:RegisterThemedFrame(frame)`, `UnregisterThemedFrame`, `IsThemedFrame`, `RefreshThemedFrames`. A registered frame's `:RefreshTheme()` runs from an `OnThemeChanged` callback. The registry uses weak keys, so pooled or discarded frames are never kept alive by it.
+- `LayoutMixin:RefreshTheme()`, plus `RefreshTheme()` on TabGroup, Grid (and its rows), Image, and ThemePicker. Layouts now store their `backgroundConfig`, `borderConfig` and `shadowConfig`. A shadow hidden with `HideShadow()` stays hidden after a refresh.
+- `FenUI:RefreshBorder(frame)` re-applies a frame's stored border pack, color token and margin.
+- `LayoutMixin:SetBorder(borderKey, fromTheme)` takes an optional second argument. `true` marks the border as chosen by the theme (it sets `frame.fenUIExplicitBorder`).
+
 ### Changed (Obsidian)
 - **New default palette "Obsidian"** - neutral near-black surfaces (new `obsidian*` primitives) with gold as the single accent. Semantic tokens were repointed, so existing widgets and consumer addons pick it up automatically. The old warm-grey values remain as primitives and as the new `Classic` theme. The Default theme no longer overrides tokens.
 - New semantic tokens: `surfaceHeader`, `surfaceControl`/`Hover`/`Pressed`, `textStrong`, `textTitle`, `borderInteractiveHover`, `surfaceRowSelectedHover`, `accentBar`. `textHeading` is now neutral (gold is reserved for `textTitle`); `surfaceRowSelected` is a translucent gold wash.
@@ -28,7 +40,13 @@ Visual polish and quality pass, then the Obsidian aesthetic pass.
 - **Asset paths** - `FenUI.ADDON_PATH` kept a leading `[` on clients whose `debugstack` uses the `[path]:line` format (e.g. WoW: Forever), and extensionless asset paths only resolve `.blp`/`.tga` there. FenUI's PNG assets (shadows, glows, corners) now load: path detection handles that format and asset paths include `.png`.
 - **Drop shadow** - redrawn `shadow-soft-64.png` (fully transparent border, smooth falloff); shadow textures now draw on the background frame's lowest sublevel so they can't tie with or cover the window on low frame levels; the center piece is no longer drawn; Panel's default shadow is a centered ambient shadow (size 24, alpha 0.55).
 
+- **Line spacing** - each type-scale font carries line spacing (caption +2, small/body +3, heading/title/display +4); the mono font is a FenUI copy of ChatFontSmall with +2 (Blizzard's chat font object is untouched). MultiLineEditBox measures with the same spacing.
+- **ImageButton** - monochrome icons rest muted, brighten on hover, and use gold only when a toggle is on (was: white at rest, gold on hover).
+- **Panel** - windows are toplevel and raise when shown, so two FenUI windows stack as whole units instead of interleaving (content of one drawing over the other's background); `toplevel = false` opts out. The resize grip is two flat token-colored lines instead of Blizzard's striped texture.
+- **Buttons** - new `variant = "danger"` (neutral control, red label and edge) for destructive actions; new `textDanger` token.
+
 ### Added (Obsidian)
+- `FenUI:CreateChevron(parent, direction, colorToken)` - drawn v/^/>/< glyph (Dropdown uses it).
 - `FenUI:CreateRoundedShape`, `FenUI:CreateRoundedBox`, `FenUI:GetRadius`, and the `Assets/corner-disc-64.png` corner asset. **New asset: restart the WoW client once** (a `/reload` can't see files added while the game is running).
 - `FenUI:SkinScrollFrame(scrollFrame, { offset })` restyles a Blizzard `UIPanelScrollFrameTemplate` to match (arrow buttons removed, thin token thumb, thumb hidden when nothing scrolls).
 
@@ -53,6 +71,9 @@ Visual polish and quality pass, then the Obsidian aesthetic pass.
 - **EmptyState** sized itself from the parent's width at creation (usually 0); it now stretches with its container and re-measures wrapped text.
 - **InfoPanel** reserved the close-button space twice; **SplitLayout** `GetContentFrame()` without a key errored inside Layout internals.
 - `/fenui debug` errored when FenUI is embedded (`FenUIDB` was never initialized); `FenUI.VERSION` now matches the TOC; the saved theme's token overrides are re-applied on load; `Utils:Colorize` accepts 6-digit hex from `GetColorHex`.
+- **Animations** - Every `Play` after the first built a new AnimationGroup (a leak, worst under hover transitions). Groups are now cached per frame by name and shape (the animation types and steps) and get each play's values, so even a fresh `Animation:Define` per call reuses a group; each transition property reuses one group. The `slideUp`/`slideDown` presets never moved (the start offset was ignored); a `from` offset is now reached instantly and the frame slides to `to` (a `from` with no `to` slides back to rest). Keyframe scale and offset segments no longer compound with earlier segments, so `bounce` returns to 1 instead of growing. `Then` replayed the second animation forever and changed the caller's options table; the caller's `onComplete` now runs once, after the whole chain.
+- **Transitions** - Changes under 0.1 were dropped (`SetAlpha(0.95)` from 1 did nothing); an interrupted transition jumped back to the old value instead of continuing from what's on screen; scale transitions multiplied with the frame's current scale (applied twice). A call with `instant = true` now cancels a running transition, and frames that aren't visible get the value directly. Transitions animate `alpha` and `scale`; other properties are no longer wrapped (they used to set only after a delay).
+- **Layout lifecycle animations** - `Show()` during a hide animation didn't cancel it, so the frame still hid when it finished; `Hide()` on a frame that isn't drawn (e.g. its parent is hidden) waited for an animation that never advances. `Show` now cancels the hide animation, `Hide` on an undrawn frame hides at once, a second `Hide` doesn't restart the fade, and `SetShown` goes through both. Removed a dead duplicate of `SetupLifecycleAnimations`.
 
 ### Changed
 - `borderSubtle` is now `gray950` (was `gray800`, identical to `surfacePanel`, so Inset borders and dividers were invisible on panels).
@@ -61,6 +82,7 @@ Visual polish and quality pass, then the Obsidian aesthetic pass.
 - Input shows a hover border; Tree/VirtualList rows use `rowHeight`, `fontSmall`, truncation and token-based indents.
 - Hardcoded fonts/spacing in Section, SectionHeader, StatusRow, Tree, VirtualList, Grid, Tabs and MultiLineEditBox replaced with tokens.
 - Registered themes default to the `ModernDark` border pack.
+- **Animations keep their final alpha** - WoW reverts alpha when an animation group ends, so `fadeOut` popped back to fully visible. The final alpha now stays (set directly, bypassing an alpha transition); scale and offset still return to rest. A missing `from`/`to` alpha now means the frame's alpha when the animation plays (was WoW's default). Lifecycle hide animations restore the frame's alpha after hiding, so the next `Show` is visible.
 
 ### Added
 - `FenUI:GetPixelSize(frame, size)` and `FenUI:GetDB()`.

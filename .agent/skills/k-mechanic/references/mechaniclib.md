@@ -1,241 +1,85 @@
-# MechanicLib Integration
+# MechanicLib
 
-MechanicLib is the integration library that addons embed to work with !Mechanic.
+`MechanicLib-1.0` (MINOR 3) is the small bridge library addons use to report to Mechanic. The `!Mechanic` bootstrap loads it first (`!Mechanic/Libs/MechanicLib/MechanicLib.lua`), so consuming addons get it with `LibStub("MechanicLib-1.0", true)` and do **not** need to embed a copy; they must tolerate `nil` when Mechanic is not installed. A second copy, `Mechanic/Libs/MechanicLib/MechanicLib.lua`, is documented as the editing source and is not loaded by `Mechanic.toc`: keep the two identical (diff them after any change). Human-oriented guide: `docs/integration/mechaniclib.md`.
 
-## Installation
+Everything is optional: when the `Mechanic` hub is not loaded, `Log` is a no-op and registrations are simply stored; when `!Mechanic` is absent, `LibStub` returns nil.
 
-Copy `MechanicLib` folder from `!Mechanic/Libs/` to your addon's `Libs/` folder.
+## Getting it
 
-### TOC Entry
+```lua
+local MechanicLib = LibStub("MechanicLib-1.0", true)   -- note the "-1.0"; silent=true
+if MechanicLib and MechanicLib:IsEnabled() then        -- true when the Mechanic hub addon is loaded
+    -- developer-only features
+end
+```
+
+## API (complete)
+
+| Method | Purpose |
+|---|---|
+| `MechanicLib:IsEnabled()` | `true` when the `Mechanic` main addon is loaded (replaces `DevMarker.lua` checks for debug UI) |
+| `MechanicLib:Register(addonName, capabilities)` | Register an addon; notifies `Mechanic:OnAddonRegistered` |
+| `MechanicLib:Unregister(addonName)` | Remove a registration |
+| `MechanicLib:Log(addonName, message, category)` | Send a line to Mechanic's Console (no-op without Mechanic) |
+| `MechanicLib:AddToWatchList(frameOrPath, label, options)` / `RemoveFromWatchList(...)` / `GetWatchList()` | Inspect tab watch list (`options = { source, property }`) |
+| `MechanicLib:GetRegistered()` | Map of addon name to capabilities |
+| `MechanicLib:HasCapability(addonName, key)` / `GetCapability(addonName, key)` | Query one capability |
+
+There is no `RegisterAddon`, `RegisterTests`, `RegisterToolPanel`, `ReportMetric` or `Print`.
+
+## Log categories
+
+`MechanicLib.Categories` values are display tags (strings): `TRIGGER` `[Trigger]`, `REGION`, `API`, `COOLDOWN`, `EVENT`, `VALIDATION`, `SECRET`, `PERF`, `LOAD`, `CORE`. There are no `DEBUG/INFO/WARNING/ERROR` levels. Mechanic's own code logs `[Core]`. Pass the category as the third argument:
+
+```lua
+MechanicLib:Log("MyAddon", "Cooldown cached: " .. tostring(spellID), MechanicLib.Categories.COOLDOWN)
+```
+
+Use `MechanicLib:Log` instead of `print` for debug output: it lands in the Console buffer that `addon.output` returns.
+
+## Capabilities (the table passed to `Register`)
+
+All keys are optional; Mechanic calls each one inside `pcall`.
+
+```lua
+MechanicLib:Register("MyAddon", {
+    version = "1.0.0",
+    getDebugBuffer = function() return MyAddon.debugLines end,   -- array of strings; last 50 are synced
+    clearDebugBuffer = function() wipe(MyAddon.debugLines) end,
+    tests = {                                  -- Tests tab and addon.output tests section
+        getAll = function() return { { id = "db_init", name = "DB initialises", category = "Core" } } end,
+        getCategories = function() return { "Core" } end,
+        run = function(id) return MyAddon:RunTest(id) end,
+        runAll = function() end,               -- optional; returns passed, total
+        getResult = function(id) return MyAddon.results[id] end,
+        clearResults = function() end,         -- optional
+    },
+    performance = { getSubMetrics = function() return { { name = "scan", ms = 0.3 } } end },  -- Performance tab
+    tools = { createPanel = function(parent) --[[ build UI inside parent ]] end },            -- Tools tab
+    inspect = { getWatchFrames = function() return { { label = "Main", frame = MyAddonFrame, property = "Visibility" } } end },
+    settings = {},                             -- AceConfig option `args` table, shown as a group in Mechanic's settings panel
+})
+```
+
+A test result is `{ passed = true|false|nil, message = "...", duration = 0.003, logs = { "..." }, details = { { label, value, status = "pass"|"warn"|"fail" } } }`.
+
+## Data sync
+
+Mechanic copies logs (capped to 50 lines per addon), test results and sub-metrics into `MechanicDB` (`profiles[<profile>].addonData`) and stamps `lastSync`. WoW writes SavedVariables on `/reload` or logout, which is why agents wait for a confirmed reload before `addon.output` ([using-mechanic](../../using-mechanic/SKILL.md)). `Mechanic:SyncAllAddonData()` runs the aggregation (the Tests tab calls it after runs).
+
+## Optional-dependency pattern
+
 ```toc
 ## OptionalDeps: !Mechanic
-
-Libs\MechanicLib\MechanicLib.lua
 ```
-
-## Basic Usage
 
 ```lua
 local MechanicLib = LibStub("MechanicLib-1.0", true)
-
--- Always check if available (optional dependency)
-if MechanicLib and MechanicLib:IsEnabled() then
-    -- Mechanic is loaded and enabled
+local function Debug(msg)
+    if MechanicLib then MechanicLib:Log("MyAddon", msg, MechanicLib.Categories.CORE) end
 end
 ```
 
-## Registration
+## Editing the library
 
-```lua
-local MechanicLib = LibStub("MechanicLib-1.0", true)
-if not MechanicLib then return end
-
-MechanicLib:Register("MyAddon", {
-    -- Capabilities
-    logging = true,      -- Enable console logging
-    tests = true,        -- Register test suite
-    tools = true,        -- Register tool panel
-    performance = true,  -- Include in perf monitoring
-})
-```
-
-## Logging
-
-```lua
--- Log categories
-MechanicLib:Log("MyAddon", "Debug message", MechanicLib.Categories.DEBUG)
-MechanicLib:Log("MyAddon", "Info message", MechanicLib.Categories.INFO)
-MechanicLib:Log("MyAddon", "Warning!", MechanicLib.Categories.WARNING)
-MechanicLib:Log("MyAddon", "Error occurred", MechanicLib.Categories.ERROR)
-MechanicLib:Log("MyAddon", "Event triggered", MechanicLib.Categories.TRIGGER)
-
--- Shorthand (defaults to INFO)
-MechanicLib:Log("MyAddon", "Simple message")
-```
-
-### Log Categories
-
-| Category | Use Case |
-|----------|----------|
-| `DEBUG` | Verbose debugging, variable dumps |
-| `INFO` | General information |
-| `WARNING` | Non-fatal issues |
-| `ERROR` | Errors that need attention |
-| `TRIGGER` | Event triggers, state changes |
-
-## Test Registration
-
-```lua
-MechanicLib:RegisterTests("MyAddon", {
-    {
-        name = "Database initializes correctly",
-        func = function()
-            assert(MyAddonDB ~= nil, "DB should exist")
-            assert(type(MyAddonDB.profile) == "table", "Profile should be table")
-        end
-    },
-    {
-        name = "Default settings applied",
-        func = function()
-            local defaults = MyAddon:GetDefaults()
-            assert(defaults.enabled == true)
-        end
-    },
-    {
-        name = "API wrapper handles nil",
-        func = function()
-            local result = MyAddon:SafeGetInfo(nil)
-            assert(result == nil, "Should return nil for nil input")
-        end
-    }
-})
-```
-
-### Test Best Practices
-- Keep tests focused and fast
-- Use descriptive names
-- Test edge cases (nil, empty, boundary)
-- Don't test Blizzard APIs directly
-
-## Tool Panel Registration
-
-```lua
-MechanicLib:RegisterToolPanel("MyAddon", {
-    name = "My Debug Tools",
-    create = function(parent)
-        local frame = CreateFrame("Frame", nil, parent)
-        frame:SetAllPoints()
-        
-        -- Add debug controls
-        local btn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        btn:SetText("Dump State")
-        btn:SetSize(100, 22)
-        btn:SetPoint("TOPLEFT", 10, -10)
-        btn:SetScript("OnClick", function()
-            DevTools_Dump(MyAddonDB)
-        end)
-        
-        return frame
-    end
-})
-```
-
-## Developer Mode Detection
-
-Replace old `DevMarker.lua` patterns:
-
-```lua
--- OLD (deprecated)
-local isDev = DevMarker and DevMarker:IsEnabled()
-
--- NEW (MechanicLib)
-local MechanicLib = LibStub("MechanicLib-1.0", true)
-local isDev = MechanicLib and MechanicLib:IsEnabled()
-
--- Use for conditional debug features
-if isDev then
-    -- Register debug slash commands
-    -- Enable verbose logging
-    -- Show debug UI elements
-end
-```
-
-## Performance Registration
-
-```lua
--- Automatic when capability enabled
-MechanicLib:Register("MyAddon", { performance = true })
-
--- Manual metric reporting
-MechanicLib:ReportMetric("MyAddon", "cache_hits", cacheHitCount)
-MechanicLib:ReportMetric("MyAddon", "process_time_ms", processingTime)
-```
-
-## Data Sync for Desktop
-
-MechanicLib stores data in SavedVariables that the desktop tool reads:
-
-```lua
--- Automatic sync on /reload
--- Data available at: MechanicDB.diagnostics
-
--- Force sync (e.g., after test run)
-Mechanic:SyncAllAddonData()
-```
-
-### Synced Data
-- Console logs
-- Error captures
-- Test results
-- Performance metrics
-
-## API Reference
-
-### Core Methods
-
-| Method | Description |
-|--------|-------------|
-| `MechanicLib:IsEnabled()` | Check if Mechanic is active |
-| `MechanicLib:Register(addon, caps)` | Register addon with capabilities |
-| `MechanicLib:Log(addon, msg, cat)` | Log message to Console |
-| `MechanicLib:RegisterTests(addon, tests)` | Register test suite |
-| `MechanicLib:RegisterToolPanel(addon, cfg)` | Register Tools panel |
-
-### Categories Table
-
-```lua
-MechanicLib.Categories = {
-    DEBUG = 1,
-    INFO = 2,
-    WARNING = 3,
-    ERROR = 4,
-    TRIGGER = 5,
-}
-```
-
-## Complete Integration Example
-
-```lua
-local ADDON_NAME = ...
-local MyAddon = LibStub("AceAddon-3.0"):NewAddon(ADDON_NAME, "AceEvent-3.0")
-
--- Optional Mechanic integration
-local MechanicLib = LibStub("MechanicLib-1.0", true)
-local isDev = MechanicLib and MechanicLib:IsEnabled()
-
-function MyAddon:OnInitialize()
-    -- Register with Mechanic if available
-    if MechanicLib then
-        MechanicLib:Register(ADDON_NAME, {
-            logging = true,
-            tests = true,
-            tools = isDev,  -- Only show tools in dev mode
-            performance = true,
-        })
-        
-        -- Register tests
-        MechanicLib:RegisterTests(ADDON_NAME, self:GetTests())
-        
-        -- Register tool panel (dev only)
-        if isDev then
-            MechanicLib:RegisterToolPanel(ADDON_NAME, {
-                name = "Debug Panel",
-                create = function(parent)
-                    return self:CreateDebugPanel(parent)
-                end
-            })
-        end
-    end
-end
-
-function MyAddon:Log(msg, level)
-    level = level or MechanicLib.Categories.INFO
-    if MechanicLib then
-        MechanicLib:Log(ADDON_NAME, msg, level)
-    end
-    -- Also print to chat in dev mode
-    if isDev then
-        print(format("[%s] %s", ADDON_NAME, msg))
-    end
-end
-```
+Change `Mechanic/Libs/MechanicLib/MechanicLib.lua`, bump `MINOR` for behavioural changes, copy it to `!Mechanic/Libs/MechanicLib/` (and any addon that still embeds it), and verify the copies are identical.

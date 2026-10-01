@@ -33,7 +33,14 @@ function TemplateAddon:OnInitialize()
 end
 
 function TemplateAddon:OnEnable()
-	-- Called when the addon is enabled
+	-- Optional: show up in Mechanic's Console/Tests/Performance tabs when Mechanic is installed.
+	-- MechanicLib comes from the !Mechanic addon (no need to embed it); this is a no-op without it.
+	local MechanicLib = LibStub("MechanicLib-1.0", true)
+	if MechanicLib then
+		MechanicLib:Register(ADDON_NAME, {
+			version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version"),
+		})
+	end
 end
 
 function TemplateAddon:OnDisable()
@@ -46,7 +53,7 @@ function TemplateAddon:SlashCommand(input)
 		return
 	end
 
-	local command, nexteditpos = self:GetArgs(input, 1)
+	local command = self:GetArgs(input, 1)
 
 	if command == "debug" then
 		self.db.profile.debug = not self.db.profile.debug

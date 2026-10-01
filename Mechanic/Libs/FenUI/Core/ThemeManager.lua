@@ -143,9 +143,10 @@ function FenUI.ThemeManager:ApplyToFrame(frame, themeName)
 		return false
 	end
 
-	-- Apply the border (custom pack or native layout)
-	if theme.layout and frame.fenUISupportsLayout and frame.SetBorder then
-		frame:SetBorder(theme.layout)
+	-- Apply the theme's border (custom pack or native layout), unless the frame
+	-- configured its own. The second argument marks the border as theme-driven.
+	if theme.layout and frame.fenUISupportsLayout and frame.SetBorder and not frame.fenUIExplicitBorder then
+		frame:SetBorder(theme.layout, true)
 	end
 
 	-- Apply Blizzard textureKit if using legacy NineSlice

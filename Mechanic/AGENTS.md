@@ -1,8 +1,8 @@
-# Mechanic – Agent Documentation
+# Mechanic - Agent Documentation
 
 Technical reference for AI agents working on the Mechanic in-game addon.
 
-For CLI/Desktop documentation, see the root **[AGENTS.md](../AGENTS.md)**.
+For CLI/Desktop documentation, see the root **[AGENTS.md](../AGENTS.md)**. The diagnostic-target and reload protocol is in the [using-mechanic skill](../.claude/skills/using-mechanic/SKILL.md).
 
 ---
 
@@ -10,7 +10,9 @@ For CLI/Desktop documentation, see the root **[AGENTS.md](../AGENTS.md)**.
 
 | Item | Value |
 |------|-------|
-| **Current Version** | 1.3.5 |
+| **Current Version** | 1.3.7 (`Mechanic.toc`; the TOC is authoritative) |
+| **Interface** | 120100 (Retail), 16001 (WoW: Forever) |
+| **Bootstrap** | `!Mechanic` 1.4.6 (separate addon and TOC) |
 | **MechanicLib** | 1.0 (Minor 3) |
 | **Primary Commands** | `/mech`, `/mechanic` |
 | **Status** | Stable |
@@ -37,8 +39,8 @@ Mechanic uses a **pragmatic traditional structure** rather than strict layered s
 
 | Layer | Files | Notes |
 |-------|-------|-------|
-| **Utilities** | `Utils.lua` | Pure functions with FenUI fallbacks |
-| **Core** | `Core.lua` | Mixed logic + events + registration |
+| **Utilities** | `Utils.lua` | Shared helpers with FenUI fallbacks |
+| **Core** | `Core.lua` | Mixed logic + events + registration + slash commands |
 | **View** | `UI/*.lua` | Seven tabs plus their supporting modules, using FenUI widgets |
 
 This is intentional - Mechanic is a dev tool where full layer separation provides minimal testability benefit for significant refactoring effort.
@@ -50,11 +52,11 @@ This is intentional - Mechanic is a dev tool where full layer separation provide
 ```
 Mechanic/
 ├── Mechanic.toc           # Addon manifest (depends on !Mechanic)
-├── Core.lua               # Main addon, registration, slash commands
-├── Utils.lua              # Shared pure utility functions
-├── Settings.lua           # AceConfig settings panel
+├── Core.lua               # Main addon, registration, hub sync, slash commands (~1,400 lines)
+├── Utils.lua              # Shared utilities (colors, environment header, dialogs, library listing)
+├── Settings.lua           # AceConfig settings panel (incl. settings registered by other addons)
 ├── embeds.xml             # Library loading
-├── Bindings.xml           # Keybindings (CTRL+SHIFT+R for reload)
+├── Bindings.xml           # MECHANIC_TOGGLE and MECHANIC_DEV_RELOAD bindings (no default keys)
 ├── UI/
 │   ├── MainFrame.lua      # FenUI Panel + tab container
 │   ├── Console.lua        # Console tab module
@@ -62,8 +64,8 @@ Mechanic/
 │   ├── Tests.lua          # Tests tab module
 │   ├── Tools.lua          # Tools tab module
 │   ├── API.lua            # API Test Bench module
-│   ├── APIDefinitions.lua # API base schemas
-│   ├── APIDefs/           # Namespace-specific definitions (200+ files)
+│   ├── APIDefinitions.lua # API definition registry/loader
+│   ├── APIDefs/           # GENERATED namespace definitions + APIDefs.xml (200+ files, see k-apidefs); never hand-edit
 │   ├── Inspect.lua        # Inspect tab + Pick mode
 │   ├── InspectTree.lua    # Hierarchical tree component
 │   ├── InspectDetails.lua # Property detail panel
@@ -75,12 +77,12 @@ Mechanic/
 │       └── FrameResolver.lua  # Path resolution utility
 ├── Libs/
 │   ├── MechanicLib/       # SOURCE - synced to other addons
-│   ├── FenUI/             # UI framework
-│   └── Ace3 libs...
-└── Locales/               # 13 locales loaded by Mechanic.toc
-    ├── enUS.lua
-    └── ...
+│   ├── FenUI/             # UI framework (synced copy from the FenUI repo)
+│   └── Ace3 libs, LibDBIcon, LibDataBroker...
+└── Locales/               # 13 locale files loaded by Mechanic.toc
 ```
+
+Offline Lua harnesses covering this addon live in the repository `tests/` folder (`tests/*_regressions.lua`).
 
 ---
 
@@ -103,6 +105,8 @@ MechanicLib:Register("AddonName", capabilities)
 MechanicLib:Log("AddonName", "message", MechanicLib.Categories.TRIGGER)
 ```
 
+Complete API, capabilities table and categories: [mechaniclib reference](../.claude/skills/k-mechanic/references/mechaniclib.md).
+
 **Editing source**: `Libs/MechanicLib/MechanicLib.lua`. At runtime, `!Mechanic` loads its bootstrap copy first from `../!Mechanic/Libs/MechanicLib/MechanicLib.lua`. After changing the editing source, sync and verify every embedded copy before testing.
 
 ---
@@ -116,18 +120,18 @@ MechanicLib:Log("AddonName", "message", MechanicLib.Categories.TRIGGER)
 | Feature | `print()` | `MechanicLib:Log()` |
 |---------|-----------|---------------------|
 | Output location | Chat frame only | Console buffer + copyable |
-| Agent access | Requires screenshot | `addon.output` retrieves directly |
+| Agent access | Requires screenshot | `addon.output` retrieves directly (after a confirmed reload) |
 | Filtering | None | Source + category filters |
-| Persistence | Lost on scroll | Saved to SavedVariables |
-| Categories | None | Semantic colors (TRIGGER, API, SECRET, etc.) |
+| Persistence | Lost on scroll | Synced to SavedVariables (last 50 lines per addon) |
+| Categories | None | Semantic tags (TRIGGER, API, SECRET, etc.) |
 
 ### Example
 
 ```lua
--- ❌ Don't use print() for debugging
+-- Don't use print() for debugging
 print("[MyAddon] Cooldown cached:", spellID)
 
--- ✅ Use MechanicLib:Log() instead
+-- Use MechanicLib:Log() instead
 local MechanicLib = LibStub("MechanicLib-1.0", true)
 if MechanicLib then
     MechanicLib:Log("MyAddon", "Cooldown cached: " .. spellID, MechanicLib.Categories.COOLDOWN)
@@ -170,7 +174,7 @@ The `mech` CLI is a user-facing fallback when MCP is unavailable.
 
 ### In-Game Testing
 
-> **IMPORTANT**: Do NOT use `reload.trigger`. Ask the user to `/reload` in WoW and wait for their confirmation before calling the `addon.output` MCP tool with `agent_mode: true` and the target selected through `diagnostic.targets`. Install/sync worktree changes before live verification; documentation-only changes require no reload.
+> **IMPORTANT**: Ask the user to `/reload` in WoW and wait for their confirmation before calling the `addon.output` MCP tool with `agent_mode: true` and the target selected through `diagnostic.targets`. Install/sync worktree changes before live verification; documentation-only changes require no reload.
 
 ---
 
@@ -188,6 +192,10 @@ The `mech` CLI is a user-facing fallback when MCP is unavailable.
 | `/mech api` | Open API tab |
 | `/mech reload` | ReloadUI() |
 | `/mech gc` | Force garbage collection |
+| `/mech pause` | Pause/resume the active tab |
+| `/mech clear` | Clear the active tab |
+
+Keybindings (`MECHANIC_TOGGLE`, `MECHANIC_DEV_RELOAD`) have **no default keys**; users bind them in the Key Bindings UI.
 
 ---
 
@@ -197,7 +205,8 @@ The `mech` CLI is a user-facing fallback when MCP is unavailable.
 |------------|------|---------|
 | `!Mechanic` | Required | Bootstrap loader (loads first) |
 | `!BugGrabber` | Optional | Error capture for Errors module |
-| `FenUI` | Local | UI framework (synced from _dev_/Libs) |
+| `FenCore` | Optional | Logic library (catalog reaches `fencore-*` commands) |
+| `FenUI` | Local | UI framework (synced from the FenUI repo) |
 | `MechanicLib` | Local | Registration API; editing source here, bootstrap runtime copy in `!Mechanic` |
 | `Ace3` | Embedded | Addon framework |
 | `LibDBIcon` | Embedded | Minimap button |
@@ -215,7 +224,7 @@ Utils.lua delegates to FenUI with robust fallbacks:
 local F = FenUI and FenUI.Utils
 
 function Utils:GetClientType()
-    return F and F:GetClientType() or "Retail"
+    return (F and F.GetClientType) and F:GetClientType() or "Retail"
 end
 ```
 
@@ -233,29 +242,37 @@ function Module:GetCopyText(includeHeader)
 end
 ```
 
+### Secret values
+
+Check `issecretvalue(value)` before comparing, concatenating or doing arithmetic on values from APIs that can return secrets (Inspect and the bootstrap already do).
+
 ---
 
 ## Agent Guidelines
 
-1. **Core.lua is large (41KB)** - Contains mixed concerns; edit carefully
-2. **Utils.lua is pure** - Keep utility functions stateless and testable
-3. **UI modules are self-contained** - Each tab manages its own state
-4. **MechanicLib is edited here** - Sync and verify the `!Mechanic` runtime copy and all consuming addons after changes
-5. **FenUI first** - Use FenUI widgets; add new widgets to FenUI proper
-6. **Test both scenarios** - Ensure addons work with and without Mechanic
+1. **Core.lua is large (~1,400 lines)** - It mixes concerns; edit carefully and keep changes local.
+2. **Utils.lua is shared infrastructure** - Keep helpers small and free of tab-specific state.
+3. **UI modules are self-contained** - Each tab manages its own state.
+4. **MechanicLib is edited here** - Sync and verify the `!Mechanic` runtime copy and all consuming addons after changes.
+5. **FenUI first** - Use FenUI widgets; add new widgets to FenUI proper (FenUI is synced, so change it in its own repo).
+6. **Test both scenarios** - Ensure addons work with and without Mechanic.
+7. **Generated code** - `UI/APIDefs/` is generated by `api.refresh`; change the generator, not the output.
+8. **Lua 5.1** - no `goto`, `bit32` or `//`.
 
 ---
 
 ## Testing
 
-Run the offline addon regressions from the repository root when Lua 5.1 is available:
+Run the offline addon regressions from the repository root when Lua 5.1 is available (each file in `tests/`):
 
 ```bash
 lua tests/addon_regressions.lua
 lua tests/overhead_regressions.lua
+lua tests/api_perf_regressions.lua
+lua tests/inspect_regressions.lua
 ```
 
-These checks cover bootstrap contracts, main-addon lifecycle behavior, and diagnostic overhead. In-game behavior still requires the following manual test matrix.
+These checks cover bootstrap contracts, main-addon lifecycle behavior, diagnostic overhead, API-tab performance and the Inspect module. In-game behavior still requires the following manual test matrix.
 
 **Test Matrix**:
 1. Load both `!Mechanic` and `Mechanic` without other integrated addons - verify UI opens

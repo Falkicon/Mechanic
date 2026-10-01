@@ -15,7 +15,7 @@ sv.parse sv.discover dashboard.metrics addon.validate addon.lint addon.deprecati
 addon.deadcode addon.complexity addon.security docs.stale locale.validate locale.extract
 atlas.search libs.check env.status tools.status addon.output api.search api.info api.list
 api.stats lua.results sandbox.status assets.list fencore-catalog fencore-search fencore-info
-commands.list diagnostic.targets diagnostic.metrics
+commands.list diagnostic.targets diagnostic.metrics perf.compare perf.report perf.list
 """.split()
 )
 MUTATING = frozenset(
@@ -23,12 +23,11 @@ MUTATING = frozenset(
 server.shutdown addon.format addon.test version.bump changelog.add git.commit git.tag
 release.all addon.create addon.sync libs.init libs.sync system.pick_file atlas.scan
 docs.generate api.queue lua.queue sandbox.generate sandbox.exec sandbox.test research.query
-assets.sync perf.baseline perf.compare perf.report perf.list api.populate api.generate
-api.refresh api.download
+assets.sync perf.baseline api.populate api.generate api.refresh api.download
 """.split()
 )
-# perf reads currently create the baseline directory; code execution may write arbitrary
-# files. Both are intentionally advertised as potentially mutating.
+# Code execution (sandbox.exec/test) may write arbitrary files, so it is advertised as
+# potentially mutating even though the runner restricts os/io.
 
 
 EXTERNAL_READ_ONLY: set = set()

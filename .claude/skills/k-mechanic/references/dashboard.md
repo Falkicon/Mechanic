@@ -1,203 +1,83 @@
 # Mechanic Dashboard Reference
 
-The Dashboard is a web-based UI that connects to the Mechanic server for real-time addon development.
+The dashboard is a local web UI served by the same process that holds the command registry. It is for people; agents use MCP. All behaviour comes from commands: the UI is a consumer of `/api/execute`.
 
-## Starting the Dashboard
+## Starting it
 
 ```bash
-mech                        # Start server + open browser
-mech dashboard              # Same as above
-mech dashboard --port 8080  # Custom port (default: 8765)
-mech dashboard --no-browser # Start server without opening browser
+mech dashboard                       # http://127.0.0.1:3100/dashboard/ (also the default for plain `mech`)
+mech dashboard --port 8080 --no-browser
+mech dashboard -w "<WTF/Account/<acct>/SavedVariables>" -s "<addon source folder>"
+mech stop --port 3100
 ```
+
+`--watch/-w` and `--src/-s` are repeatable. Without `--watch`, `sv.discover` finds accounts that contain `!Mechanic.lua`. `--auto-reload` (opt-in) sends `--reload-key` to the WoW window when watched sources change.
 
 ## Architecture
 
 ```
-┌─────────────────┐    WebSocket    ┌─────────────────┐
-│   Dashboard     │ ◄────────────── │  FastAPI Server │
-│   (Browser)     │                 │   (Python)      │
-└─────────────────┘                 └─────────────────┘
-                                           │
-                                    File Watcher
-                                           │
-                                           ▼
-                                   ┌─────────────────┐
-                                   │ SavedVariables  │
-                                   │  (WTF folder)   │
-                                   └─────────────────┘
+Browser (desktop/dashboard/*)  --/api/execute-->  FastAPI server (desktop/src/mechanic/server.py)
+        ^  WebSocket /ws (server -> client)               |  command registry (same as MCP)
+        |                                                 v
+        +------- reload broadcast <------ SavedVariables file watcher (watcher.py)
 ```
 
-## Features
+The server binds to `127.0.0.1`, rejects requests whose `Origin` is not the same host, and is not authenticated. Do not expose it beyond localhost.
 
-### Real-Time SavedVariables Sync
-- Watches `MechanicDB.lua` for changes
-- Auto-parses on file modification
-- Pushes updates via WebSocket
+## HTTP routes
 
-### Reload Trigger
-- Click "Reload" button in dashboard
-- Focuses WoW window
-- Sends configured reload key (default: `/reload`)
+| Route | Method | Purpose |
+|---|---|---|
+| `/` | GET | Status JSON with the UI and API locations |
+| `/health` | GET | `{"status": "healthy", "version": "...", "port": N}` (`port` is null when no HTTP server runs in the process) |
+| `/api/execute` | POST | Body `{"command": "addon.lint", "input": {...}}`; returns the `CommandResult` and records history |
+| `/api/history` | GET | Recent command results: `command`, `limit` (1-1000), `max_result_bytes` query parameters. Results above the size limit come back as a stub with `truncated: true` and `history_id` |
+| `/api/history/{id}` | GET | One stored result in full |
+| `/api/history/clear` | POST | Body `{"command": "..."}` optional; clears history |
+| `/dashboard/` | GET | Static UI |
+| `/ws` | WebSocket | Server pushes only; client messages are ignored |
 
-### Addon Output View
-- Displays errors, tests, console logs
-- Formatted markdown rendering
-- Copy to clipboard
+History is bounded (1000 command rows, 200 reload rows; results over 1 MB are stored as a stub). The sidebar command list, version, port and status are rendered from `commands.list` and `/health`; there is no separate command-list route.
 
-### Metrics Display
-- Reload count
-- Last reload time
-- Error/warning counts
+## WebSocket
 
-## WebSocket API
+The server pushes one message type when the watcher sees a reload:
 
-### Connection
-```javascript
-const ws = new WebSocket("ws://localhost:8765/ws");
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    switch (data.type) {
-        case "sv_update":
-            // SavedVariables changed
-            updateUI(data.payload);
-            break;
-        case "reload_complete":
-            // Reload was triggered
-            showNotification("Reloaded!");
-            break;
-    }
-};
-```
-
-### Message Types
-
-| Type | Direction | Payload |
-|------|-----------|---------|
-| `sv_update` | Server → Client | Parsed SavedVariables |
-| `reload_trigger` | Client → Server | `{ key: "F5" }` |
-| `reload_complete` | Server → Client | `{ success: true }` |
-| `error` | Server → Client | `{ message: "..." }` |
-
-## REST API
-
-### Execute Command
-```http
-POST /api/execute
-Content-Type: application/json
-
-{
-    "command": "addon.lint",
-    "input": { "addon": "MyAddon" }
-}
-```
-
-### Response
 ```json
-{
-    "success": true,
-    "data": { "warnings": 0, "errors": 0 },
-    "reasoning": "No issues found"
-}
+{"type": "reload", "addon": "...", "timestamp": "...", "data": {}, "target": {}, "candidates": []}
 ```
 
-### Available Endpoints
+The dashboard treats it as an invalidation and re-reads the selected target. When several profiles match, `candidates` carries the options instead of a selection (same rule as `diagnostic.targets`).
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/execute` | POST | Execute AFD command |
-| `/api/commands` | GET | List available commands |
-| `/api/status` | GET | Server status |
-| `/ws` | WS | WebSocket connection |
+## Views
 
-## Dashboard HTML
+Mechanic (addon output for the selected target), Command (schema-generated form or raw JSON for any command, with run history), Libraries (`libs.check/init/sync`), Settings (environment), Sandbox (`sandbox.test`). The **Reload** button only shows instructions: type `/reload` in game and wait for the sync. A diagnostic-target selector (from `diagnostic.targets`) scopes the Mechanic view and queue/read commands.
 
-Located at: `desktop/dashboard/index.html`
+## File layout (`desktop/dashboard/`)
 
-Built with vanilla HTML/JS (no framework):
-- Modern CSS with variables
-- WebSocket client
-- Fetch API for REST calls
+| File | Role |
+|---|---|
+| `index.html` | Markup only |
+| `dashboard.css` | Styles (no external font request) |
+| `render.js` | Pure rendering helpers (UMD, unit-tested under Node) |
+| `schema-form.js` | Form generation from command input schemas |
+| `state.js`, `api.js`, `views.js`, `app.js`, `ws.js`, `main.js` | State, HTTP client, views, shell and shortcuts, WebSocket client, startup |
 
-### Key DOM Elements
-```html
-<div id="output"><!-- Addon output markdown --></div>
-<div id="metrics"><!-- Reload metrics --></div>
-<button id="reload-btn">Reload</button>
-<button id="copy-btn">Copy Output</button>
-```
+Node regressions live in `tests/dashboard_*_regressions.cjs` (shared helper `tests/dashboard_harness.cjs`); run each with `node tests/<name>.cjs`. Escape any command output rendered into HTML (use the helpers in `render.js`).
 
 ## Configuration
 
-### Server Settings
-Environment variables or config file:
+| Setting | Meaning |
+|---|---|
+| `MECHANIC_WOW_ROOT` | WoW installation root (overrides discovery and `~/.mechanic/config.json`) |
+| `MECHANIC_DEV_PATH` | The `_dev_` folder where addons are looked up |
+| `MECHANIC_DATA_DIR` | History/data directory (default `~/.mechanic/data`) |
+| `GEMINI_API_KEY` | Needed by `research.query` (`desktop/.env` or `~/.mechanic/.env`) |
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MECHANIC_PORT` | 8765 | Server port |
-| `MECHANIC_HOST` | 127.0.0.1 | Bind address |
-| `WOW_PATH` | Auto-detect | WoW installation |
-| `RELOAD_KEY` | — | Key to send for reload |
-
-### Account Discovery
-```bash
-mech call sv.discover
-```
-
-Returns:
-```json
-{
-    "accounts": [
-        {
-            "name": "12345678#1",
-            "path": "C:/WoW/_retail_/WTF/Account/12345678#1",
-            "characters": ["CharName-Realm"]
-        }
-    ]
-}
-```
+Config file: `~/.mechanic/config.json` (see `desktop/config.json.example`); `mech setup` writes it.
 
 ## Troubleshooting
 
-### Dashboard Won't Connect
-1. Check server is running: `mech dashboard`
-2. Check port not in use: `netstat -an | findstr 8765`
-3. Check firewall allows localhost
-
-### SavedVariables Not Updating
-1. Verify WoW path detected: `mech call sv.discover`
-2. Check file watcher: Look for "Watching..." message
-3. Force reload in WoW: `/reload`
-
-### Reload Not Working (Dashboard UI)
-1. Check WoW is focused
-2. Verify reload key mapping
-3. Use the Dashboard reload button (human users only)
-
-> **Note for Agents**: Do NOT use `reload.trigger`. Ask the user to `/reload` in WoW and wait for confirmation.
-
-## Development
-
-### Running in Dev Mode
-```bash
-cd desktop
-pip install -e .
-mech dashboard
-```
-
-### Testing API
-```bash
-# List commands
-curl http://localhost:8765/api/commands
-
-# Execute command
-curl -X POST http://localhost:8765/api/execute \
-  -H "Content-Type: application/json" \
-  -d '{"command": "addon.lint", "input": {"addon": "MyAddon"}}'
-```
-
-### Adding Dashboard Features
-1. Modify `dashboard/index.html`
-2. Add server endpoint in `server.py` if needed
-3. Test via browser dev tools
+- Page does not load: confirm the process (`mech dashboard`), the port (default 3100) and that nothing else uses it. MCP over SSE uses 3101 by default.
+- Output stays empty: SavedVariables only update on `/reload` or logout; check `mech call sv.discover` and `diagnostic.targets`.
+- Stale target: a reload broadcast re-reads the selected target; pick the right one in the selector.

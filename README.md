@@ -7,9 +7,9 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Falkicon%2FMechanic-181717?logo=github)](https://github.com/Falkicon/Mechanic)
 [![Sponsor](https://img.shields.io/badge/Sponsor-pink?logo=githubsponsors)](https://github.com/sponsors/Falkicon)
 
-Mechanic combines a WoW diagnostic hub, a local desktop dashboard, and a shared command registry for CLI and MCP clients. The project is in alpha; interfaces and workflows may change. The addon TOCs currently target interface `120100`.
+Mechanic combines a WoW diagnostic hub, a local desktop dashboard, and a shared command registry for CLI and MCP clients. The project is in alpha; interfaces and workflows may change. Both addon TOCs declare `## Interface: 120100, 16001` (Retail 12.1.0 and WoW: Forever).
 
-[Quick start](#quick-start) · [Agent guidance](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](PLAN/ROADMAP.md) · [Changelog](CHANGELOG.md)
+[Quick start](#quick-start) · [Agent guidance](AGENTS.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](PLAN/ROADMAP.md) · [Changelog](CHANGELOG.md) · [Addon changelog](Mechanic/CHANGELOG.md)
 
 ## What it provides
 
@@ -19,7 +19,7 @@ Mechanic combines a WoW diagnostic hub, a local desktop dashboard, and a shared 
 | Desktop dashboard | Saved diagnostic output, explicit client/account/character/profile selection, command forms generated from schemas, and raw JSON input |
 | Shared commands | 60 registered commands for diagnostics, addon development, libraries, localization, assets, API research, and releases |
 | Queue workflow | Queue Lua snippets or API tests, reload in game, then read the selected profile's saved results |
-| Offline testing | Python command tests and Lua sandbox tests without a running WoW client |
+| Offline testing | Python command tests and Lua sandbox tests (restricted Lua 5.1 environment with generated WoW API stubs) without a running WoW client |
 | Release and sync | Preview plans, preflight checks, mutation metadata, and partial-failure recovery guidance |
 
 Use `commands.list` for current input/output schemas and mutation metadata. See the [quality improvements guide](docs/quality-improvements.md) for targeting, previews, metrics, and validation limits.
@@ -80,7 +80,7 @@ Use the same target with `api.queue` and `addon.output`. An omitted target succe
 
 ### MCP for agents
 
-Install MCP support with `python -m pip install -e ".[mcp]"` from `desktop/`, then configure your MCP client to launch `mech mcp` using that environment. The default transport is stdio. Agents should use the connected MCP tools directly and follow [AGENTS.md](AGENTS.md).
+Install MCP support with `python -m pip install -e ".[mcp]"` from `desktop/`, then configure your MCP client to launch `mech mcp` using that environment. The default transport is stdio. `mech mcp --transport sse` serves SSE on `127.0.0.1:3101` (change with `--host`/`--port`); SSE has no authentication and exposes mutating commands (git, release, Lua queues), so keep it on localhost. Agents should use the connected MCP tools directly and follow [AGENTS.md](AGENTS.md).
 
 The enhanced MCP adapter replaces dots with dashes in tool names: `addon.output` becomes `addon-output`, and `diagnostic.targets` becomes `diagnostic-targets`. Registry, CLI, and dashboard names retain dots.
 
@@ -97,7 +97,7 @@ mech --json call addon.sync '{"addon":"MyAddon","dry_run":true}'
 mech --json call libs.sync '{"addon":"MyAddon","dry_run":true}'
 ```
 
-Run the selected operation with `dry_run: false` to apply it. `release.all` updates the TOC/changelog, commits addon changes, and tags the commit. It reports completed steps and recovery guidance if a later step fails; it does not roll changes back automatically. The older `mech release` shortcut executes individual steps and does not provide `release.all`'s preview/preflight contract.
+Run the selected operation with `dry_run: false` to apply it. `release.all` updates the TOC/changelog, commits addon changes, and tags the commit. It reports completed steps and recovery guidance if a later step fails; it does not roll changes back automatically. `mech release ADDON VERSION MESSAGE` runs the same `release.all` command (add `--dry-run` to preview and `--category` to choose the changelog section); `--skip-tag` was removed.
 
 ### Offline Lua tests
 
@@ -106,7 +106,7 @@ mech call sandbox.generate
 mech call sandbox.test '{"addon":"MyAddon"}'
 ```
 
-Sandbox stubs are generated from available API definitions. They support testing addon logic, but do not reproduce protected APIs, rendering, or every WoW runtime behavior. See the [testing guide](docs/integration/testing.md).
+`sandbox.test` needs only a Lua 5.1 interpreter (found by `mech setup`, `MECHANIC_LUA` or `PATH`); stubs from `sandbox.generate` are optional and come from the generated API definitions. Code runs in a restricted environment (no `os`, `io`, or `require` outside the addon folder; 30 second limit for `sandbox.exec`, 60 seconds for `sandbox.test`). Stubs support testing addon logic, but do not reproduce protected APIs, rendering, or every WoW runtime behavior. See the [testing guide](docs/integration/testing.md).
 
 ## Architecture
 
@@ -123,8 +123,8 @@ Mechanic/                       # Repository root
 │   └── UI/
 ├── desktop/
 │   ├── src/mechanic/           # Commands, CLI, MCP, HTTP, watcher, parser, storage
-│   ├── src/afd/                # Bundled structured-command framework
-│   ├── dashboard/              # Packaged HTML/CSS/JS interface
+│   ├── src/mechanic/resources/ # Packaged data (tool checksums, Lua runner/framework, deprecation seed)
+│   ├── dashboard/              # Packaged HTML/CSS/JS interface (index.html, dashboard.css, render/state/api/views/app/ws/main/schema-form .js)
 │   ├── tests/
 │   └── pyproject.toml
 ├── tests/                      # Offline Lua and dashboard regressions
@@ -132,7 +132,7 @@ Mechanic/                       # Repository root
 └── PLAN/
 ```
 
-The bootstrap owns `MechanicDB` SavedVariables and early queue processing. The main addon aggregates registered addon data into that shared database. WoW writes it to `!Mechanic.lua` on reload/logout. The desktop watcher broadcasts changes, and the dashboard reads its selected target through `/api/execute`. SQLite stores desktop history separately; its default location is `~/.mechanic/data/mechanic.db`, configurable with `MECHANIC_DATA_DIR`.
+The bootstrap owns `MechanicDB` SavedVariables and early queue processing. The main addon aggregates registered addon data into that shared database. WoW writes it to `!Mechanic.lua` on reload/logout. The desktop watcher broadcasts changes, and the dashboard reads its selected target through `/api/execute`. SQLite stores desktop history separately (bounded, with oversized results stored as stubs); its default location is `~/.mechanic/data/mechanic.db`, configurable with `MECHANIC_DATA_DIR`. The structured-command framework is the hosted [`afd`](https://pypi.org/project/afd/) package (`afd>=0.8.0,<0.9`), declared in `desktop/pyproject.toml`.
 
 The desktop server binds to `127.0.0.1` and checks local hosts and browser origins. It is a trusted local development tool: commands can write files and execute code with your user permissions. See [SECURITY.md](SECURITY.md).
 
@@ -146,20 +146,18 @@ python -m ruff check src tests
 python -m ruff format --check src tests
 ```
 
-From the repository root, run the standalone regressions with Lua 5.1 and Node:
+From the repository root, run the standalone regressions with Lua 5.1 and Node. CI runs every `tests/*_regressions.lua` and `tests/*_regressions.cjs` file (`tests/dashboard_harness.cjs` is a shared helper, not a suite):
 
 ```bash
-lua5.1 tests/addon_regressions.lua
-lua5.1 tests/overhead_regressions.lua
-node tests/dashboard_regressions.cjs
-node tests/dashboard_schema_regressions.cjs
+for suite in tests/*_regressions.lua; do lua5.1 "$suite"; done
+for suite in tests/*_regressions.cjs; do node "$suite"; done
 ```
 
-Set `MECHANIC_LUA` to a Lua 5.1 executable to enable the Python-to-Lua queue contract tests. MCP integration tests require the optional MCP dependency. The latest recorded local run passed **243 Python tests** with both enabled. CI is configured for Python 3.10–3.12 on Windows/Linux, plus MCP, dashboard, Lua, lint, and installed-wheel checks. See [validation evidence and limits](docs/quality-improvements.md#verified-locally-on-2026-09-05).
+Set `MECHANIC_LUA` to a Lua 5.1 executable to enable the Python-to-Lua queue contract tests and the sandbox tests. The MCP adapter tests run with the `dev` extra. The Python suite has about 700 tests. CI is configured for Python 3.10–3.13 on Windows and Linux, plus wheel smoke, MCP, dashboard, Lua, and lint jobs; it has not been run on GitHub for this tree. See [validation evidence and limits](docs/quality-improvements.md#verified-locally-on-2026-09-05) (a dated snapshot).
 
 ## Keybindings
 
-In WoW's Key Bindings settings, assign **Reload UI (Dev)** and **Toggle Mechanic Panel**. `Ctrl+Shift+R` and `Ctrl+Shift+M` are suggestions, not automatically assigned defaults. Source-watch auto-reload has optional Windows/macOS helpers and requires the configured key to match your in-game binding.
+In WoW's Key Bindings settings, assign **Reload UI (Dev)** and **Toggle Mechanic Panel** (`Bindings.xml` cannot set defaults). `Ctrl+Shift+R` and `Ctrl+Shift+M` are only suggestions. Source-watch auto-reload (`mech dashboard --auto-reload --src PATH`) has optional Windows/macOS helpers and requires the configured key to match your in-game binding.
 
 ## Documentation
 
@@ -168,12 +166,18 @@ In WoW's Key Bindings settings, assign **Reload UI (Dev)** and **Toggle Mechanic
 | [Desktop README](desktop/README.md) | Installation, configuration, and CLI usage |
 | [Agent instructions](AGENTS.md) | Command standards, diagnostic targets, and reload workflow |
 | [Addon integration](docs/addon-integration.md) | Register an addon with MechanicLib |
+| [Integration guides](docs/integration/cli-workflow.md) | Console, tests, performance, tools, inspect, errors, SavedVariables, release, CurseForge, troubleshooting |
+| [Addon architecture](docs/addon-architecture.md) | Three-layer design for testable addons |
+| [Addon development guide](docs/addon-dev-guide/AGENTS.md) | 24 guides on WoW addon practices (Midnight, secret values, UI, testing, release) |
+| [Migration from addon-dev](docs/migration-from-addon-dev.md) | Mapping from the retired `addon-dev` CLI to `mech` |
+| [API changelog](docs/api-changelog.md) | WoW API changes (12.0.1 coverage; see its gap note) |
 | [Command reference](docs/cli-reference.md) | Generated registry command parameters and invocation templates |
 | [Quality improvements](docs/quality-improvements.md) | Targets, schema forms, previews, metrics, and validation |
 | [Contributing](CONTRIBUTING.md) | Development and PR guidance |
 | [Roadmap](PLAN/ROADMAP.md) | Implemented capabilities and future work |
 | [Compatibility workbench PRD](PLAN/compatibility-workbench.prd.md) | Proposed API inspection, guided checks, and evidence reports; not yet implemented |
-| [Changelog](CHANGELOG.md) | Desktop history; links to the separate addon changelog |
+| [Changelog](CHANGELOG.md) | Desktop history; links to the separate [addon changelog](Mechanic/CHANGELOG.md) |
+| [Security policy](SECURITY.md) | Supported versions, reporting, trust boundaries |
 
 ## License
 

@@ -7,7 +7,6 @@ APIDefs["C_System.GetFrameStack"] = {
     name = "GetFrameStack",
     category = "general",
     subcategory = "c_system",
-    func = _G["C_System"] and _G["C_System"]["GetFrameStack"],
     funcPath = "C_System.GetFrameStack",
     params = {  },
     returns = { { name = "objects", type = "table", canBeSecret = false } },

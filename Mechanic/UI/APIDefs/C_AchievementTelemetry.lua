@@ -5,28 +5,24 @@ local APIDefs = ns.APIDefinitions
 APIDefs["C_AchievementTelemetry.LinkAchievementInClub"] = {
     key = "C_AchievementTelemetry.LinkAchievementInClub",
     name = "LinkAchievementInClub",
-    category = "combat_midnight",
+    category = "achievement",
     subcategory = "c_achievementtelemetry",
-    func = _G["C_AchievementTelemetry"] and _G["C_AchievementTelemetry"]["LinkAchievementInClub"],
     funcPath = "C_AchievementTelemetry.LinkAchievementInClub",
     params = { { name = "achievementID", type = "number", default = nil } },
     returns = {  },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
 APIDefs["C_AchievementTelemetry.LinkAchievementInWhisper"] = {
     key = "C_AchievementTelemetry.LinkAchievementInWhisper",
     name = "LinkAchievementInWhisper",
-    category = "combat_midnight",
+    category = "achievement",
     subcategory = "c_achievementtelemetry",
-    func = _G["C_AchievementTelemetry"] and _G["C_AchievementTelemetry"]["LinkAchievementInWhisper"],
     funcPath = "C_AchievementTelemetry.LinkAchievementInWhisper",
     params = { { name = "achievementID", type = "number", default = nil } },
     returns = {  },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }
 
@@ -35,7 +31,6 @@ APIDefs["C_AchievementTelemetry.ShowAchievements"] = {
     name = "ShowAchievements",
     category = "achievement",
     subcategory = "c_achievementtelemetry",
-    func = _G["C_AchievementTelemetry"] and _G["C_AchievementTelemetry"]["ShowAchievements"],
     funcPath = "C_AchievementTelemetry.ShowAchievements",
     params = {  },
     returns = {  },

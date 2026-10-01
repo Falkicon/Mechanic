@@ -1,40 +1,51 @@
 """
 Security pattern analysis for WoW addon development.
 
-Detects common security and safety issues:
-- Combat lockdown violations (protected API calls without guards)
-- Secret value leaks (logging/storing secret values in 12.0+)
+Detects common security and safety issues on the Lua token stream, so strings,
+block comments and trailing comments never produce findings:
+- Combat lockdown violations (protected global functions without guards)
+- Secret value leaks (logging/transmitting secret values in 12.0+)
 - Taint risks (unsafe global modifications)
-- Unsafe eval patterns (loadstring with unsanitized input)
-- Addon communication issues (unvalidated message parsing)
+- Unsafe eval patterns (loadstring/RunScript with unsanitized input)
+- Addon communication issues (handlers that execute or blindly deserialize messages)
 """
 
 import asyncio
-
-from afd import CommandResult, success, error
-from afd.core.metadata import create_source
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
-from enum import Enum
-import re
 import time
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
+from afd import CommandResult, error, success
+from afd.core.metadata import create_source
+from pydantic import BaseModel, Field
+
+from ..analysis_common import (
+    DEFAULT_ISSUE_LIMIT,
+    MAX_ISSUE_LIMIT,
+    SourceCache,
+    count_by,
+    describe_findings,
+    finalize_issues,
+    iter_lua_files,
+    relative_display,
+    unknown_categories,
+)
 from ..config import find_addon_path
 from ..lua_analyzer import Confidence
-
+from ..lua_structure import LuaFile
+from ..lua_tokenizer import KEYWORD, NAME, STRING, Token
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PROTECTED API DATABASE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# APIs that require InCombatLockdown() checks
+# Protected *global functions* that require InCombatLockdown() checks. Frame
+# methods (SetAttribute, SetFrameStrata, ClearFocus on an EditBox, ...) are not
+# listed: they are only restricted on secure frames and are matched by name
+# alone, which produced mostly false positives.
 PROTECTED_APIS = {
     # Secure frame manipulation
-    "SetAttribute",
-    "SetFrameRef",
-    "SetFrameStrata",  # Only on secure frames
-    "RegisterForClicks",
     "RegisterStateDriver",
     "RegisterUnitWatch",
     "UnregisterUnitWatch",
@@ -47,7 +58,6 @@ PROTECTED_APIS = {
     "PickupPetAction",
     "PickupCompanion",
     "PickupEquipmentSet",
-    "ClearCursor",
     # Unit targeting
     "TargetUnit",
     "AssistUnit",
@@ -116,18 +126,31 @@ SECRET_VALUE_APIS = {
     "GetItemCooldown": "May return secret values",
 }
 
-# Functions that could leak secret values
-LEAK_FUNCTIONS = {
+# Calls that log or transmit their arguments (bare function or method name)
+LEAK_CALL_NAMES = {
     "print",
-    "DEFAULT_CHAT_FRAME:AddMessage",
-    "ChatFrame1:AddMessage",
-    "UIErrorsFrame:AddMessage",
-    "RaidNotice_AddMessage",
+    "AddMessage",
     "SendChatMessage",
     "SendAddonMessage",
-    "C_ChatInfo.SendAddonMessage",
     "BNSendGameData",
+    "format",
 }
+
+# Functions that test a value before it is used; their presence suppresses leaks
+SECRET_GUARDS = {"issecretvalue", "canaccessvalue", "issecrettable", "canaccesstable"}
+
+# Globals Blizzard requires addons to define with fixed names
+EXEMPT_GLOBAL_PREFIXES = ("SLASH_", "BINDING_")
+
+VALIDATION_HINTS = ("validate", "verify", "sanitize")
+
+CATEGORY_PRIORITY = [
+    "addon_comm",
+    "unsafe_eval",
+    "secret_leak",
+    "taint_risk",
+    "combat_violation",
+]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -170,6 +193,12 @@ class SecurityInput(BaseModel):
     include_suspicious: bool = Field(
         True, description="Include lower-confidence findings"
     )
+    limit: int = Field(
+        DEFAULT_ISSUE_LIMIT,
+        ge=1,
+        le=MAX_ISSUE_LIMIT,
+        description="Maximum issues returned, most severe first (counts cover all issues)",
+    )
 
 
 class SecurityResult(BaseModel):
@@ -178,6 +207,75 @@ class SecurityResult(BaseModel):
     issues: List[SecurityIssue] = []
     summary: SecuritySummary = Field(default_factory=SecuritySummary)
     analysis_time_ms: float = 0.0
+    truncated: bool = False
+    total_issues: int = 0
+    read_errors: List[str] = []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOKEN HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _is_op(tok: Optional[Token], value: str) -> bool:
+    return tok is not None and tok.kind == "op" and tok.value == value
+
+
+def _tok(parsed: LuaFile, idx: int) -> Optional[Token]:
+    return parsed.tokens[idx] if 0 <= idx < len(parsed.tokens) else None
+
+
+def _is_global_reference(parsed: LuaFile, idx: int) -> bool:
+    """A bare identifier (or ``_G.name``), not ``obj.name``/``obj:name``/a definition."""
+    prev = _tok(parsed, idx - 1)
+    if prev is None:
+        return True
+    if prev.kind == KEYWORD and prev.value == "function":
+        return False
+    if _is_op(prev, ":"):
+        return False
+    if _is_op(prev, "."):
+        before = _tok(parsed, idx - 2)
+        return before is not None and before.kind == NAME and before.value == "_G"
+    return True
+
+
+def _is_call(parsed: LuaFile, idx: int) -> bool:
+    nxt = _tok(parsed, idx + 1)
+    return _is_op(nxt, "(") or (nxt is not None and nxt.kind == STRING)
+
+
+def _global_calls(parsed: LuaFile, names) -> Iterator[Tuple[int, Token]]:
+    for idx, tok in enumerate(parsed.tokens):
+        if (
+            tok.kind == NAME
+            and tok.value in names
+            and _is_call(parsed, idx)
+            and _is_global_reference(parsed, idx)
+        ):
+            yield idx, tok
+
+
+def _matching_close(parsed: LuaFile, open_idx: int) -> int:
+    depth = 0
+    for idx in range(open_idx, len(parsed.tokens)):
+        tok = parsed.tokens[idx]
+        if tok.kind == "op":
+            if tok.value in "([{" and len(tok.value) == 1:
+                depth += 1
+            elif tok.value in ")]}" and len(tok.value) == 1:
+                depth -= 1
+                if depth == 0:
+                    return idx
+    return len(parsed.tokens) - 1
+
+
+def _snippet(lines: List[str], line: int) -> str:
+    return lines[line - 1].strip()[:80] if 0 < line <= len(lines) else ""
+
+
+def _has_name(parsed: LuaFile, names, lo: int, hi: int) -> bool:
+    return any(t.kind == NAME and t.value in names for t in parsed.tokens[lo : hi + 1])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -186,323 +284,464 @@ class SecurityResult(BaseModel):
 
 
 def find_combat_violations(
-    addon_path: Path, lua_files: List[Path]
+    addon_path: Path, lua_files: List[Path], cache: Optional[SourceCache] = None
 ) -> List[SecurityIssue]:
-    """Find protected API calls without InCombatLockdown() guards."""
+    """Find protected global function calls without InCombatLockdown() guards."""
     issues = []
+    cache = cache or SourceCache(addon_path)
 
     for lua_file in lua_files:
-        try:
-            content = lua_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            rel_path = lua_file.relative_to(addon_path)
-
-            # Track if file has InCombatLockdown checks
-            has_lockdown_check = "InCombatLockdown" in content
-
-            for line_num, line in enumerate(lines, 1):
-                stripped = line.strip()
-
-                # Skip comments
-                if stripped.startswith("--"):
-                    continue
-
-                for api in PROTECTED_APIS:
-                    # Check for API call
-                    pattern = rf"\b{api}\s*\("
-                    if re.search(pattern, line):
-                        # Determine confidence based on context
-                        if not has_lockdown_check:
-                            confidence = Confidence.DEFINITE
-                            message = f"Protected API '{api}' called without any InCombatLockdown() check in file"
-                        else:
-                            # Check if there's a guard nearby (within 10 lines)
-                            start = max(0, line_num - 10)
-                            context = "\n".join(lines[start:line_num])
-                            if "InCombatLockdown" in context:
-                                continue  # Skip, likely guarded
-                            confidence = Confidence.LIKELY
-                            message = f"Protected API '{api}' may not be properly guarded by InCombatLockdown()"
-
-                        issues.append(
-                            SecurityIssue(
-                                category=SecurityCategory.COMBAT_VIOLATION.value,
-                                confidence=confidence.value,
-                                file=str(rel_path),
-                                line=line_num,
-                                code=stripped[:80],
-                                message=message,
-                                suggestion=f"Add 'if InCombatLockdown() then return end' before calling {api}",
-                            )
-                        )
-                        break  # One issue per line
-
-        except Exception:
+        parsed = cache.parse(lua_file)
+        if parsed is None:
             continue
+        lines = (cache.read(lua_file) or "").splitlines()
+        rel_path = relative_display(lua_file, addon_path)
+        file_has_check = any(
+            t.kind == NAME and t.value == "InCombatLockdown" for t in parsed.tokens
+        )
+        seen: Set[Tuple[int, str]] = set()
+
+        for idx, tok in _global_calls(parsed, PROTECTED_APIS):
+            func = parsed.enclosing_function(idx)
+            scope_start = func.body_start if func is not None else 0
+            if _has_name(parsed, {"InCombatLockdown"}, scope_start, idx):
+                continue  # guarded earlier in the same function
+            if (tok.line, tok.value) in seen:
+                continue
+            seen.add((tok.line, tok.value))
+
+            if not file_has_check:
+                confidence = Confidence.LIKELY
+                message = f"Protected API '{tok.value}' called without any InCombatLockdown() check in file"
+            else:
+                confidence = Confidence.SUSPICIOUS
+                message = f"Protected API '{tok.value}' may not be properly guarded by InCombatLockdown()"
+
+            issues.append(
+                SecurityIssue(
+                    category=SecurityCategory.COMBAT_VIOLATION.value,
+                    confidence=confidence.value,
+                    file=rel_path,
+                    line=tok.line,
+                    code=_snippet(lines, tok.line),
+                    message=message,
+                    suggestion=f"Add 'if InCombatLockdown() then return end' before calling {tok.value}",
+                )
+            )
 
     return issues
 
 
-def find_secret_leaks(addon_path: Path, lua_files: List[Path]) -> List[SecurityIssue]:
-    """Find potential secret value leaks (logging secret API returns)."""
-    issues = []
-
-    # Pattern: print/log function with secret API inside
-    leak_patterns = [
-        r"print\s*\([^)]*\b({})\b",
-        r"AddMessage\s*\([^)]*\b({})\b",
-        r"format\s*\([^)]*\b({})\b[^)]*\)",
-    ]
-
-    for lua_file in lua_files:
-        try:
-            content = lua_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            rel_path = lua_file.relative_to(addon_path)
-
-            for line_num, line in enumerate(lines, 1):
-                stripped = line.strip()
-
-                # Skip comments
-                if stripped.startswith("--"):
-                    continue
-
-                # Check for secret API results being stored then logged
-                for secret_api, description in SECRET_VALUE_APIS.items():
-                    # Direct leak: print(UnitHealth("target"))
-                    for pattern_template in leak_patterns:
-                        pattern = pattern_template.format(secret_api)
-                        if re.search(pattern, line, re.IGNORECASE):
-                            issues.append(
-                                SecurityIssue(
-                                    category=SecurityCategory.SECRET_LEAK.value,
-                                    confidence=Confidence.DEFINITE.value,
-                                    file=str(rel_path),
-                                    line=line_num,
-                                    code=stripped[:80],
-                                    message=f"Secret value from '{secret_api}' may be leaked. {description}",
-                                    suggestion="In 12.0+, secret values cannot be logged or transmitted. Use passthrough patterns instead.",
-                                )
-                            )
-                            break
-
-                    # Variable assignment followed by print
-                    if f"= {secret_api}(" in line or f"= {secret_api} (" in line:
-                        # Look ahead for potential leaks
-                        var_match = re.search(rf"(\w+)\s*=\s*{secret_api}\s*\(", line)
-                        if var_match:
-                            var_name = var_match.group(1)
-                            # Check next 5 lines for leaks
-                            for i in range(line_num, min(line_num + 5, len(lines))):
-                                future_line = lines[i]
-                                if any(
-                                    leak in future_line
-                                    for leak in ["print", "AddMessage", "SendChat"]
-                                ):
-                                    if var_name in future_line:
-                                        issues.append(
-                                            SecurityIssue(
-                                                category=SecurityCategory.SECRET_LEAK.value,
-                                                confidence=Confidence.LIKELY.value,
-                                                file=str(rel_path),
-                                                line=i + 1,
-                                                code=future_line.strip()[:80],
-                                                message=f"Variable '{var_name}' contains secret value from '{secret_api}' and may be leaked",
-                                                suggestion="Don't log or transmit secret values. Use passthrough patterns for UI display.",
-                                            )
-                                        )
-                                        break
-
-        except Exception:
+def _secret_calls(parsed: LuaFile, lo: int, hi: int) -> List[int]:
+    """Indices of secret-value API calls in ``[lo, hi]`` (global or ``C_*`` qualified)."""
+    found = []
+    for idx in range(lo, hi + 1):
+        tok = parsed.tokens[idx]
+        if tok.kind != NAME or tok.value not in SECRET_VALUE_APIS:
             continue
+        if not _is_call(parsed, idx):
+            continue
+        prev = _tok(parsed, idx - 1)
+        if _is_op(prev, ":"):
+            continue
+        if _is_op(prev, "."):
+            qualifier = _tok(parsed, idx - 2)
+            if qualifier is None or not qualifier.value.startswith("C_"):
+                continue
+        found.append(idx)
+    return found
 
-    return issues
+
+def _assignment_targets(parsed: LuaFile, call_idx: int) -> List[str]:
+    """Names assigned directly from the call at ``call_idx`` (``a, b = Call()``)."""
+    k = call_idx - 1
+    if _is_op(_tok(parsed, k), ".") and _tok(parsed, k - 1) is not None:
+        k -= 2  # skip a ``C_Namespace.`` qualifier
+    if not _is_op(_tok(parsed, k), "="):
+        return []
+    names = []
+    k -= 1
+    while k >= 0:
+        tok = parsed.tokens[k]
+        if tok.kind == NAME:
+            names.append(tok.value)
+        elif _is_op(tok, ",") or (tok.kind == KEYWORD and tok.value == "local"):
+            pass
+        else:
+            break
+        k -= 1
+    return names
 
 
-def find_taint_risks(
-    addon_path: Path, lua_files: List[Path], addon_name: str
+def find_secret_leaks(
+    addon_path: Path, lua_files: List[Path], cache: Optional[SourceCache] = None
 ) -> List[SecurityIssue]:
-    """Find unsafe global modifications that could cause taint."""
+    """Find secret API results that are logged or transmitted."""
     issues = []
+    cache = cache or SourceCache(addon_path)
 
     for lua_file in lua_files:
-        try:
-            content = lua_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            rel_path = lua_file.relative_to(addon_path)
+        parsed = cache.parse(lua_file)
+        if parsed is None:
+            continue
+        lines = (cache.read(lua_file) or "").splitlines()
+        rel_path = relative_display(lua_file, addon_path)
+        tokens = parsed.tokens
 
-            for line_num, line in enumerate(lines, 1):
-                stripped = line.strip()
+        leak_calls = []  # (call token index, closing paren index)
+        for idx, tok in enumerate(tokens):
+            if (
+                tok.kind == NAME
+                and tok.value in LEAK_CALL_NAMES
+                and _is_op(_tok(parsed, idx + 1), "(")
+                and not (
+                    _tok(parsed, idx - 1) is not None
+                    and tokens[idx - 1].is_kw("function")
+                )
+            ):
+                leak_calls.append((idx, _matching_close(parsed, idx + 1)))
 
-                # Skip comments
-                if stripped.startswith("--"):
+        reported: Set[Tuple[int, str]] = set()
+
+        # Direct leak: print(UnitHealth("target"))
+        for call_idx, close in leak_calls:
+            if _has_name(parsed, SECRET_GUARDS, call_idx, close):
+                continue
+            for secret_idx in _secret_calls(parsed, call_idx + 2, close):
+                api = tokens[secret_idx].value
+                key = (tokens[call_idx].line, api)
+                if key in reported:
                     continue
+                reported.add(key)
+                issues.append(
+                    SecurityIssue(
+                        category=SecurityCategory.SECRET_LEAK.value,
+                        confidence=Confidence.DEFINITE.value,
+                        file=rel_path,
+                        line=tokens[call_idx].line,
+                        code=_snippet(lines, tokens[call_idx].line),
+                        message=f"Secret value from '{api}' may be leaked. {SECRET_VALUE_APIS[api]}",
+                        suggestion="In 12.0+, secret values cannot be logged or transmitted. Use passthrough patterns instead.",
+                    )
+                )
 
-                # Check for _G assignments without namespace
-                # Bad: _G["SomeGlobal"] = value
-                # Good: _G["MyAddon_SomeGlobal"] = value
-                g_assign = re.search(r'_G\s*\[\s*["\'](\w+)["\']\s*\]\s*=', line)
-                if g_assign:
-                    global_name = g_assign.group(1)
-                    # Check if it uses addon namespace
-                    if not global_name.startswith(
-                        addon_name
-                    ) and not global_name.startswith(addon_name.replace("!", "")):
-                        issues.append(
-                            SecurityIssue(
-                                category=SecurityCategory.TAINT_RISK.value,
-                                confidence=Confidence.LIKELY.value,
-                                file=str(rel_path),
-                                line=line_num,
-                                code=stripped[:80],
-                                message=f"Global '{global_name}' set via _G without addon namespace prefix",
-                                suggestion=f'Prefix with addon name: _G["{addon_name}_{global_name}"] or use local',
-                            )
-                        )
-
-                # Check for rawset on _G
-                if "rawset" in line and "_G" in line:
+        # Stored then logged: local hp = UnitHealth(unit); print(hp)
+        for secret_idx in _secret_calls(parsed, 0, len(tokens) - 1):
+            api = tokens[secret_idx].value
+            for var in _assignment_targets(parsed, secret_idx):
+                scope_end = len(tokens) - 1
+                best = None
+                for decl in parsed.locals:
+                    if decl.name == var and decl.tok < secret_idx <= decl.scope_end:
+                        if best is None or decl.tok > best.tok:
+                            best = decl
+                if best is not None:
+                    scope_end = best.scope_end
+                else:
+                    func = parsed.enclosing_function(secret_idx)
+                    if func is not None:
+                        scope_end = func.end_tok
+                if _has_name(parsed, SECRET_GUARDS, secret_idx, scope_end):
+                    continue
+                for call_idx, close in leak_calls:
+                    if not (secret_idx < call_idx <= scope_end):
+                        continue
+                    uses_var = any(
+                        t.kind == NAME and t.value == var
+                        for t in tokens[call_idx + 2 : close]
+                    )
+                    key = (tokens[call_idx].line, var)
+                    if not uses_var or key in reported:
+                        continue
+                    reported.add(key)
                     issues.append(
                         SecurityIssue(
-                            category=SecurityCategory.TAINT_RISK.value,
-                            confidence=Confidence.SUSPICIOUS.value,
-                            file=str(rel_path),
-                            line=line_num,
-                            code=stripped[:80],
-                            message="rawset used on _G - potential taint vector",
-                            suggestion="Avoid rawset on _G unless absolutely necessary",
+                            category=SecurityCategory.SECRET_LEAK.value,
+                            confidence=Confidence.LIKELY.value,
+                            file=rel_path,
+                            line=tokens[call_idx].line,
+                            code=_snippet(lines, tokens[call_idx].line),
+                            message=f"Variable '{var}' contains secret value from '{api}' and may be leaked",
+                            suggestion="Don't log or transmit secret values. Use passthrough patterns for UI display.",
                         )
                     )
 
-        except Exception:
-            continue
-
     return issues
 
 
-def find_unsafe_eval(addon_path: Path, lua_files: List[Path]) -> List[SecurityIssue]:
-    """Find unsafe loadstring/RunScript usage."""
-    issues = []
+def _global_write_targets(parsed: LuaFile) -> Iterator[Tuple[int, Optional[str], int]]:
+    """``(token index, global name or None if dynamic, line)`` for ``_G`` assignments."""
+    tokens = parsed.tokens
+    for idx, tok in enumerate(tokens):
+        if tok.kind != NAME or tok.value != "_G" or _is_op(_tok(parsed, idx - 1), "."):
+            continue
+        nxt = _tok(parsed, idx + 1)
+        if _is_op(nxt, "["):
+            close = _matching_close(parsed, idx + 1)
+            if not _is_op(_tok(parsed, close + 1), "="):
+                continue
+            inner = tokens[idx + 2 : close]
+            if len(inner) == 1 and inner[0].kind == STRING:
+                yield idx, inner[0].value, tok.line
+            else:
+                literals = " ".join(t.value for t in inner if t.kind == STRING)
+                yield idx, None if not literals else "\0" + literals, tok.line
+        elif _is_op(nxt, ".") and _tok(parsed, idx + 2) is not None:
+            name = tokens[idx + 2]
+            if name.kind == NAME and _is_op(_tok(parsed, idx + 3), "="):
+                yield idx, name.value, tok.line
 
-    unsafe_patterns = [
-        (r"loadstring\s*\(", "loadstring"),
-        (r"RunScript\s*\(", "RunScript"),
-        (r"RunMacroText\s*\(", "RunMacroText"),
-        (r"pcall\s*\(\s*loadstring", "pcall(loadstring)"),
-    ]
+
+def find_taint_risks(
+    addon_path: Path,
+    lua_files: List[Path],
+    addon_name: str,
+    cache: Optional[SourceCache] = None,
+) -> List[SecurityIssue]:
+    """Find unsafe global modifications that could cause taint."""
+    issues = []
+    cache = cache or SourceCache(addon_path)
+    prefix = addon_name.replace("!", "").lower()
 
     for lua_file in lua_files:
-        try:
-            content = lua_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            rel_path = lua_file.relative_to(addon_path)
-
-            for line_num, line in enumerate(lines, 1):
-                stripped = line.strip()
-
-                # Skip comments
-                if stripped.startswith("--"):
-                    continue
-
-                for pattern, name in unsafe_patterns:
-                    if re.search(pattern, line):
-                        # Check if input is a literal string (safer) or variable (dangerous)
-                        if re.search(rf'{name}\s*\(\s*["\']', line):
-                            confidence = Confidence.SUSPICIOUS
-                            message = f"'{name}' used with string literal - verify content is safe"
-                        else:
-                            confidence = Confidence.LIKELY
-                            message = f"'{name}' used with variable input - potential code injection"
-
-                        issues.append(
-                            SecurityIssue(
-                                category=SecurityCategory.UNSAFE_EVAL.value,
-                                confidence=confidence.value,
-                                file=str(rel_path),
-                                line=line_num,
-                                code=stripped[:80],
-                                message=message,
-                                suggestion=f"Avoid {name} with user/external input. Pre-compile if possible.",
-                            )
-                        )
-                        break
-
-        except Exception:
+        parsed = cache.parse(lua_file)
+        if parsed is None:
             continue
+        lines = (cache.read(lua_file) or "").splitlines()
+        rel_path = relative_display(lua_file, addon_path)
+
+        for _idx, name, line in _global_write_targets(parsed):
+            if name is not None and name.startswith("\0"):
+                # dynamic name built from string pieces: only flag if none is prefixed
+                if any(part.lower().startswith(prefix) for part in name[1:].split()):
+                    continue
+                name = None
+            if name is None:
+                issues.append(
+                    SecurityIssue(
+                        category=SecurityCategory.TAINT_RISK.value,
+                        confidence=Confidence.SUSPICIOUS.value,
+                        file=rel_path,
+                        line=line,
+                        code=_snippet(lines, line),
+                        message="Global assigned through _G with a dynamic name",
+                        suggestion=f"Make sure the name starts with your addon prefix ('{addon_name}')",
+                    )
+                )
+                continue
+            if name.lower().startswith(prefix) or name.startswith(
+                EXEMPT_GLOBAL_PREFIXES
+            ):
+                continue
+            issues.append(
+                SecurityIssue(
+                    category=SecurityCategory.TAINT_RISK.value,
+                    confidence=Confidence.LIKELY.value,
+                    file=rel_path,
+                    line=line,
+                    code=_snippet(lines, line),
+                    message=f"Global '{name}' set via _G without addon namespace prefix",
+                    suggestion=f'Prefix with addon name: _G["{addon_name}_{name}"] or use local',
+                )
+            )
+
+        for idx, tok in enumerate(parsed.tokens):
+            if (
+                tok.kind == NAME
+                and tok.value == "rawset"
+                and _is_op(_tok(parsed, idx + 1), "(")
+                and _tok(parsed, idx + 2) is not None
+                and parsed.tokens[idx + 2].value == "_G"
+            ):
+                issues.append(
+                    SecurityIssue(
+                        category=SecurityCategory.TAINT_RISK.value,
+                        confidence=Confidence.SUSPICIOUS.value,
+                        file=rel_path,
+                        line=tok.line,
+                        code=_snippet(lines, tok.line),
+                        message="rawset used on _G - potential taint vector",
+                        suggestion="Avoid rawset on _G unless absolutely necessary",
+                    )
+                )
 
     return issues
+
+
+EVAL_FUNCTIONS = ("loadstring", "RunScript", "RunMacroText")
+
+
+def find_unsafe_eval(
+    addon_path: Path, lua_files: List[Path], cache: Optional[SourceCache] = None
+) -> List[SecurityIssue]:
+    """Find unsafe loadstring/RunScript usage."""
+    issues = []
+    cache = cache or SourceCache(addon_path)
+
+    for lua_file in lua_files:
+        parsed = cache.parse(lua_file)
+        if parsed is None:
+            continue
+        lines = (cache.read(lua_file) or "").splitlines()
+        rel_path = relative_display(lua_file, addon_path)
+        tokens = parsed.tokens
+
+        for idx, tok in _global_calls(parsed, EVAL_FUNCTIONS):
+            name = tok.value
+            literal = False
+            if _is_op(_tok(parsed, idx + 1), "("):
+                close = _matching_close(parsed, idx + 1)
+                first_arg = []
+                depth = 0
+                for t in tokens[idx + 2 : close]:
+                    if t.kind == "op" and t.value in ("(", "[", "{"):
+                        depth += 1
+                    elif t.kind == "op" and t.value in (")", "]", "}"):
+                        depth -= 1
+                    elif t.kind == "op" and t.value == "," and depth == 0:
+                        break
+                    first_arg.append(t)
+                literal = len(first_arg) == 1 and first_arg[0].kind == STRING
+            else:
+                literal = True  # call with a bare string argument
+
+            if literal:
+                confidence = Confidence.SUSPICIOUS
+                message = f"'{name}' used with string literal - verify content is safe"
+            else:
+                confidence = Confidence.LIKELY
+                message = (
+                    f"'{name}' used with variable input - potential code injection"
+                )
+            issues.append(
+                SecurityIssue(
+                    category=SecurityCategory.UNSAFE_EVAL.value,
+                    confidence=confidence.value,
+                    file=rel_path,
+                    line=tok.line,
+                    code=_snippet(lines, tok.line),
+                    message=message,
+                    suggestion=f"Avoid {name} with user/external input. Pre-compile if possible.",
+                )
+            )
+
+        # pcall(loadstring, code): loadstring passed by reference
+        for idx, tok in enumerate(tokens):
+            if (
+                tok.kind == NAME
+                and tok.value == "pcall"
+                and _is_op(_tok(parsed, idx + 1), "(")
+                and _tok(parsed, idx + 2) is not None
+                and tokens[idx + 2].kind == NAME
+                and tokens[idx + 2].value == "loadstring"
+                and not _is_op(_tok(parsed, idx + 3), "(")
+            ):
+                issues.append(
+                    SecurityIssue(
+                        category=SecurityCategory.UNSAFE_EVAL.value,
+                        confidence=Confidence.LIKELY.value,
+                        file=rel_path,
+                        line=tok.line,
+                        code=_snippet(lines, tok.line),
+                        message="'pcall(loadstring)' used with variable input - potential code injection",
+                        suggestion="Avoid pcall(loadstring) with user/external input. Pre-compile if possible.",
+                    )
+                )
+
+    return issues
+
+
+def _comm_handler_names(parsed: LuaFile) -> Set[str]:
+    """Names dispatched by ``RegisterComm("PREFIX", "Handler")`` plus OnCommReceived."""
+    names = {"OnCommReceived"}
+    tokens = parsed.tokens
+    for idx, tok in enumerate(tokens):
+        if (
+            tok.kind == NAME
+            and tok.value == "RegisterComm"
+            and _is_op(_tok(parsed, idx + 1), "(")
+        ):
+            close = _matching_close(parsed, idx + 1)
+            for t in tokens[idx + 2 : close]:
+                if t.kind in (NAME, STRING):
+                    names.add(t.value.rsplit(".", 1)[-1].rsplit(":", 1)[-1])
+    return names
 
 
 def find_addon_comm_issues(
-    addon_path: Path, lua_files: List[Path]
+    addon_path: Path, lua_files: List[Path], cache: Optional[SourceCache] = None
 ) -> List[SecurityIssue]:
-    """Find unvalidated addon message parsing."""
+    """Find addon message handlers that execute or blindly deserialize messages."""
     issues = []
+    cache = cache or SourceCache(addon_path)
 
     for lua_file in lua_files:
-        try:
-            content = lua_file.read_text(encoding="utf-8", errors="replace")
-            lines = content.splitlines()
-            rel_path = lua_file.relative_to(addon_path)
-
-            in_comm_handler = False
-            handler_start = 0
-
-            for line_num, line in enumerate(lines, 1):
-                stripped = line.strip()
-
-                # Skip comments
-                if stripped.startswith("--"):
-                    continue
-
-                # Detect addon message handlers
-                if (
-                    "CHAT_MSG_ADDON" in line
-                    or "RegisterComm" in line
-                    or "OnCommReceived" in line
-                ):
-                    in_comm_handler = True
-                    handler_start = line_num
-
-                if in_comm_handler:
-                    # Check for direct execution of message content
-                    if "loadstring" in line or "RunScript" in line:
-                        issues.append(
-                            SecurityIssue(
-                                category=SecurityCategory.ADDON_COMM.value,
-                                confidence=Confidence.DEFINITE.value,
-                                file=str(rel_path),
-                                line=line_num,
-                                code=stripped[:80],
-                                message="Addon message content executed directly - critical security risk",
-                                suggestion="Never execute received addon messages. Parse and validate data only.",
-                            )
-                        )
-
-                    # Check for unvalidated deserialization
-                    if (
-                        "deserialize" in line.lower()
-                        and "validate"
-                        not in content[handler_start * 50 : (line_num + 5) * 50].lower()
-                    ):
-                        issues.append(
-                            SecurityIssue(
-                                category=SecurityCategory.ADDON_COMM.value,
-                                confidence=Confidence.SUSPICIOUS.value,
-                                file=str(rel_path),
-                                line=line_num,
-                                code=stripped[:80],
-                                message="Addon message deserialized without apparent validation",
-                                suggestion="Validate message structure and values before processing",
-                            )
-                        )
-
-                    # Reset after function ends
-                    if stripped == "end":
-                        in_comm_handler = False
-
-        except Exception:
+        parsed = cache.parse(lua_file)
+        if parsed is None:
             continue
+        lines = (cache.read(lua_file) or "").splitlines()
+        rel_path = relative_display(lua_file, addon_path)
+        tokens = parsed.tokens
+        handler_names = _comm_handler_names(parsed)
+
+        handlers = []
+        for func in parsed.functions:
+            base = func.name.rsplit(".", 1)[-1].rsplit(":", 1)[-1]
+            body = tokens[func.body_start : func.end_tok + 1]
+            if base in handler_names or any(
+                t.kind == STRING and t.value == "CHAT_MSG_ADDON" for t in body
+            ):
+                handlers.append(func)
+
+        reported: Set[Tuple[int, str]] = set()
+        for func in handlers:
+            lo, hi = func.body_start, func.end_tok
+            validated = any(
+                t.kind in (NAME, STRING)
+                and any(h in t.value.lower() for h in VALIDATION_HINTS)
+                for t in tokens[lo : hi + 1]
+            )
+            for idx in range(lo, hi + 1):
+                tok = tokens[idx]
+                if tok.kind != NAME:
+                    continue
+                if tok.value in ("loadstring", "RunScript") and _is_call(parsed, idx):
+                    kind = "exec"
+                elif "deserialize" in tok.value.lower() and _is_op(
+                    _tok(parsed, idx + 1), "("
+                ):
+                    if validated:
+                        continue
+                    kind = "deserialize"
+                else:
+                    continue
+                if (tok.line, kind) in reported:
+                    continue
+                reported.add((tok.line, kind))
+                if kind == "exec":
+                    issues.append(
+                        SecurityIssue(
+                            category=SecurityCategory.ADDON_COMM.value,
+                            confidence=Confidence.DEFINITE.value,
+                            file=rel_path,
+                            line=tok.line,
+                            code=_snippet(lines, tok.line),
+                            message="Addon message content executed directly - critical security risk",
+                            suggestion="Never execute received addon messages. Parse and validate data only.",
+                        )
+                    )
+                else:
+                    issues.append(
+                        SecurityIssue(
+                            category=SecurityCategory.ADDON_COMM.value,
+                            confidence=Confidence.SUSPICIOUS.value,
+                            file=rel_path,
+                            line=tok.line,
+                            code=_snippet(lines, tok.line),
+                            message="Addon message deserialized without apparent validation",
+                            suggestion="Validate message structure and values before processing",
+                        )
+                    )
 
     return issues
 
@@ -517,58 +756,49 @@ def analyze_addon(
 ) -> SecurityResult:
     """Run comprehensive security analysis on an addon."""
     start_time = time.time()
+    addon_path = Path(addon_path).resolve()
 
-    # Get all Lua files (excluding Libs)
-    lua_files = []
-    for lua_file in addon_path.rglob("*.lua"):
-        rel_path = lua_file.relative_to(addon_path)
-        parts = rel_path.parts
-        if "Libs" not in parts and "libs" not in parts:
-            lua_files.append(lua_file)
+    cache = SourceCache(addon_path)
+    lua_files = cache.readable(iter_lua_files(addon_path))
 
-    # Collect issues from all detectors
     all_issues: List[SecurityIssue] = []
     categories = input.categories or [c.value for c in SecurityCategory]
 
     if SecurityCategory.COMBAT_VIOLATION.value in categories:
-        all_issues.extend(find_combat_violations(addon_path, lua_files))
+        all_issues.extend(find_combat_violations(addon_path, lua_files, cache))
 
     if SecurityCategory.SECRET_LEAK.value in categories:
-        all_issues.extend(find_secret_leaks(addon_path, lua_files))
+        all_issues.extend(find_secret_leaks(addon_path, lua_files, cache))
 
     if SecurityCategory.TAINT_RISK.value in categories:
-        all_issues.extend(find_taint_risks(addon_path, lua_files, addon_name))
+        all_issues.extend(find_taint_risks(addon_path, lua_files, addon_name, cache))
 
     if SecurityCategory.UNSAFE_EVAL.value in categories:
-        all_issues.extend(find_unsafe_eval(addon_path, lua_files))
+        all_issues.extend(find_unsafe_eval(addon_path, lua_files, cache))
 
     if SecurityCategory.ADDON_COMM.value in categories:
-        all_issues.extend(find_addon_comm_issues(addon_path, lua_files))
+        all_issues.extend(find_addon_comm_issues(addon_path, lua_files, cache))
 
-    # Filter by confidence if requested
     if not input.include_suspicious:
         all_issues = [
             i for i in all_issues if i.confidence != Confidence.SUSPICIOUS.value
         ]
 
-    # Build summary
-    summary = SecuritySummary(total=len(all_issues))
-    for issue in all_issues:
-        summary.by_category[issue.category] = (
-            summary.by_category.get(issue.category, 0) + 1
-        )
-        summary.by_confidence[issue.confidence] = (
-            summary.by_confidence.get(issue.confidence, 0) + 1
-        )
-
-    analysis_time = (time.time() - start_time) * 1000
+    by_category, by_confidence = count_by(all_issues)
+    summary = SecuritySummary(
+        total=len(all_issues), by_category=by_category, by_confidence=by_confidence
+    )
+    kept, truncated, total = finalize_issues(all_issues, input.limit, CATEGORY_PRIORITY)
 
     return SecurityResult(
         addon=addon_name,
         files_analyzed=len(lua_files),
-        issues=all_issues[:100],  # Limit to 100 issues
+        issues=kept,
         summary=summary,
-        analysis_time_ms=round(analysis_time, 2),
+        analysis_time_ms=round((time.time() - start_time) * 1000, 2),
+        truncated=truncated,
+        total_issues=total,
+        read_errors=cache.errors,
     )
 
 
@@ -589,6 +819,15 @@ def register_commands(server):
     async def analyze_security(
         input: SecurityInput, context: Any = None
     ) -> CommandResult[SecurityResult]:
+        bad = unknown_categories(input.categories, SecurityCategory)
+        if bad:
+            return error(
+                code="INVALID_CATEGORY",
+                message=f"Unknown security categories: {', '.join(bad)}",
+                suggestion="Valid categories: "
+                + ", ".join(c.value for c in SecurityCategory),
+            )
+
         addon_path = find_addon_path(input.addon, input.path)
 
         if not addon_path:
@@ -607,17 +846,16 @@ def register_commands(server):
             location=str(addon_path),
         )
 
-        # Build reasoning summary
-        if result.summary.total == 0:
-            reasoning = f"No security issues found in {input.addon} ({result.files_analyzed} files analyzed)"
-        else:
-            parts = []
-            for cat, count in sorted(
-                result.summary.by_category.items(), key=lambda x: -x[1]
-            ):
-                parts.append(f"{count} {cat.replace('_', ' ')}")
-            reasoning = f"Found {result.summary.total} security issues in {input.addon}: {', '.join(parts[:3])}"
-            if len(parts) > 3:
-                reasoning += f" (+{len(parts) - 3} more categories)"
+        extra = ""
+        if result.truncated:
+            extra = f". Showing the {len(result.issues)} most severe of {result.total_issues}"
+        reasoning = describe_findings(
+            "security issues",
+            input.addon,
+            result.summary.total,
+            result.summary.by_category,
+            result.files_analyzed,
+            extra=extra,
+        )
 
         return success(data=result, reasoning=reasoning, sources=[src], confidence=0.9)

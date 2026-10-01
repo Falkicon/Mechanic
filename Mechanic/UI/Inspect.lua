@@ -7,6 +7,7 @@ local ADDON_NAME, ns = ...
 local Mechanic = LibStub("AceAddon-3.0"):GetAddon(ADDON_NAME)
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME, true)
 local ICON_PATH = [[Interface\AddOns\Mechanic\Assets\Icons\]]
+local SafeValue = ns.SafeValue
 
 local InspectModule = {}
 
@@ -275,37 +276,38 @@ function InspectModule:ShowHighlight(frame, name)
 	highlight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 3, -3)
 	highlight:Show()
 
-	if name then
-		highlight.label:SetText("|cffFFD100" .. name .. "|r")
-	else
-		local frameName
-		if frame.GetDebugName then
-			local ok, n = pcall(frame.GetDebugName, frame)
-			if ok then
-				frameName = n
-			end
-		end
-		if not frameName and frame.GetName then
-			local ok, n = pcall(frame.GetName, frame)
-			if ok then
-				frameName = n
-			end
-		end
-		if not frameName and frame.GetObjectType then
-			local ok, n = pcall(frame.GetObjectType, frame)
-			if ok then
-				frameName = "<" .. n .. ">"
-			end
-		end
-
-		highlight.label:SetText("|cffFFD100" .. (frameName or tostring(frame)) .. "|r")
+	if type(name) ~= "string" then
+		name = ns.FrameResolver:GetDebugName(frame)
 	end
+	highlight.label:SetText("|cffFFD100" .. name .. "|r")
 end
 
 function InspectModule:HideHighlight()
 	if self.pickHighlight then
 		self.pickHighlight:Hide()
 	end
+end
+
+--- First frame under the cursor that is not UIParent/WorldFrame or part of Mechanic itself.
+function InspectModule:FindPickTarget()
+	for _, f in ipairs(GetMouseFoci()) do
+		if f and f ~= UIParent and f ~= WorldFrame then
+			local isMechanic = false
+			local p = f
+			while p do
+				if p == Mechanic.frame or p == self.pickBar or p == self.pickHighlight or p == self.pickBtn then
+					isMechanic = true
+					break
+				end
+				local ok, parent = pcall(p.GetParent, p)
+				p = ok and parent or nil
+			end
+			if not isMechanic then
+				return f
+			end
+		end
+	end
+	return nil
 end
 
 function InspectModule:StartPicking()
@@ -352,26 +354,7 @@ function InspectModule:StartPicking()
 		s.elapsed = 0
 
 		-- Get frames under cursor - NO blocking since pickBar is mouse-disabled!
-		local foci = GetMouseFoci()
-		local target = nil
-
-		for _, f in ipairs(foci) do
-			if f and f ~= UIParent and f ~= WorldFrame then
-				local isMechanic = false
-				local p = f
-				while p do
-					if p == Mechanic.frame or p == self.pickBar or p == self.pickHighlight or p == self.pickBtn then
-						isMechanic = true
-						break
-					end
-					p = p.GetParent and p:GetParent()
-				end
-				if not isMechanic then
-					target = f
-					break
-				end
-			end
-		end
+		local target = self:FindPickTarget()
 
 		if target then
 			self:ShowHighlight(target)
@@ -404,33 +387,10 @@ function InspectModule:StartPicking()
 		self.pickEventFrame:SetScript("OnEvent", function(s, event, button)
 			if event == "GLOBAL_MOUSE_DOWN" and button == "LeftButton" then
 				-- Get frames under cursor - NO OVERLAY BLOCKING!
-				local foci = GetMouseFoci()
-
-				local target = nil
-				for i, f in ipairs(foci) do
-					-- Filter out system frames and Mechanic frames
-					if f and f ~= UIParent and f ~= WorldFrame then
-						local isMechanic = false
-						local p = f
-						while p do
-							if p == Mechanic.frame or p == self.pickBar or p == self.pickBtn then
-								isMechanic = true
-								break
-							end
-							p = p.GetParent and p:GetParent()
-						end
-						if not isMechanic then
-							target = f
-							break
-						end
-					end
-				end
+				local target = self:FindPickTarget()
 
 				if target then
-					local name = (target.GetDebugName and target:GetDebugName())
-						or (target.GetName and target:GetName())
-						or tostring(target)
-					self:SetSelectedFrame(target, name)
+					self:SetSelectedFrame(target, ns.FrameResolver:GetDebugName(target))
 				end
 
 				-- Always exit pick mode after a click
@@ -488,16 +448,17 @@ function InspectModule:SetSelectedFrame(frame, path)
 	if type(frame) == "string" then
 		local resolved = Mechanic.Utils:ResolveFrameOrTable(frame)
 		if resolved then
-			frame = resolved
 			path = path or frame
+			frame = resolved
 		else
 			Mechanic:Print("Could not resolve frame or global table: " .. tostring(frame))
 			return
 		end
 	end
 
+	local previous = self.selectedFrame
 	self.selectedFrame = frame
-	local displayPath = path or (ns.FrameResolver and ns.FrameResolver:GetFramePath(frame))
+	local displayPath = type(path) == "string" and path or ns.FrameResolver:GetFramePath(frame)
 	self.pathInput:SetText(displayPath or "<anonymous>")
 
 	-- Show highlight on the selected frame
@@ -517,9 +478,9 @@ function InspectModule:SetSelectedFrame(frame, path)
 
 	-- Developer feedback: Inspecting a plain table
 	if
-		frame
+		frame ~= previous
 		and type(frame) == "table"
-		and not (frame.GetObjectType or (type(frame) == "table" and frame[0] and type(frame[0]) == "userdata"))
+		and not (frame.GetObjectType or (frame[0] and type(frame[0]) == "userdata"))
 	then
 		Mechanic:OnLog(
 			"System",
@@ -531,15 +492,35 @@ function InspectModule:SetSelectedFrame(frame, path)
 		)
 	end
 
-	if self.UpdateTree then
-		self:UpdateTree(frame)
+	-- Each panel updates in isolation so one failing inspector cannot leave the others stale.
+	local function updatePanel(label, fn, ...)
+		local ok, err = pcall(fn, ...)
+		if not ok then
+			Mechanic:OnLog("System", string.format("|cffff4444%s update failed:|r %s", label, tostring(err)), "[Inspect]")
+		end
 	end
-	if self.Properties and self.Properties.Update then
-		self.Properties:Update(frame)
+
+	ns.FrameResolver:WithCache(function()
+		if self.UpdateTree then
+			updatePanel("Tree", self.UpdateTree, self, frame)
+		end
+		if self.Properties and self.Properties.Update then
+			updatePanel("Properties", self.Properties.Update, self.Properties, frame)
+		end
+		if self.UpdateDetails then
+			updatePanel("Details", self.UpdateDetails, self, frame)
+		end
+	end)
+end
+
+--- False when editing the frame would be blocked: protected frames cannot be
+--- changed by insecure code during combat lockdown.
+function InspectModule:CanModify(frame)
+	if not InCombatLockdown() then
+		return true
 	end
-	if self.UpdateDetails then
-		self:UpdateDetails(frame)
-	end
+	local protected = SafeValue.Get(frame, "IsProtected")
+	return not protected
 end
 
 function InspectModule:WatchCurrent()
@@ -557,21 +538,16 @@ end
 function InspectModule:Export()
 	local obj = self.selectedFrame
 	local navName = L["None"] or "None"
-	if obj and type(obj) == "table" then
-		if obj.GetName then
-			local ok, n = pcall(obj.GetName, obj)
-			if ok and n then
-				navName = n
-			end
-		end
-		if navName == (L["None"] or "None") and obj.GetObjectType then
-			local ok, ot = pcall(obj.GetObjectType, obj)
-			if ok and ot then
-				navName = "<" .. ot .. ">"
-			end
+	if type(obj) == "table" then
+		local name = SafeValue.Get(obj, "GetName")
+		local objType = SafeValue.Get(obj, "GetObjectType")
+		if type(name) == "string" and name ~= "" then
+			navName = name
+		elseif type(objType) == "string" then
+			navName = "<" .. objType .. ">"
 		end
 	elseif obj then
-		navName = tostring(obj)
+		navName = SafeValue.ToString(obj)
 	end
 
 	local title = string.format(
@@ -581,9 +557,441 @@ function InspectModule:Export()
 		tostring(L["Export"] or "Export")
 	)
 
-	local text = self:GetCopyText(Mechanic.db.profile.includeEnvHeader)
+	local ok, text = pcall(self.GetCopyText, self, Mechanic.db.profile.includeEnvHeader)
+	if not ok then
+		text = "Export failed: " .. tostring(text)
+	end
 	Mechanic.Utils:ShowExportDialog(title, text)
 end
+
+--------------------------------------------------------------------------------
+-- Copy/export sections
+--
+-- Every section reads restricted frame properties, so values go through
+-- SafeValue (secret values are never compared, formatted or concatenated) and
+-- each section runs under pcall so one failure cannot abort the export.
+--------------------------------------------------------------------------------
+
+-- Attributes and scripts probed on the selected frame (shared with InspectDetails).
+InspectModule.COMMON_ATTRIBUTES = {
+	"type",
+	"action",
+	"unit",
+	"spell",
+	"item",
+	"macro",
+	"macrotext",
+	"target-slot",
+	"attribute",
+	"value",
+	"pressbutton",
+	"clickbutton",
+	"initialConfigFunction",
+	"state-visibility",
+	"state-parent",
+	"state-unit",
+	"state-page",
+	"tableIndex",
+	"id",
+	"name",
+	"label",
+	"showPlayer",
+	"showSolo",
+	"showParty",
+	"showRaid",
+}
+
+InspectModule.COMMON_SCRIPTS = {
+	"OnUpdate",
+	"OnEvent",
+	"OnShow",
+	"OnHide",
+	"OnEnter",
+	"OnLeave",
+	"OnMouseDown",
+	"OnMouseUp",
+	"OnClick",
+	"OnValueChanged",
+	"OnSizeChanged",
+	"OnAttributeChanged",
+	"OnDragStart",
+	"OnDragStop",
+	"OnTooltipShow",
+	"OnLoad",
+	"OnScrollRangeChanged",
+	"OnHorizontalScroll",
+	"OnVerticalScroll",
+}
+
+local MAX_EXPORT_MEMBERS = 20
+local MAX_HIERARCHY_DEPTH = 64
+
+-- Protected method call: returns the first two results, or nil on error/missing method.
+local function pget(obj, method, ...)
+	local ok, a, b = pcall(obj[method], obj, ...)
+	if ok then
+		return a, b
+	end
+	return nil
+end
+
+-- Plain string/number check that never inspects a secret value.
+local function isPlain(value, expectedType)
+	return not SafeValue.IsSecret(value) and type(value) == expectedType
+end
+
+local function plainText(value, empty)
+	if SafeValue.IsSecret(value) then
+		return "[secret]"
+	end
+	if value == nil or value == "" then
+		return empty
+	end
+	return tostring(value)
+end
+
+local function flagText(value, yes, no)
+	if SafeValue.IsSecret(value) then
+		return "[secret]"
+	end
+	return value and yes or no
+end
+
+local function nameOf(target)
+	if not target then
+		return L["None"] or "None"
+	end
+	return ns.FrameResolver:GetDisplayName(target)
+end
+
+local function copyTypeInfo(obj, props)
+	if not obj.GetObjectType then
+		return
+	end
+	table.insert(props, string.format("Type: %s", SafeValue.ToString((pget(obj, "GetObjectType")))))
+	if obj.GetFrameLevel then
+		table.insert(props, string.format("Level: %s", SafeValue.FormatNumber((pget(obj, "GetFrameLevel")), "%d")))
+	end
+	if obj.GetFrameStrata then
+		table.insert(props, string.format("Strata: %s", SafeValue.ToString((pget(obj, "GetFrameStrata")))))
+	end
+	table.insert(props, string.format("Parent: %s", nameOf((pget(obj, "GetParent")))))
+	table.insert(props, string.format("Global: %s", plainText((pget(obj, "GetName")), "<none>")))
+end
+
+local function copyFenUI(obj, props)
+	if not (obj.fenUISupportsLayout or obj.config or obj.fenUILayout) then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- FenUI ---")
+	if obj.fenUILayout then
+		table.insert(props, string.format("Layout: %s", tostring(obj.fenUILayout)))
+	end
+	if obj.fenUITheme then
+		table.insert(props, string.format("Theme: %s", tostring(obj.fenUITheme)))
+	end
+	if obj.fenUIFrameId then
+		table.insert(props, string.format("ID: %s", tostring(obj.fenUIFrameId)))
+	end
+	if obj.borderApplied ~= nil then
+		table.insert(props, string.format("Border: %s", obj.borderApplied and "Applied" or (L["None"] or "None")))
+	end
+	if obj.shadowType then
+		table.insert(props, string.format("Shadow: %s", tostring(obj.shadowType)))
+	end
+	if obj.orientation then
+		table.insert(props, string.format("Orientation: %s", tostring(obj.orientation)))
+	end
+
+	-- Show key config values
+	local config = obj.config
+	if type(config) ~= "table" then
+		return
+	end
+	local bg = config.background
+	if type(bg) == "string" then
+		table.insert(props, string.format("Config BG: %s", bg))
+	elseif type(bg) == "table" then
+		if bg.color then
+			table.insert(props, string.format("Config BG: %s (alpha %.2f)", tostring(bg.color), tonumber(bg.alpha) or 1))
+		elseif bg.image then
+			table.insert(props, string.format("Config BG: Image (%s)", tostring(bg.image)))
+		end
+	end
+	local p = config.padding
+	if type(p) == "table" then
+		table.insert(
+			props,
+			string.format(
+				"Padding: L:%s R:%s T:%s B:%s",
+				tostring(p.left or 0),
+				tostring(p.right or 0),
+				tostring(p.top or 0),
+				tostring(p.bottom or 0)
+			)
+		)
+	elseif p then
+		table.insert(props, string.format("Padding: %s", tostring(p)))
+	end
+end
+
+local function copyProperties(obj, props)
+	table.insert(props, "")
+	table.insert(props, "--- Properties ---")
+	for _, method in ipairs({ "GetText", "GetValue", "GetID", "GetWidth", "GetHeight" }) do
+		if type(obj[method]) == "function" then
+			local ok, val = pcall(obj[method], obj)
+			if ok then
+				table.insert(props, string.format("%s: %s", method, SafeValue.ToString(val)))
+			end
+		end
+	end
+end
+
+local function copyInteractivity(obj, props)
+	if not obj.IsMouseEnabled then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- Interactivity ---")
+	table.insert(props, "Mouse: " .. flagText((pget(obj, "IsMouseEnabled")), "Enabled", "Disabled"))
+	if obj.IsMouseClickEnabled then
+		table.insert(props, "Click: " .. flagText((pget(obj, "IsMouseClickEnabled")), "Enabled", "Disabled"))
+	end
+	if obj.IsKeyboardEnabled then
+		table.insert(props, "Keyboard: " .. flagText((pget(obj, "IsKeyboardEnabled")), "Enabled", "Disabled"))
+	end
+	table.insert(props, "Protected: " .. flagText((pget(obj, "IsProtected")), "Yes", "No"))
+end
+
+local function copyGeometry(obj, props)
+	if not obj.GetEffectiveScale then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- Geometry ---")
+	local w, h = pget(obj, "GetSize")
+	table.insert(
+		props,
+		string.format(
+			"Size: %s x %s",
+			SafeValue.FormatNumber(w, "%.2f"),
+			SafeValue.FormatNumber(h, "%.2f")
+		)
+	)
+	table.insert(
+		props,
+		string.format(
+			"Scale: %s (Eff: %s)",
+			SafeValue.ToString((pget(obj, "GetScale"))),
+			SafeValue.ToString((pget(obj, "GetEffectiveScale")))
+		)
+	)
+	table.insert(props, "Alpha: " .. SafeValue.ToString((pget(obj, "GetAlpha"))))
+	table.insert(
+		props,
+		string.format(
+			"Visible: %s (Shown: %s)",
+			flagText((pget(obj, "IsVisible")), "true", "false"),
+			flagText((pget(obj, "IsShown")), "true", "false")
+		)
+	)
+end
+
+local function copyAnchors(obj, props)
+	if not obj.GetNumPoints then
+		return
+	end
+	local numPoints = pget(obj, "GetNumPoints")
+	if not isPlain(numPoints, "number") or numPoints <= 0 then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- Anchors ---")
+	for i = 1, numPoints do
+		local ok, point, relativeTo, relativePoint, xOfs, yOfs = pcall(obj.GetPoint, obj, i)
+		if ok then
+			table.insert(
+				props,
+				string.format(
+					"%s -> %s:%s (%s, %s)",
+					SafeValue.ToString(point),
+					relativeTo and nameOf(relativeTo) or "<nil>",
+					SafeValue.ToString(relativePoint),
+					SafeValue.FormatNumber(xOfs, "%.0f", "0"),
+					SafeValue.FormatNumber(yOfs, "%.0f", "0")
+				)
+			)
+		end
+	end
+end
+
+local function regionDetail(region, objType)
+	local extra = ""
+	if objType == "Texture" or objType == "MaskTexture" then
+		local atlas = region.GetAtlas and pget(region, "GetAtlas")
+		if isPlain(atlas, "string") and atlas ~= "" then
+			return " atlas:" .. atlas
+		end
+		local texPath = region.GetTexture and pget(region, "GetTexture")
+		if SafeValue.IsSecret(texPath) then
+			return " [secret]"
+		elseif type(texPath) == "number" then
+			extra = (texPath == 0) and " [empty]" or (" fileID:" .. texPath)
+		elseif type(texPath) == "string" and texPath ~= "" then
+			local fileID = texPath:match("FileData ID (%d+)") or texPath:match("^(%d+)$")
+			if fileID then
+				extra = (fileID == "0") and " [empty]" or (" fileID:" .. fileID)
+			else
+				extra = " file:" .. (texPath:match("([^\\]+)$") or texPath)
+			end
+		end
+	elseif objType == "FontString" then
+		local text = region.GetText and pget(region, "GetText")
+		if SafeValue.IsSecret(text) then
+			extra = ' "[secret]"'
+		elseif type(text) == "string" and text ~= "" then
+			if #text > 20 then
+				text = text:sub(1, 17) .. "..."
+			end
+			extra = ' "' .. text .. '"'
+		end
+		local font, size = nil, nil
+		if region.GetFont then
+			font, size = pget(region, "GetFont")
+		end
+		if isPlain(font, "string") then
+			extra = extra .. " font:" .. (font:match("([^\\]+)$") or font)
+			if isPlain(size, "number") then
+				extra = extra .. "(" .. math.floor(size + 0.5) .. ")"
+			end
+		end
+	end
+	return extra
+end
+
+--- One-line description of a region: "[Type] GlobalName" or "[Type] <anonymous> details".
+function InspectModule.DescribeRegion(region)
+	local objType = region.GetObjectType and pget(region, "GetObjectType")
+	objType = isPlain(objType, "string") and objType or "Unknown"
+	local rName = region.GetName and pget(region, "GetName")
+	if isPlain(rName, "string") and rName ~= "" then
+		return string.format("[%s] %s", objType, rName)
+	end
+	return string.format("[%s] <anonymous>%s", objType, regionDetail(region, objType))
+end
+
+local function copyRegions(obj, props)
+	if not obj.GetRegions then
+		return
+	end
+	local ok, regions = pcall(function()
+		return { obj:GetRegions() }
+	end)
+	if not ok or #regions == 0 then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- Regions ---")
+	for _, region in ipairs(regions) do
+		table.insert(props, InspectModule.DescribeRegion(region))
+	end
+end
+
+local function copyAttributes(obj, props)
+	if not obj.GetAttribute then
+		return
+	end
+	local attrs = {}
+	for _, attr in ipairs(InspectModule.COMMON_ATTRIBUTES) do
+		local val = pget(obj, "GetAttribute", attr)
+		if SafeValue.IsSecret(val) or val ~= nil then
+			table.insert(attrs, string.format("%s: %s", attr, SafeValue.ToString(val)))
+		end
+	end
+	if #attrs > 0 then
+		table.insert(props, "")
+		table.insert(props, "--- Attributes ---")
+		for _, a in ipairs(attrs) do
+			table.insert(props, a)
+		end
+	end
+end
+
+local function copyScripts(obj, props)
+	if not obj.HasScript then
+		return
+	end
+	local scripts = {}
+	for _, script in ipairs(InspectModule.COMMON_SCRIPTS) do
+		if pget(obj, "HasScript", script) then
+			local handler = pget(obj, "GetScript", script)
+			if handler then
+				table.insert(scripts, string.format("%s: %s", script, SafeValue.ToString(handler)))
+			end
+		end
+	end
+	if #scripts > 0 then
+		table.insert(props, "")
+		table.insert(props, "--- Scripts ---")
+		for _, s in ipairs(scripts) do
+			table.insert(props, s)
+		end
+	end
+end
+
+local function copyHierarchy(obj, props)
+	if not obj.GetParent then
+		return
+	end
+	table.insert(props, "")
+	table.insert(props, "--- Hierarchy ---")
+	local stack = {}
+	local current = obj
+	while current and #stack < MAX_HIERARCHY_DEPTH do
+		table.insert(stack, nameOf(current))
+		current = type(current) == "table" and current.GetParent and (pget(current, "GetParent")) or nil
+	end
+	table.insert(props, table.concat(stack, " -> "))
+end
+
+local function copyMembers(obj, props)
+	table.insert(props, "")
+	table.insert(props, "--- Members ---")
+	local keys = {}
+	for k, v in pairs(obj) do
+		local valueType = type(v)
+		if valueType ~= "function" and valueType ~= "table" then
+			table.insert(keys, k)
+		end
+	end
+	-- pairs() order is arbitrary; sort so repeated exports are comparable.
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	for i, k in ipairs(keys) do
+		if i > MAX_EXPORT_MEMBERS then
+			table.insert(props, "... (truncated)")
+			break
+		end
+		table.insert(props, string.format("%s: %s", SafeValue.ToString(k), SafeValue.ToString(obj[k])))
+	end
+end
+
+local COPY_SECTIONS = {
+	copyTypeInfo,
+	copyFenUI,
+	copyProperties,
+	copyInteractivity,
+	copyGeometry,
+	copyAnchors,
+	copyRegions,
+	copyAttributes,
+	copyScripts,
+	copyHierarchy,
+	copyMembers,
+}
 
 function InspectModule:GetCopyText(includeHeader)
 	local lines = {}
@@ -595,398 +1003,25 @@ function InspectModule:GetCopyText(includeHeader)
 		end
 	end
 
-	if not self.selectedFrame then
+	local obj = self.selectedFrame
+	if not obj then
 		table.insert(lines, L["No object selected for inspection."])
 		return table.concat(lines, "\n")
 	end
 
-	-- Helper to safely convert values (handles Midnight secret values)
-	local function safeToString(val)
-		if val == nil then
-			return "nil"
-		end
-		-- Check for secret values (Midnight 12.0+)
-		if issecretvalue and issecretvalue(val) then
-			return "[secret]"
-		end
-		local ok, str = pcall(tostring, val)
-		if ok then
-			-- If it's a function address, try to capture a clean hex
-			if type(val) == "function" then
-				local addr = str:match(":(%s*0x%x+)") or str:match(":%s*(%x+)") or str:match("(%x+)") or "ptr"
-				addr = addr:gsub("%s", ""):gsub("^0x", "")
-				if #addr > 8 then
-					addr = addr:sub(-8)
-				end
-				return "[" .. addr .. "]"
-			end
-			return str
-		end
-		return "[error]"
-	end
-
-	-- Helper for consistent name resolution (matches UI)
-	local function resolveName(target)
-		if not target or type(target) ~= "table" then
-			return tostring(target or (L["None"] or "None"))
-		end
-
-		local name
-		if target.GetName then
-			local ok, n = pcall(target.GetName, target)
-			if ok and n and type(n) == "string" and n ~= "" then
-				name = n
-			end
-		end
-
-		if (not name or name == "") and target.GetObjectType then
-			local path = ns.FrameResolver:GetFramePath(target)
-			if path and type(path) == "string" then
-				name = path:match("([^%.]+)$")
-			end
-		end
-
-		if not name and target.GetObjectType then
-			local ok, objType = pcall(target.GetObjectType, target)
-			if ok and objType then
-				name = "<" .. objType .. ">"
-			end
-		end
-
-		return name or "<anonymous>"
-	end
-
-	local obj = self.selectedFrame
-	local name = resolveName(obj)
-	table.insert(lines, string.format(L["Inspecting: %s"] or "Inspecting: %s", safeToString(name or "Unknown")))
+	table.insert(lines, string.format(L["Inspecting: %s"] or "Inspecting: %s", nameOf(obj)))
 	table.insert(lines, "")
 
-	-- Simple property list for export
 	local props = {}
 	if type(obj) == "table" then
-		-- Header Info (New)
-		if obj.GetObjectType then
-			local parent = obj:GetParent()
-			local parentName = resolveName(parent)
-			table.insert(props, string.format("Type: %s", tostring(obj:GetObjectType() or "Unknown")))
-			if obj.GetFrameLevel then
-				table.insert(props, string.format("Level: %d", obj:GetFrameLevel()))
-			end
-			if obj.GetFrameStrata then
-				table.insert(props, string.format("Strata: %s", obj:GetFrameStrata()))
-			end
-			table.insert(props, string.format("Parent: %s", parentName))
-			local globalName = obj.GetName and obj:GetName()
-			table.insert(
-				props,
-				string.format("Global: %s", (globalName and globalName ~= "") and globalName or "<none>")
-			)
-		end
-
-		-- FenUI Details (Ours)
-		if obj.fenUISupportsLayout or obj.config or obj.fenUILayout then
-			table.insert(props, "")
-			table.insert(props, "--- FenUI ---")
-			if obj.fenUILayout then
-				table.insert(props, string.format("Layout: %s", tostring(obj.fenUILayout)))
-			end
-			if obj.fenUITheme then
-				table.insert(props, string.format("Theme: %s", tostring(obj.fenUITheme)))
-			end
-			if obj.fenUIFrameId then
-				table.insert(props, string.format("ID: %s", tostring(obj.fenUIFrameId)))
-			end
-			if obj.borderApplied ~= nil then
-				table.insert(props, string.format("Border: %s", obj.borderApplied and "Applied" or (L["None"] or "None")))
-			end
-			if obj.shadowType then
-				table.insert(props, string.format("Shadow: %s", tostring(obj.shadowType)))
-			end
-			if obj.orientation then
-				table.insert(props, string.format("Orientation: %s", tostring(obj.orientation)))
-			end
-
-			-- Show key config values
-			if obj.config and type(obj.config) == "table" then
-				if obj.config.background then
-					local bg = obj.config.background
-					if type(bg) == "string" then
-						table.insert(props, string.format("Config BG: %s", bg))
-					elseif type(bg) == "table" then
-						if bg.color then
-							table.insert(
-								props,
-								string.format("Config BG: %s (alpha %.2f)", tostring(bg.color), bg.alpha or 1)
-							)
-						elseif bg.image then
-							table.insert(props, string.format("Config BG: Image (%s)", tostring(bg.image)))
-						end
-					end
-				end
-				if obj.config.padding then
-					local p = obj.config.padding
-					if type(p) == "table" then
-						table.insert(
-							props,
-							string.format(
-								"Padding: L:%s R:%s T:%s B:%s",
-								tostring(p.left or 0),
-								tostring(p.right or 0),
-								tostring(p.top or 0),
-								tostring(p.bottom or 0)
-							)
-						)
-					else
-						table.insert(props, string.format("Padding: %s", tostring(p)))
-					end
+		ns.FrameResolver:WithCache(function()
+			for _, section in ipairs(COPY_SECTIONS) do
+				local ok, err = pcall(section, obj, props)
+				if not ok then
+					table.insert(props, string.format("[section failed: %s]", tostring(err)))
 				end
 			end
-		end
-
-		-- Common properties
-		table.insert(props, "")
-		table.insert(props, "--- Properties ---")
-		local common = { "GetText", "GetValue", "GetID", "GetWidth", "GetHeight" }
-		for _, method in ipairs(common) do
-			if obj[method] and type(obj[method]) == "function" then
-				local ok, val = pcall(obj[method], obj)
-				if ok then
-					table.insert(props, string.format("%s: %s", tostring(method), safeToString(val)))
-				end
-			end
-		end
-
-		-- Interactivity (for frames)
-		if obj.IsMouseEnabled then
-			table.insert(props, "")
-			table.insert(props, "--- Interactivity ---")
-			table.insert(props, "Mouse: " .. (obj:IsMouseEnabled() and "Enabled" or "Disabled"))
-			if obj.IsMouseClickEnabled then
-				table.insert(props, "Click: " .. (obj:IsMouseClickEnabled() and "Enabled" or "Disabled"))
-			end
-			if obj.IsKeyboardEnabled then
-				table.insert(props, "Keyboard: " .. (obj:IsKeyboardEnabled() and "Enabled" or "Disabled"))
-			end
-			table.insert(props, "Protected: " .. (obj:IsProtected() and "Yes" or "No"))
-		end
-
-		-- Geometry (for frames)
-		if obj.GetEffectiveScale then
-			table.insert(props, "")
-			table.insert(props, "--- Geometry ---")
-			local w, h = obj:GetSize()
-			table.insert(props, string.format("Size: %.2f x %.2f", w, h))
-			table.insert(
-				props,
-				"Scale: " .. safeToString(obj:GetScale()) .. " (Eff: " .. safeToString(obj:GetEffectiveScale()) .. ")"
-			)
-			table.insert(props, "Alpha: " .. safeToString(obj:GetAlpha()))
-			table.insert(
-				props,
-				"Visible: " .. tostring(obj:IsVisible()) .. " (Shown: " .. tostring(obj:IsShown()) .. ")"
-			)
-		end
-
-		-- Anchors (New)
-		if obj.GetNumPoints then
-			local numPoints = obj:GetNumPoints()
-			if numPoints > 0 then
-				table.insert(props, "")
-				table.insert(props, "--- Anchors ---")
-				for i = 1, numPoints do
-					local point, relativeTo, relativePoint, xOfs, yOfs = obj:GetPoint(i)
-					local relativeName = "<nil>"
-					if relativeTo then
-						relativeName = relativeTo.GetName and relativeTo:GetName()
-							or (relativeTo.GetObjectType and relativeTo:GetObjectType())
-							or "<anonymous>"
-					end
-					table.insert(
-						props,
-						string.format(
-							"%s -> %s:%s (%.0f, %.0f)",
-							point or "?",
-							relativeName,
-							relativePoint or "?",
-							xOfs or 0,
-							yOfs or 0
-						)
-					)
-				end
-			end
-		end
-
-		-- Regions (New)
-		if obj.GetRegions then
-			local regions = { obj:GetRegions() }
-			if #regions > 0 then
-				table.insert(props, "")
-				table.insert(props, "--- Regions ---")
-				for _, region in ipairs(regions) do
-					local objType = region.GetObjectType and region:GetObjectType() or "Unknown"
-					local rName = region.GetName and region:GetName()
-					if rName and rName ~= "" then
-						table.insert(props, string.format("[%s] %s", objType, rName))
-					else
-						local extra = ""
-						if objType == "Texture" or objType == "MaskTexture" then
-							if region.GetAtlas then
-								local atlas = region:GetAtlas()
-								if atlas and atlas ~= "" then
-									extra = " atlas:" .. atlas
-								end
-							end
-							if extra == "" and region.GetTexture then
-								local texPath = region:GetTexture()
-								if texPath then
-									if type(texPath) == "number" then
-										extra = (texPath == 0) and " [empty]" or " fileID:" .. texPath
-									elseif type(texPath) == "string" and texPath ~= "" then
-										local fileID = texPath:match("FileData ID (%d+)") or texPath:match("^(%d+)$")
-										if fileID then
-											extra = (fileID == "0") and " [empty]" or " fileID:" .. fileID
-										else
-											extra = " file:" .. (texPath:match("([^\\]+)$") or texPath)
-										end
-									end
-								end
-							end
-						elseif objType == "FontString" then
-							local text = region.GetText and region:GetText()
-							if text and text ~= "" then
-								if #text > 20 then
-									text = text:sub(1, 17) .. "..."
-								end
-								extra = ' "' .. text .. '"'
-							end
-							if region.GetFont then
-								local font, size = region:GetFont()
-								if font then
-									extra = extra
-										.. " font:"
-										.. (font:match("([^\\]+)$") or font)
-										.. "("
-										.. math.floor(size + 0.5)
-										.. ")"
-								end
-							end
-						end
-						table.insert(props, string.format("[%s] <anonymous>%s", objType, extra))
-					end
-				end
-			end
-		end
-
-		-- Attributes (for frames)
-		if obj.GetAttribute then
-			local commonAttrs = {
-				"type",
-				"action",
-				"unit",
-				"spell",
-				"item",
-				"macro",
-				"macrotext",
-				"target-slot",
-				"attribute",
-				"value",
-				"pressbutton",
-				"clickbutton",
-				"initialConfigFunction",
-				"state-visibility",
-				"state-parent",
-				"state-unit",
-				"state-page",
-				"tableIndex",
-				"id",
-				"name",
-				"label",
-				"showPlayer",
-				"showSolo",
-				"showParty",
-				"showRaid",
-			}
-			local attrs = {}
-			for _, attr in ipairs(commonAttrs) do
-				local val = obj:GetAttribute(attr)
-				if val ~= nil then
-					table.insert(attrs, string.format("%s: %s", attr, safeToString(val)))
-				end
-			end
-			if #attrs > 0 then
-				table.insert(props, "")
-				table.insert(props, "--- Attributes ---")
-				for _, a in ipairs(attrs) do
-					table.insert(props, a)
-				end
-			end
-		end
-
-		-- Scripts (for frames)
-		if obj.HasScript then
-			local commonScripts = {
-				"OnUpdate",
-				"OnEvent",
-				"OnShow",
-				"OnHide",
-				"OnEnter",
-				"OnLeave",
-				"OnMouseDown",
-				"OnMouseUp",
-				"OnClick",
-				"OnValueChanged",
-				"OnSizeChanged",
-				"OnAttributeChanged",
-				"OnDragStart",
-				"OnDragStop",
-				"OnTooltipShow",
-				"OnLoad",
-				"OnScrollRangeChanged",
-				"OnHorizontalScroll",
-				"OnVerticalScroll",
-			}
-			local scripts = {}
-			for _, s in ipairs(commonScripts) do
-				if obj:HasScript(s) and obj:GetScript(s) then
-					table.insert(scripts, string.format("%s: %s", s, safeToString(obj:GetScript(s))))
-				end
-			end
-			if #scripts > 0 then
-				table.insert(props, "")
-				table.insert(props, "--- Scripts ---")
-				for _, s in ipairs(scripts) do
-					table.insert(props, s)
-				end
-			end
-		end
-
-		-- Hierarchy (New)
-		if obj.GetParent then
-			table.insert(props, "")
-			table.insert(props, "--- Hierarchy ---")
-			local current = obj
-			local stack = {}
-			while current do
-				table.insert(stack, resolveName(current))
-				current = current.GetParent and current:GetParent()
-			end
-			table.insert(props, table.concat(stack, " -> "))
-		end
-
-		-- Members (up to 20 for export)
-		table.insert(props, "")
-		table.insert(props, "--- Members ---")
-		local count = 0
-		for k, v in pairs(obj) do
-			if count > 20 then
-				table.insert(props, "... (truncated)")
-				break
-			end
-			if type(v) ~= "function" and type(v) ~= "table" then
-				table.insert(props, string.format("%s: %s", safeToString(k), safeToString(v)))
-				count = count + 1
-			end
-		end
+		end)
 	end
 
 	if #props > 0 then
@@ -1006,16 +1041,24 @@ function InspectModule:OnShow()
 		self:SetSelectedFrame(UIParent, "UIParent")
 	end
 
-	if self.RefreshWatchList then
-		self:RefreshWatchList()
+	if self.StartWatchTicker then
+		self:StartWatchTicker()
 	end
 end
 
 function InspectModule:OnHide()
 	if self.pickMode then
-		self:TogglePickMode()
+		self.pickMode = false
+		if self.pickBtn then
+			self.pickBtn:SetActive(false)
+		end
+		self:StopPicking()
 	end
 	self:HideHighlight()
+	-- The watch list polls only while the tab is visible.
+	if self.StopWatchTicker then
+		self:StopWatchTicker()
+	end
 end
 
 return InspectModule

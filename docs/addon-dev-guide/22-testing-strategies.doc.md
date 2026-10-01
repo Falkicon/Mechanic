@@ -1,8 +1,8 @@
 # Testing Strategies
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-25
+Last updated: 2026-09-30
 
 ---
 
@@ -249,7 +249,7 @@ end
 
 function commands.debug()
     print("=== MyAddon Debug ===")
-    print("Version:", GetAddOnMetadata("MyAddon", "Version"))
+    print("Version:", C_AddOns.GetAddOnMetadata("MyAddon", "Version"))
     print("Interface:", select(4, GetBuildInfo()))
     print("Locale:", GetLocale())
     print("---")
@@ -303,7 +303,7 @@ ignore = {"212"}  -- Unused arguments (common in event handlers)
 
 ## Automated Testing
 
-The `ADDON_DEV` environment includes an automated testing framework using a Busted-compatible shim and a mock WoW API.
+Mechanic Desktop supports two automated test runners: `addon.test` (real Busted, run through the configured `busted`) and `sandbox.test` (a Busted-style framework with generated WoW API stubs in a restricted Lua 5.1 sandbox). See [Test Integration](../integration/testing.md) for details.
 
 ### Test Structure
 
@@ -312,10 +312,6 @@ Tests live in the `Tests/` directory of your addon and follow the `*_spec.lua` n
 ```lua
 -- MyAddon/Tests/core_spec.lua
 describe("MyAddon Core", function()
-    before_each(function()
-        WoWAPI_ResetAll()
-    end)
-
     it("should initialize correctly", function()
         -- Test logic here
         assert.is_not_nil(MyAddon)
@@ -325,58 +321,33 @@ end)
 
 ### Mock WoW API
 
-The framework provides a mock environment (`ADDON_DEV/Testing/`) that simulates WoW's global functions and namespaces:
-- **Core API**: `CreateFrame`, `GetTime`, `UnitName`, etc. (in `wow_api.lua`)
-- **Namespaces**: `C_Spell`, `C_Timer` (in `wow_api_c_spell.lua`, `wow_api_c_timer.lua`)
-- **Midnight**: `issecretvalue` simulation (in `wow_api_midnight.lua`)
+`sandbox.generate` builds stubs for WoW's global functions and `C_*` namespaces from the generated API definitions. They are stubs, not behavioural mocks: define return values yourself where a test depends on them. Protected APIs, rendering and secret-value behaviour are not simulated.
 
 ### Running Tests
 
-Use the CLI test runner:
+```bash
+# Busted (needs busted installed; see `mech setup`)
+mech call addon.test '{"addon": "MyAddon"}'
 
-```powershell
-# Run tests for a specific addon
-addon-dev test "MyAddon"
+# Sandbox (no external Busted needed)
+mech call sandbox.generate
+mech call sandbox.test '{"addon": "MyAddon"}'
 
-# Run tests for all addons
-addon-dev test --all
-
-# Run with code coverage
-addon-dev test "MyAddon" --coverage
-
-# Run with coverage threshold enforcement
-addon-dev test "MyAddon" --coverage --threshold 80
+# Pass --coverage to Busted (requires LuaCov to be installed)
+mech call addon.test '{"addon": "MyAddon", "coverage": true}'
 ```
 
 ### Integration
 
-- **MCP**: Use `run_tests("MyAddon")` directly in the chat.
-- **CI/CD**: Tests are automatically run in GitHub Actions on every PR and push to `main`.
+- **MCP**: call `addon-test` or `sandbox-test` as tools.
+- **CI/CD**: run Busted in your own GitHub Actions workflow. This repository's workflow is `.github/workflows/ci.yml`.
 
 ### Code Coverage
 
-Generate coverage reports to identify untested code paths.
+`addon.test` with `"coverage": true` forwards `--coverage` to Busted, which needs LuaCov. Coverage is not available in `sandbox.test`, and Mechanic does not produce an HTML report or enforce a threshold; use LuaCov's own report and your CI to do that.
 
-```powershell
-# Generate coverage report
-addon-dev test "MyAddon" --coverage
-
-# Fail if coverage is below threshold
-addon-dev test "MyAddon" --coverage --threshold 80
-
-# Open HTML report in browser
-addon-dev test "MyAddon" --coverage --open
-```
-
-**Coverage Output**:
-- **Console**: Per-file coverage percentages
-- **HTML**: Interactive report in `.coverage/html/index.html`
-- **History**: Historical data in `.coverage/history/` for trend analysis
-
-**Coverage Requirements**:
-- **Source Loading**: Tests MUST `require()` source files (not just mock functions inline) to collect accurate execution data.
-- **Collector**: Uses `debug.sethook` to track line execution; no external dependencies required.
-- **Optimization**: Secret values and combat-only code may show lower coverage—this is normal. Use in-game testing for these paths.
+- **Source loading**: tests must `require()` the real source files (not mock functions inline) to produce meaningful numbers.
+- **Expectations**: secret-value and combat-only code may show lower coverage. Use in-game testing for those paths.
 
 ---
 
@@ -385,24 +356,19 @@ addon-dev test "MyAddon" --coverage --open
 Before fixing a complex bug or implementing a new Midnight feature, use the research tools to ground your understanding.
 
 ### 1. Fast Web Research (Preferred)
-- **Action**: Use `addon-dev research "prompt"` via CLI.
-- **Purpose**: Quick web search using Gemini 3 Flash with Google Search grounding (~15-30s).
-- **Example**: `addon-dev research "C_UnitAuras.GetAuraDataByAuraInstanceID WoW 12.0 changes"`
+- **Action**: Use `mech call research.query '{"query": "prompt"}'` (needs `GEMINI_API_KEY`).
+- **Purpose**: Quick web search using a Gemini Flash model with Google Search grounding (~15-30s). Model IDs can be overridden with `MECHANIC_GEMINI_FAST_MODEL` and `MECHANIC_GEMINI_THINKING_MODEL`.
+- **Example**: `mech call research.query '{"query": "C_UnitAuras.GetAuraDataByAuraInstanceID WoW 12.0 changes"}'`
 
 ### 2. Deep Analysis (When Needed)
-- **Action**: Use `addon-dev research "prompt" --mode thinking` via CLI.
-- **Purpose**: More thorough analysis using Gemini 3 Pro for complex comparisons (~30-90s).
-- **Example**: `addon-dev research "Compare secret value handling patterns for health bars in WoW 12.0" --mode thinking`
+- **Action**: Use `mech call research.query '{"query": "prompt", "mode": "thinking"}'`.
+- **Purpose**: More thorough analysis using a Gemini Pro model for complex comparisons (~30-90s).
+- **Example**: `mech call research.query '{"query": "Compare secret value handling patterns for health bars in WoW 12.0", "mode": "thinking"}'`
 
-### 3. Multi-Step Investigation (Rare)
-- **Action**: Use `research_deep(prompt)` via MCP.
-- **Purpose**: Autonomous multi-step research for complex investigations requiring synthesis from many sources (2-10 min, use sparingly).
-- **Example**: `research_deep("Analyze all C_UnitAuras changes in WoW 12.0 and their impact on addon development")`
-
-### 2. Blizzard UI Exploration
-- **Action**: Use `search_blizzard_ui(query)` via MCP.
+### 3. Blizzard UI Exploration
+- **Action**: search a local clone of [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) with your editor or `rg`.
 - **Purpose**: Find how Blizzard's own code handles a specific frame or event.
-- **Example**: `search_blizzard_ui("CompactPartyFrame_UpdateHealth")`
+- **Example**: `rg "CompactPartyFrame_UpdateHealth" wow-ui-source/`
 
 ---
 
@@ -528,14 +494,14 @@ Before Release:
 3. Combat test
 4. Settings persistence test
 5. Performance check
-6. Code coverage check (addon-dev test --coverage --threshold 60)
+6. Code coverage check (Busted with LuaCov, via `addon.test` with `"coverage": true`)
 
 Before Midnight:
 1. PTR/Beta test when available
 2. Instance combat test
 3. Secret value handling test
 4. Document any limitations
-5. Run deprecation scan (addon-dev fix-deprecations MyAddon)
+5. Run deprecation scan (`mech call addon.deprecations '{"addon": "MyAddon"}'`)
 ```
 
 ---

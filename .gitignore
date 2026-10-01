@@ -19,7 +19,21 @@ tmp/
 *_output.txt
 
 # Test Coverage Reports
+.coverage
+.coverage.*
 .coverage/
+htmlcov/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+node_modules/
+
+# Per-user Claude Code settings (shared settings stay in .claude/settings.json)
+.claude/settings.local.json
+
+# Generated per-user busted launcher (paths are machine specific)
+desktop/bin/busted.bat
 
 # Sandbox
 sandbox/generated/
@@ -41,8 +55,6 @@ venv/
 .venv/
 .env
 desktop/data/
-nul
-
 nul
 
 ANNOUNCEMENT.md

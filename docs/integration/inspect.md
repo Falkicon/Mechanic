@@ -95,6 +95,8 @@ Each frame entry should include:
 | `frame` | Frame | The actual frame object |
 | `property` | string | Property to track (see Property Types) |
 
+`getWatchFrames()` is evaluated when your addon registers with MechanicLib (the results are added to the watch list then). Frames created later are not picked up by the callback; add them with `MechanicLib:AddToWatchList(frame, label, { source = "MyAddon", property = "Visibility" })` and remove them with `MechanicLib:RemoveFromWatchList(frame)`.
+
 ---
 
 ## Best Practices
@@ -102,13 +104,13 @@ Each frame entry should include:
 1. **Register key frames** — Main container, primary UI elements
 2. **Use descriptive labels** — "Speed Bar" not "Bar1"
 3. **Handle nil frames** — Check existence before adding
-4. **Include dynamic frames** — Loop through ability bars, buff icons, etc.
+4. **Include dynamic frames** — Loop through ability bars, buff icons, etc. that exist at registration, and use `AddToWatchList` for ones created later
 
 ---
 
 ## Example: Full Implementation
 
-From [FenUI_Explorer/Core.lua](../../../FenUI_Explorer/Core.lua):
+Example from the FenUI_Explorer addon (a sibling repository, not part of this repo):
 
 ```lua
 MechanicLib:Register(ADDON_NAME, {

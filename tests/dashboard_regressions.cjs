@@ -1,149 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
-
-const dashboardPath = path.join(__dirname, '..', 'desktop', 'dashboard', 'index.html');
-const schemaFormPath = path.join(__dirname, '..', 'desktop', 'dashboard', 'schema-form.js');
-const MechanicSchemaForm = require(schemaFormPath);
-const html = fs.readFileSync(dashboardPath, 'utf8');
-const dashboardScript = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1]
-  .replace(/\s*init\(\);\s*$/, '\n');
-
-function createElement(document, tagName = 'div') {
-  const listeners = new Map();
-  const classes = new Set();
-  const element = {
-    ownerDocument: document,
-    tagName: String(tagName).toUpperCase(),
-    children: [],
-    dataset: {},
-    value: '',
-    textContent: '',
-    innerHTML: '',
-    classList: {
-      add(...names) { names.forEach(name => classes.add(name)); },
-      remove(...names) { names.forEach(name => classes.delete(name)); },
-      toggle(name, force) {
-        const enabled = force === undefined ? !classes.has(name) : force;
-        if (enabled) classes.add(name); else classes.delete(name);
-        return enabled;
-      },
-      contains(name) { return classes.has(name); },
-    },
-    style: {},
-    append(...children) { element.children.push(...children); },
-    appendChild(child) { element.children.push(child); return child; },
-    replaceChildren(...children) { element.children = [...children]; },
-    addEventListener(type, handler) { listeners.set(type, handler); },
-    dispatch(type, event = {}) { listeners.get(type)?.({ target: element, ...event }); },
-    remove() {},
-    focus() {},
-  };
-  return element;
-}
-
-function createDashboard({ addons, diagnosticTarget, activeView, protocol = 'http:', fetchImpl } = {}) {
-  const elements = new Map();
-  const timers = new Map();
-  const eventListeners = new Map();
-  const sockets = [];
-  let nextTimerId = 1;
-
-  class FakeWebSocket {
-    constructor(url) {
-      this.url = url;
-      this.readyState = FakeWebSocket.CONNECTING;
-      sockets.push(this);
-    }
-  }
-  FakeWebSocket.CONNECTING = 0;
-  FakeWebSocket.OPEN = 1;
-  FakeWebSocket.CLOSING = 2;
-  FakeWebSocket.CLOSED = 3;
-
-  const localStorage = {
-    getItem(key) {
-      if (key === 'mechanic.addons') return addons;
-      if (key === 'mechanic.diagnosticTarget') return diagnosticTarget;
-      if (key === 'mechanic.activeView') return activeView;
-      return null;
-    },
-    setItem() {},
-    removeItem() {},
-  };
-  const document = {
-    getElementById(id) {
-      if (!elements.has(id)) elements.set(id, createElement(document));
-      return elements.get(id);
-    },
-    createElement(tagName) { return createElement(document, tagName); },
-    querySelector() { return null; },
-    querySelectorAll() { return []; },
-    addEventListener() {},
-  };
-  const window = {
-    location: { protocol, host: 'localhost:3100' },
-    addEventListener(event, handler) { eventListeners.set(event, handler); },
-  };
-
-  const context = {
-    console,
-    Date,
-    JSON,
-    Math,
-    Object,
-    Promise,
-    String,
-    Array,
-    Number,
-    Boolean,
-    Error,
-    RegExp,
-    MechanicSchemaForm,
-    document,
-    localStorage,
-    window,
-    WebSocket: FakeWebSocket,
-    fetch: fetchImpl || (async () => ({ json: async () => ({}) })),
-    confirm: () => true,
-    navigator: { clipboard: { writeText: async () => {} } },
-    __sockets: sockets,
-    __timers: timers,
-    __eventListeners: eventListeners,
-    setInterval: () => 0,
-    setTimeout(callback, delay) {
-      const id = nextTimerId++;
-      timers.set(id, { callback, delay });
-      return id;
-    },
-    clearTimeout(id) { timers.delete(id); },
-  };
-  context.__elements = elements;
-
-  vm.runInNewContext(
-    `${dashboardScript}
-globalThis.__dashboardTest = {
-  knownAddons: () => knownAddons,
-  sockets: globalThis.__sockets,
-  timers: globalThis.__timers,
-  eventListeners: globalThis.__eventListeners,
-  history: () => commandHistory,
-  selectedTarget: () => selectedDiagnosticTarget,
-  elements: globalThis.__elements,
-  installCommandCatalog,
-  navigateToCommand,
-  getCurrentCommandInput,
-  setCommandInputMode,
-  installDiagnosticTargets,
-  fetchAddonOutput,
-  updateTestResults,
-  init,
-};`,
-    context,
-  );
-  return context.__dashboardTest;
-}
+const { createDashboard, MechanicSchemaForm, scriptFiles, html, dashboardDir } = require('./dashboard_harness.cjs');
 
 function runTimer(testState, id) {
   const timer = testState.timers.get(id);
@@ -229,10 +87,12 @@ function runTimer(testState, id) {
   dashboard.sockets[0].readyState = 3;
   dashboard.sockets[0].onclose();
   const reconnectTimerId = [...dashboard.timers.keys()][0];
-  dashboard.eventListeners.get('unload')();
+  dashboard.eventListeners.get('pagehide')();
   assert.equal(dashboard.timers.size, 0);
   assert.equal(dashboard.timers.has(reconnectTimerId), false);
   assert.equal(dashboard.sockets.length, 1);
+  assert.equal(dashboard.sockets[0].readyState, 3, 'pagehide closes the socket');
+  assert.equal(dashboard.eventListeners.has('unload'), false, 'the deprecated unload event is not used');
 }
 
 console.log('dashboard regressions passed');

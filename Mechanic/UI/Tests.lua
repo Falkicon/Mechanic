@@ -10,9 +10,91 @@ Mechanic.Tests = TestsModule
 
 local STATUS_COLORS = Mechanic.Utils.Colors.Status
 
+-- Tree values are prefixed by node kind so ids and categories containing ":" stay unambiguous.
+local TEST_NODE_PATTERN = "^t:([^:]+):(.+)$"
+
+--------------------------------------------------------------------------------
+-- Provider access
+--
+-- Test providers are other addons' callbacks: every call is protected, and the
+-- definition list is fetched once per pass (getAll can be expensive).
+--------------------------------------------------------------------------------
+
+local function protectedCall(fn, ...)
+	if type(fn) ~= "function" then
+		return nil
+	end
+	local ok, result = pcall(fn, ...)
+	if ok then
+		return result
+	end
+	return nil
+end
+
+-- Registered addons that expose tests, in a stable (alphabetical) order.
+local function getProviders()
+	local providers = {}
+	local MechanicLib = LibStub("MechanicLib-1.0", true)
+	if not MechanicLib then
+		return providers
+	end
+	for addonName in pairs(MechanicLib:GetRegistered()) do
+		if MechanicLib:HasCapability(addonName, "tests") then
+			local tests = MechanicLib:GetCapability(addonName, "tests")
+			if tests then
+				table.insert(providers, { name = addonName, tests = tests })
+			end
+		end
+	end
+	table.sort(providers, function(a, b)
+		return a.name < b.name
+	end)
+	return providers
+end
+
+-- Definitions from getAll(), accepting both {def = {...}} and direct {...} entries.
+local function getDefinitions(tests)
+	local definitions = {}
+	local all = protectedCall(tests.getAll)
+	if type(all) == "table" then
+		for _, entry in ipairs(all) do
+			local test = type(entry) == "table" and (entry.def or entry)
+			if type(test) == "table" and test.id then
+				table.insert(definitions, test)
+			end
+		end
+	end
+	return definitions
+end
+
+local function getResult(tests, id)
+	return tests.getResult and protectedCall(tests.getResult, id) or nil
+end
+
+-- Totals across all providers
+local function summarize()
+	local total, passed, failed, pending = 0, 0, 0, 0
+	for _, provider in ipairs(getProviders()) do
+		local tests = provider.tests
+		for _, test in ipairs(getDefinitions(tests)) do
+			total = total + 1
+			local result = getResult(tests, test.id)
+			if result then
+				if result.passed == true then
+					passed = passed + 1
+				elseif result.passed == false then
+					failed = failed + 1
+				else
+					pending = pending + 1
+				end
+			end
+		end
+	end
+	return total, passed, failed, pending
+end
+
 TestsModule.selectedAddon = nil
 TestsModule.selectedTest = nil
-TestsModule.exportMode = false
 
 function Mechanic:InitializeTests()
 	if TestsModule.frame then
@@ -50,7 +132,7 @@ function Mechanic:InitializeTests()
 
 	toolbar:AddSpacer("flex")
 
-	local exportBtn = toolbar:AddImageButton({
+	toolbar:AddImageButton({
 		texture = ICON_PATH .. "icon-export",
 		size = 24,
 		tooltip = L["Export Button"],
@@ -58,7 +140,6 @@ function Mechanic:InitializeTests()
 			TestsModule:Export()
 		end,
 	})
-	TestsModule.exportButton = exportBtn
 
 	local clearBtn = toolbar:AddButton({
 		text = L["Clear"],
@@ -92,9 +173,10 @@ function Mechanic:InitializeTests()
 	-- Tree Panel (replacing AceGUI-TreeGroup)
 	local tree = FenUI:CreateTree(frame, {
 		onSelect = function(value)
-			local parts = { strsplit(":", value) }
-			if #parts == 2 then
-				TestsModule:OnTestSelected(parts[1], parts[2])
+			-- Only test nodes ("t:<addon>:<id>") are selectable; ids may contain ":"
+			local addonName, testId = value:match(TEST_NODE_PATTERN)
+			if addonName then
+				TestsModule:OnTestSelected(addonName, testId)
 			end
 		end,
 	})
@@ -164,62 +246,51 @@ end
 
 function TestsModule:BuildTree()
 	local tree = {}
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if not MechanicLib then
-		return tree
-	end
-
 	local textParts = {}
 
-	for addonName in pairs(MechanicLib:GetRegistered()) do
-		if MechanicLib:HasCapability(addonName, "tests") then
-			local tests = MechanicLib:GetCapability(addonName, "tests")
-			local addonNode = {
-				text = addonName,
-				value = addonName,
-				children = {},
-				expanded = true,
-			}
+	for _, provider in ipairs(getProviders()) do
+		local addonName, tests = provider.name, provider.tests
+		local addonNode = {
+			text = addonName,
+			value = "a:" .. addonName,
+			children = {},
+			expanded = true,
+		}
 
-			-- Get categories
-			if tests.getCategories then
-				local categories = tests.getCategories()
-				for _, category in ipairs(categories) do
-					local categoryNode = {
-						text = category,
-						value = string.format("%s:%s", addonName, category),
-						children = {},
-						expanded = true,
-					}
-
-					-- Get tests in category
-					if tests.getAll then
-						local allTests = tests.getAll()
-						for _, entry in ipairs(allTests) do
-							local test = entry.def or entry -- Support both {def={...}} and direct {...}
-							if test and test.id and test.category == category then
-								local result = tests.getResult and tests.getResult(test.id)
-								local icon = self:GetStatusIcon(result)
-
-								wipe(textParts)
-								table.insert(textParts, icon)
-								table.insert(textParts, " ")
-								table.insert(textParts, test.name)
-
-								table.insert(categoryNode.children, {
-									text = table.concat(textParts),
-									value = string.format("%s:%s", addonName, test.id),
-								})
-							end
-						end
-					end
-
-					table.insert(addonNode.children, categoryNode)
-				end
+		local categories = protectedCall(tests.getCategories)
+		if type(categories) == "table" then
+			-- One getAll() per addon, grouped by category
+			local byCategory = {}
+			for _, test in ipairs(getDefinitions(tests)) do
+				byCategory[test.category] = byCategory[test.category] or {}
+				table.insert(byCategory[test.category], test)
 			end
 
-			table.insert(tree, addonNode)
+			for _, category in ipairs(categories) do
+				local categoryNode = {
+					text = category,
+					value = string.format("c:%s:%s", addonName, category),
+					children = {},
+					expanded = true,
+				}
+
+				for _, test in ipairs(byCategory[category] or {}) do
+					wipe(textParts)
+					table.insert(textParts, self:GetStatusIcon(getResult(tests, test.id)))
+					table.insert(textParts, " ")
+					table.insert(textParts, tostring(test.name or test.id))
+
+					table.insert(categoryNode.children, {
+						text = table.concat(textParts),
+						value = string.format("t:%s:%s", addonName, test.id),
+					})
+				end
+
+				table.insert(addonNode.children, categoryNode)
+			end
 		end
+
+		table.insert(tree, addonNode)
 	end
 
 	return tree
@@ -238,9 +309,6 @@ function TestsModule:GetStatusIcon(result)
 end
 
 function TestsModule:OnTestSelected(addonName, testId)
-	self.selectedAddon = addonName
-	self.selectedTest = testId
-
 	local MechanicLib = LibStub("MechanicLib-1.0", true)
 	if not MechanicLib or not MechanicLib:HasCapability(addonName, "tests") then
 		return
@@ -253,13 +321,10 @@ function TestsModule:OnTestSelected(addonName, testId)
 
 	-- Find test definition
 	local testDef = nil
-	if tests.getAll then
-		for _, entry in ipairs(tests.getAll()) do
-			local test = entry.def or entry
-			if test and test.id == testId then
-				testDef = test
-				break
-			end
+	for _, test in ipairs(getDefinitions(tests)) do
+		if test.id == testId then
+			testDef = test
+			break
 		end
 	end
 
@@ -267,11 +332,12 @@ function TestsModule:OnTestSelected(addonName, testId)
 		return
 	end
 
-	-- Get result
-	local result = tests.getResult and tests.getResult(testId)
+	-- Only a real test becomes the selection that "Run Selected" acts on
+	self.selectedAddon = addonName
+	self.selectedTest = testId
 
 	-- Update display
-	self:UpdateDetailsPanel(testDef, result)
+	self:UpdateDetailsPanel(testDef, getResult(tests, testId))
 end
 
 function TestsModule:UpdateDetailsPanel(testDef, result)
@@ -360,8 +426,11 @@ function TestsModule:RunSelected()
 	if MechanicLib and MechanicLib:HasCapability(self.selectedAddon, "tests") then
 		local tests = MechanicLib:GetCapability(self.selectedAddon, "tests")
 		if tests and tests.run then
-			pcall(tests.run, self.selectedTest)
-			
+			local ok, err = pcall(tests.run, self.selectedTest)
+			if not ok then
+				Mechanic:Print(string.format("%s: %s", tostring(self.selectedTest), tostring(err)))
+			end
+
 			-- PERSISTENCE: Use central hub sync
 			Mechanic:SyncAllAddonData()
 
@@ -373,33 +442,26 @@ function TestsModule:RunSelected()
 end
 
 function TestsModule:RunAllAuto()
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if not MechanicLib then
-		return
-	end
-
 	local totalPassed, totalTests = 0, 0
-	for addonName in pairs(MechanicLib:GetRegistered()) do
-		if MechanicLib:HasCapability(addonName, "tests") then
-			local tests = MechanicLib:GetCapability(addonName, "tests")
-			if tests then
-				if tests.runAll then
-					local passed, total = tests.runAll()
-					totalPassed = totalPassed + passed
-					totalTests = totalTests + total
-				elseif tests.getAll and tests.run then
-					-- Fallback: iterate over all tests and run the ones that are 'auto'
-					local allTests = tests.getAll()
-					for _, entry in ipairs(allTests) do
-						local test = entry.def or entry
-						if test and test.id and test.type ~= "manual" then
-							totalTests = totalTests + 1
-							local success, result = pcall(tests.run, test.id)
-							local isPassed = success and ((type(result) == "table" and result.passed) or (result == true))
-							if isPassed then
-								totalPassed = totalPassed + 1
-							end
-						end
+	for _, provider in ipairs(getProviders()) do
+		local tests = provider.tests
+		if tests.runAll then
+			local ok, passed, total = pcall(tests.runAll)
+			if ok then
+				totalPassed = totalPassed + (tonumber(passed) or 0)
+				totalTests = totalTests + (tonumber(total) or 0)
+			else
+				Mechanic:Print(string.format("%s: %s", provider.name, tostring(passed)))
+			end
+		elseif tests.getAll and tests.run then
+			-- Fallback: iterate over all tests and run the ones that are 'auto'
+			for _, test in ipairs(getDefinitions(tests)) do
+				if test.type ~= "manual" then
+					totalTests = totalTests + 1
+					local success, result = pcall(tests.run, test.id)
+					local isPassed = success and ((type(result) == "table" and result.passed) or (result == true))
+					if isPassed then
+						totalPassed = totalPassed + 1
 					end
 				end
 			end
@@ -415,18 +477,8 @@ function TestsModule:RunAllAuto()
 end
 
 function TestsModule:ClearResults()
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if not MechanicLib then
-		return
-	end
-
-	for addonName in pairs(MechanicLib:GetRegistered()) do
-		if MechanicLib:HasCapability(addonName, "tests") then
-			local tests = MechanicLib:GetCapability(addonName, "tests")
-			if tests and tests.clearResults then
-				tests.clearResults()
-			end
-		end
+	for _, provider in ipairs(getProviders()) do
+		protectedCall(provider.tests.clearResults)
 	end
 	self:RefreshTree()
 	self:UpdateSummary()
@@ -440,35 +492,7 @@ function TestsModule:UpdateSummary()
 	if not self.summaryLabel then
 		return
 	end
-	local total, passed, failed, pending = 0, 0, 0, 0
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if not MechanicLib then
-		return
-	end
-
-	for addonName in pairs(MechanicLib:GetRegistered()) do
-		if MechanicLib:HasCapability(addonName, "tests") then
-			local tests = MechanicLib:GetCapability(addonName, "tests")
-			if tests.getAll then
-				for _, entry in ipairs(tests.getAll()) do
-					local test = entry.def or entry
-					if test and test.id then
-						total = total + 1
-						local result = tests.getResult and tests.getResult(test.id)
-						if result then
-							if result.passed == true then
-								passed = passed + 1
-							elseif result.passed == false then
-								failed = failed + 1
-							else
-								pending = pending + 1
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+	local total, passed, failed, pending = summarize()
 
 	self.summaryLabel:SetText(
 		string.format(L["Total: %d | Passed: %d | Failed: %d | Pending: %d"], total, passed, failed, pending)
@@ -476,15 +500,28 @@ function TestsModule:UpdateSummary()
 end
 
 function TestsModule:Export()
-	local navName = self.selectedAddon or (L["All"] or "All")
+	-- The export always covers every registered addon, so the title says so
 	local title = string.format(
 		"%s : %s : %s",
 		tostring(L["Tests"] or "Tests"),
-		tostring(navName or "All"),
+		tostring(L["All"] or "All"),
 		tostring(L["Export"] or "Export")
 	)
 	local text = self:GetCopyText(Mechanic.db.profile.includeEnvHeader)
 	Mechanic.Utils:ShowExportDialog(title, text)
+end
+
+-- "[PASS]"/"[FAIL]"/"[PEND]"/"[----]" tag plus the trailing detail text for one result
+local function describeResult(result)
+	if not result then
+		return "[----]", ""
+	end
+	if result.passed == true then
+		return "[PASS]", result.duration and string.format(" (%.3fs)", result.duration) or ""
+	end
+	local status = result.passed == false and "[FAIL]" or "[PEND]"
+	local fallback = result.passed == false and "Unknown Error" or "Pending"
+	return status, result.message and string.format(" - %s", tostring(result.message or fallback)) or ""
 end
 
 function TestsModule:GetCopyText(includeHeader)
@@ -494,120 +531,54 @@ function TestsModule:GetCopyText(includeHeader)
 		local header = Mechanic:GetEnvironmentHeader()
 		if header then
 			table.insert(lines, header)
-			local total, passed, failed, pending = 0, 0, 0, 0
-			-- Recalculate for summary
-			local MechanicLib = LibStub("MechanicLib-1.0", true)
-			if MechanicLib then
-				for addonName in pairs(MechanicLib:GetRegistered()) do
-					if MechanicLib:HasCapability(addonName, "tests") then
-						local tests = MechanicLib:GetCapability(addonName, "tests")
-						if tests.getAll then
-							for _, entry in ipairs(tests.getAll()) do
-								local test = entry.def or entry
-								if test and test.id then
-									total = total + 1
-									local res = tests.getResult and tests.getResult(test.id)
-									if res then
-										if res.passed == true then
-											passed = passed + 1
-										elseif res.passed == false then
-											failed = failed + 1
-										else
-											pending = pending + 1
-										end
-									end
-								end
-							end
-						end
-					end
-				end
-			end
+			local total, passed, failed, pending = summarize()
 			table.insert(
 				lines,
 				string.format(
 					L["Result: %d/%d passed, %d failed, %d pending"] or "Result: %d/%d passed, %d failed, %d pending",
-					passed or 0,
-					total or 0,
-					failed or 0,
-					pending or 0
+					passed,
+					total,
+					failed,
+					pending
 				)
 			)
 			table.insert(lines, "---")
 		end
 	end
 
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if MechanicLib then
-		for addonName in pairs(MechanicLib:GetRegistered()) do
-			if MechanicLib:HasCapability(addonName, "tests") then
-				local tests = MechanicLib:GetCapability(addonName, "tests")
-				if tests.getCategories then
-					local categories = tests.getCategories()
-					for _, category in ipairs(categories) do
+	for _, provider in ipairs(getProviders()) do
+		local tests = provider.tests
+		local categories = protectedCall(tests.getCategories)
+		if type(categories) == "table" then
+			local definitions = getDefinitions(tests)
+			for _, category in ipairs(categories) do
+				table.insert(
+					lines,
+					string.format(L["%s > %s"] or "%s > %s", tostring(provider.name), tostring(category or "Unknown"))
+				)
+
+				for _, test in ipairs(definitions) do
+					if test.category == category then
+						local result = getResult(tests, test.id)
+						local status, detail = describeResult(result)
 						table.insert(
 							lines,
-							string.format(
-								L["%s > %s"] or "%s > %s",
-								tostring(addonName or "Unknown"),
-								tostring(category or "Unknown")
-							)
+							string.format("  %s %s%s", status, tostring(test.name or "Unknown"), detail)
 						)
 
-						if tests.getAll then
-							for _, entry in ipairs(tests.getAll()) do
-								local test = entry.def or entry
-								if test and test.id and test.category == category then
-									local result = tests.getResult and tests.getResult(test.id)
-									local status = "[----]"
-									local detail = ""
-
-									if result then
-										if result.passed == true then
-											status = "[PASS]"
-											detail = result.duration and string.format(" (%.3fs)", result.duration)
-												or ""
-										elseif result.passed == false then
-											status = "[FAIL]"
-											detail = result.message
-													and string.format(
-														" - %s",
-														tostring(result.message or "Unknown Error")
-													)
-												or ""
-										else
-											status = "[PEND]"
-											detail = result.message
-													and string.format(" - %s", tostring(result.message or "Pending"))
-												or ""
-										end
-									end
-
-									table.insert(
-										lines,
-										string.format(
-											"  %s %s%s",
-											tostring(status),
-											tostring(test.name or "Unknown"),
-											tostring(detail or "")
-										)
+						-- Include details array in copy per Phase 5
+						if result and result.details and #result.details > 0 then
+							for _, d in ipairs(result.details) do
+								local statusTag = d.status and string.upper(d.status) or "INFO"
+								table.insert(
+									lines,
+									string.format(
+										"    [%s] %s: %s",
+										tostring(statusTag),
+										tostring(d.label or "Detail"),
+										tostring(d.value or "nil")
 									)
-
-									-- NEW: Include details array in copy per Phase 5
-									if result and result.details and #result.details > 0 then
-										for _, d in ipairs(result.details) do
-											local statusTag = d.status and string.upper(d.status) or "INFO"
-											table.insert(
-												lines,
-												string.format(
-													"    [%s] %s: %s",
-													tostring(statusTag),
-													tostring(d.label or "Detail"),
-													tostring(d.value or "nil")
-												)
-											)
-										end
-									end
-								end
+								)
 							end
 						end
 					end

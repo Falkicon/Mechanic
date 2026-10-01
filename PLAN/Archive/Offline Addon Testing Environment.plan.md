@@ -1,8 +1,8 @@
+> **ARCHIVED - IMPLEMENTED (reviewed 2026-09-30).** The sandbox shipped as `sandbox.generate`, `sandbox.status`, `sandbox.exec` and `sandbox.test` (there is no `sandbox.actions`). The current behavior (restricted Lua environment, packaged test framework, optional stubs) is documented in [docs/integration/testing.md](../../docs/integration/testing.md). This plan's command syntax (`-i '{...}'`, which `mech call` never had), paths and architecture diagram are historical. The "AFD for Addons" guide it referenced was never added to this repository; see [docs/addon-architecture.md](../../docs/addon-architecture.md) instead.
+
 # Lua Sandbox: Offline Addon Testing Environment
 
 **Goal**: Enable testing WoW addon logic outside the game client using a minimal stub layer generated from Mechanic's existing API database.
-
-📖 **[AFD for Addons Guide](./AFD_FOR_ADDONS.md)** — How to structure addons for testability
 
 ---
 

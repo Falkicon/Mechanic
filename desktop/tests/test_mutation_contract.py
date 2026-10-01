@@ -8,7 +8,7 @@ import pytest
 from afd import error, success
 from afd.server import create_server
 from afd.server.decorators import get_command_metadata
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from mechanic.commands import catalog, environment
 from mechanic.commands.core import get_server
 
@@ -155,8 +155,10 @@ def sync_fixture(tmp_path, monkeypatch):
     for name in ("One", "Two"):
         (source / name).mkdir(parents=True)
         (source / name / "code.lua").write_text("return true")
+    (addon / "Demo.toc").write_text("## Title: Demo\n", encoding="utf-8")
     wow = tmp_path / "wow"
-    wow.mkdir()
+    for client in ("_retail_", "_ptr_"):
+        (wow / client).mkdir(parents=True)
     monkeypatch.setattr(environment, "find_addon_path", lambda *args: addon)
     monkeypatch.setattr(
         environment,
@@ -227,8 +229,10 @@ async def test_libs_partial_failure_retains_completed_actions(
 
 
 @pytest.mark.asyncio
-async def test_mcp_routes_once_through_execute_and_preserves_context(monkeypatch):
+async def test_mcp_routes_once_through_execute_and_reports_mutation(monkeypatch):
     pytest.importorskip("mcp.server.fastmcp")
+    from mechanic.mcp_server import create_mcp_server
+
     server = create_server("route")
 
     class Input(BaseModel):
@@ -240,7 +244,7 @@ async def test_mcp_routes_once_through_execute_and_preserves_context(monkeypatch
         name="route.test", description="Route", input_schema=Input, mutation=True
     )
     async def command(input, context=None):
-        seen.append((input.count, context))
+        seen.append(input.count)
         return success({"count": input.count})
 
     original = server.execute
@@ -251,14 +255,18 @@ async def test_mcp_routes_once_through_execute_and_preserves_context(monkeypatch
         return await original(name, input, context)
 
     monkeypatch.setattr(server, "execute", execute)
-    tool = server._create_mcp_server()._tool_manager.get_tool("route.test")
-    context = object()
-    result = json.loads(await tool.fn(count="3", context=context))
-    assert result["success"] and result["data"] == {"count": 3}
-    assert calls == ["route.test"] and seen == [(3, context)]
+    mcp = create_mcp_server(server)
+    tool = next(tool for tool in await mcp.list_tools() if tool.name == "route-test")
     assert tool.annotations.readOnlyHint is False
-    with pytest.raises(ValidationError):
-        await tool.fn(count="bad", context=context)
+    content = await mcp.call_tool("route-test", {"count": "3"})
+    if isinstance(content, tuple):
+        content = content[0]
+    text = "\n".join(block.text for block in content if hasattr(block, "text"))
+    result = json.loads(text.split("--- Full Response ---", 1)[1])
+    assert result["success"] and result["data"] == {"count": 3}
+    assert calls == ["route.test"] and seen == [3]
+    with pytest.raises(Exception):
+        await mcp.call_tool("route-test", {"count": "bad"})
     assert len(calls) == 1
 
 
@@ -293,7 +301,7 @@ async def test_addon_sync_partial_failure(sync_fixture, monkeypatch):
     monkeypatch.setattr(environment.subprocess, "run", run)
     monkeypatch.setattr(environment.subprocess.sys, "platform", "win32")
     result = await get_server().execute(
-        "addon.sync", {"addon": "Demo", "flavors": ["one", "two"]}
+        "addon.sync", {"addon": "Demo", "flavors": ["_retail_", "_ptr_"]}
     )
     assert not result.success and result.error.code == "SYNC_PARTIAL_FAILURE"
     assert len(result.data.steps_completed) == 1

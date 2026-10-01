@@ -10,8 +10,10 @@ from afd.server.decorators import get_command_metadata
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import os
+import re
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -123,25 +125,56 @@ def build_command_example(command: dict) -> str:
     return f"mech call {command['name']} '{args}'"
 
 
+CATEGORY_BY_PREFIX = {
+    "sv": "Core",
+    "reload": "Core",
+    "server": "Core",
+    "dashboard": "Core",
+    "commands": "Core",
+    "system": "Core",
+    "diagnostic": "Core",
+    "addon": "Development",
+    "version": "Release",
+    "changelog": "Release",
+    "git": "Release",
+    "release": "Release",
+    "locale": "Localization",
+    "atlas": "Localization",
+    "libs": "Environment",
+    "env": "Environment",
+    "tools": "Tools",
+    "docs": "Documentation",
+    "api": "API Reference",
+    "sandbox": "Testing",
+    "lua": "Testing",
+    "perf": "Performance",
+    "assets": "Assets",
+    "research": "Research",
+    "fencore": "FenCore",
+}
+
+
 def categorize_command(name: str) -> str:
-    """Determine category from command name prefix."""
-    prefix = name.split(".")[0] if "." in name else name
-    categories = {
-        "sv": "Core",
-        "reload": "Core",
-        "server": "Core",
-        "dashboard": "Core",
-        "addon": "Development",
-        "version": "Release",
-        "changelog": "Release",
-        "git": "Release",
-        "locale": "Localization",
-        "atlas": "Localization",
-        "libs": "Environment",
-        "tools": "Tools",
-        "docs": "Documentation",
-    }
-    return categories.get(prefix, "Other")
+    """Determine category from command name prefix (``api.x`` or ``fencore-x``)."""
+    prefix = name.split(".")[0].split("-")[0]
+    return CATEGORY_BY_PREFIX.get(prefix, "Other")
+
+
+def _generated_date() -> str:
+    """Generation date; honours SOURCE_DATE_EPOCH for reproducible output."""
+    epoch = os.environ.get("SOURCE_DATE_EPOCH", "")
+    if epoch.isdigit():
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+_DATE_LINE_RE = re.compile(
+    r"^(> Auto-generated from .* on )\d{4}-\d{2}-\d{2}$", re.MULTILINE
+)
+
+
+def _same_apart_from_date(existing: str, new: str) -> bool:
+    return _DATE_LINE_RE.sub(r"\1DATE", existing) == _DATE_LINE_RE.sub(r"\1DATE", new)
 
 
 def generate_markdown(
@@ -165,6 +198,12 @@ def generate_markdown(
         "Localization",
         "Environment",
         "Tools",
+        "API Reference",
+        "Testing",
+        "Performance",
+        "Assets",
+        "Research",
+        "FenCore",
         "Documentation",
         "Other",
     ]
@@ -176,7 +215,7 @@ def generate_markdown(
     lines = [
         "# CLI Reference",
         "",
-        f"> Auto-generated from `{server_name}` v{server_version} on {datetime.now().strftime('%Y-%m-%d')}",
+        f"> Auto-generated from `{server_name}` v{server_version} on {_generated_date()}",
         "",
         "This document lists all available Mechanic CLI commands and their input parameters.",
         "Examples are invocation templates: replace placeholders and supply valid values for your addon. Empty arrays/objects and numeric samples illustrate JSON types, not every command's validation rules. For complete schemas and mutation metadata, use `mech --json call commands.list`.",
@@ -354,8 +393,14 @@ def register_commands(server):
                 server_version=getattr(server, "version", "0.1.0"),
             )
 
-        # Write file
-        output_path.write_text(content, encoding="utf-8")
+        # Keep the tracked file untouched when only the generated date differs.
+        if not (
+            output_path.exists()
+            and _same_apart_from_date(
+                output_path.read_text(encoding="utf-8", errors="replace"), content
+            )
+        ):
+            output_path.write_text(content, encoding="utf-8")
 
         return success(
             data=DocsGenerateOutput(

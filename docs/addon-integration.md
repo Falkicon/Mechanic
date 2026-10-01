@@ -8,25 +8,26 @@ Integrate your World of Warcraft addon with Mechanic's development ecosystem.
 
 ### Prerequisites
 
-- Mechanic Desktop installed (`pip install -e .` in `!Mechanic/desktop`)
-- Your addon in a development folder (e.g., `_dev_/MyAddon/`)
-- WoW client with SavedVariables access
+- Mechanic Desktop installed (`python -m pip install -e .` from the `desktop/` folder of the Mechanic repository)
+- Both Mechanic addon folders (`!Mechanic` and `Mechanic`) installed in your client's `Interface/AddOns/`
+- Your addon in a development folder (for example `_dev_/MyAddon/`)
+- A WoW client with SavedVariables access
 
 ### Minimum Setup (5 minutes)
 
 ```bash
-# 1. Register with MechanicLib in your addon
-# local MechanicLib = LibStub("MechanicLib-1.0", true)
-# MechanicLib:Register("MyAddon", { version = "1.0.0" })
+# 1. Register with MechanicLib in your addon (Lua):
+#    local MechanicLib = LibStub("MechanicLib-1.0", true)
+#    if MechanicLib then MechanicLib:Register("MyAddon", { version = "1.0.0" }) end
 
 # 2. Start the dashboard
-mech
+mech dashboard
 
-# 3. Reload WoW
-# → !Mechanic aggregates your data and pushes it to the dashboard automatically
+# 3. Run /reload in WoW
+#    -> WoW writes !Mechanic.lua; the desktop watcher notices it and the dashboard shows your data
 ```
 
-That's it for basic integration. Read on for deeper integration.
+That is it for basic integration. Read on for deeper integration.
 
 ---
 
@@ -61,26 +62,34 @@ _dev_/
 │   ├── CHANGELOG.md        # Optional, for release automation
 │   └── Tests/              # Optional, for unit tests
 │       └── Core_spec.lua
-├── !Mechanic/              # Mechanic addon
-└── ADDON_DEV/              # Shared tools (optional)
+└── Mechanic/               # This repository
+    ├── !Mechanic/          # Bootstrap addon
+    ├── Mechanic/           # Main addon
+    ├── desktop/            # Desktop tool (mech CLI, dashboard, MCP server)
+    └── _TemplateAddon/     # Used by addon.create
 ```
 
 ### Junction Links
 
-Mechanic creates junction links from your dev folder to each WoW client:
+Mechanic creates links from your dev folder to each installed WoW client. On Windows these are junctions; elsewhere they are symlinks.
 
 ```bash
+# Preview the links without creating anything
+mech call addon.sync '{"addon": "MyAddon", "dry_run": true}'
+
 # Create links to all detected clients (_retail_, _beta_, _ptr_)
-mech call addon.sync -i '{"addon": "MyAddon"}'
+mech call addon.sync '{"addon": "MyAddon"}'
 
 # Specify specific flavors
-mech call addon.sync -i '{"addon": "MyAddon", "flavors": ["_retail_", "_beta_"]}'
+mech call addon.sync '{"addon": "MyAddon", "flavors": ["_retail_", "_beta_"]}'
 ```
+
+The addon folder must contain `MyAddon.toc` directly. Uninstalled clients are skipped, and `NO_CLIENT_FOUND` is returned if none of the requested clients exist.
 
 ### TOC File Requirements
 
 ```toc
-## Interface: 110207
+## Interface: 120100
 ## Version: 1.0.0
 ## Title: My Addon
 ## Author: YourName
@@ -90,7 +99,7 @@ mech call addon.sync -i '{"addon": "MyAddon", "flavors": ["_retail_", "_beta_"]}
 Validate your TOC:
 
 ```bash
-mech call addon.validate -i '{"addon": "MyAddon"}'
+mech call addon.validate '{"addon": "MyAddon"}'
 ```
 
 ---
@@ -105,7 +114,7 @@ Deep-dive documentation for each Mechanic feature:
 |-------|-------------|
 | [Addon Architecture](./addon-architecture.md) | Three-layer design for testable addons |
 | [MechanicLib Registration](./integration/mechaniclib.md) | Connect your addon to Mechanic's ecosystem |
-| [SavedVariables Patterns](./integration/saved-variables.md) | Expose data for the dashboard |
+| [SavedVariables Patterns](./integration/saved-variables.md) | What the desktop reads, and how to expose your data |
 
 ### In-Game Tabs
 
@@ -124,37 +133,42 @@ Deep-dive documentation for each Mechanic feature:
 |-------|-------------|
 | [CLI Workflow](./integration/cli-workflow.md) | Daily development commands |
 | [Release Automation](./integration/release.md) | Version bumping, changelog, tagging |
+| [CurseForge Deployment](./integration/curseforge.md) | Packaging and tags |
+| [Library Reference](./integration/libraries.md) | Ace3 and helper libraries, `libs.*` commands |
 | [Troubleshooting](./integration/troubleshooting.md) | Common issues and solutions |
 
 ---
 
 ## Dashboard Features
 
-### What Appears Automatically
+### What Appears
 
 | Section | Source | Updates On |
 |---------|--------|------------|
-| **Errors** | BugGrabber SavedVariables | `/reload` |
-| **Tests** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
-| **Console** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
-| **Metrics** | Diagnostic Hub (`!Mechanic.lua`) | `/reload` |
+| **Errors** | `!BugGrabber.lua` (BugGrabber SavedVariables) | `/reload`, logout |
+| **Tests** | Diagnostic hub (`!Mechanic.lua`) | `/reload`, logout |
+| **Console** | Diagnostic hub (`!Mechanic.lua`) | `/reload`, logout |
+| **Metrics** | Diagnostic hub (`!Mechanic.lua`) | `/reload`, logout |
 
-### Real-Time Updates
+Only addons that register through MechanicLib contribute to the hub data. See [SavedVariables Patterns](./integration/saved-variables.md).
 
-The dashboard uses WebSocket for instant updates:
-- File watcher detects SavedVariables change
-- Server parses Lua tables
-- WebSocket pushes to browser
-- No manual refresh needed
+### Updates
+
+WoW only writes SavedVariables on reload, logout or quit, so the data is a snapshot, not a live stream:
+
+- The file watcher detects the changed SavedVariables file
+- The dashboard receives a WebSocket notification and re-reads its selected diagnostic target
+- No manual refresh is needed after the file is written
 
 ---
 
 ## Next Steps
 
-- **For AI-assisted development:** Add `!Mechanic/AGENTS.md` to your agent's context
-- **For CI/CD:** See the [GitHub Actions workflow](../.github/workflows/ci.yml)
-- **For contributing:** Read [CONTRIBUTING.md](../CONTRIBUTING.md)
-- **For CLI reference:** See [CLI Reference](./cli-reference.md)
+- **For AI-assisted development:** add the repository's [AGENTS.md](../AGENTS.md) to your agent's context
+- **For CI/CD:** see the [GitHub Actions workflow](../.github/workflows/ci.yml)
+- **For contributing:** read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- **For CLI reference:** see [CLI Reference](./cli-reference.md)
+- **For the in-game addon dev guide:** see the [Addon Development Guide](./addon-dev-guide/AGENTS.md)
 
 ---
 

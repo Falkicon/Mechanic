@@ -1,10 +1,14 @@
 {
   "outputStyle": "concise",
   "permissions": {
-    "defaultAllow": [
-      "Bash(mech*)",
+    "allow": [
       "Bash(git status)",
-      "Bash(git diff)"
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(mech --help)",
+      "Bash(mech --version)",
+      "Bash(mech commands:*)",
+      "Bash(mech status)"
     ]
   }
 }

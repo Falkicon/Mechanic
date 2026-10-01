@@ -83,37 +83,6 @@ function Utils:GetOrCreateWidget(parent, key, creator)
 	return creator(parent)
 end
 
---- Returns the current mouse focus frame across all WoW versions.
-function Utils:GetMouseFocus()
-	if F and F.GetMouseFocus then
-		return F:GetMouseFocus()
-	end
-	return _G.GetMouseFocus and _G.GetMouseFocus() or nil
-end
-
---- Wrapper for Blizzard EasyMenu.
----@param menuList table Array of menu definitions
----@param anchor string|table Anchor point or frame (default: "cursor")
-function Utils:ShowMenu(menuList, anchor)
-	-- Delegate to FenUI.Utils.ShowMenu for cross-version compatibility
-	local F = FenUI and FenUI.Utils
-	if F and F.ShowMenu then
-		F:ShowMenu(menuList, anchor)
-		return
-	end
-
-	-- Fallback if FenUI.Utils is not available or ShowMenu is missing
-	if _G.EasyMenu then
-		if not self.menuFrame then
-			self.menuFrame = CreateFrame("Frame", "MechanicUtilsMenu", UIParent, "UIDropDownMenuTemplate")
-		end
-		EasyMenu(menuList, self.menuFrame, anchor or "cursor", 0, 0, "MENU")
-	else
-		-- Last resort: log to console if no menu system is available
-		print("|cffff4444[Mechanic Error]|r No menu system available (EasyMenu and MenuUtil both missing).")
-	end
-end
-
 --- Resolves a string path to either a frame or a global table.
 ---@param input string|table The path or object reference
 ---@return any|nil resolved
@@ -163,9 +132,10 @@ function Utils:GetLoadedLibraries()
 	end
 
 	-- MechanicLib
-	local MechanicLib = LibStub("MechanicLib-1.0", true)
-	if MechanicLib and MechanicLib.version then
-		table.insert(libraries, { name = "MechanicLib", version = MechanicLib.version })
+	-- LibStub returns the library and its minor version; the library table itself carries neither
+	local MechanicLib, mechanicMinor = LibStub("MechanicLib-1.0", true)
+	if MechanicLib and mechanicMinor then
+		table.insert(libraries, { name = "MechanicLib", version = "r" .. mechanicMinor })
 	end
 
 	-- LibStub-managed libraries (Ace3, etc.)
@@ -524,21 +494,16 @@ function Utils:ShowHelpDialog(tabKey)
 		return
 	end
 
-	-- Destroy existing dialog to pick up code changes (development mode)
-	if self.helpDialog then
-		self.helpDialog:Hide()
-		self.helpDialog:SetParent(nil)
-		self.helpDialog = nil
+	-- Frames are never garbage-collected, so create the dialog once and swap its content
+	if not self.helpDialog then
+		self.helpDialog = FenUI:CreateInfoPanel(UIParent, {
+			title = L["Help"],
+			width = 600,
+			height = 550,
+			movable = true,
+			closable = true,
+		})
 	end
-
-	-- Create fresh dialog
-	self.helpDialog = FenUI:CreateInfoPanel(UIParent, {
-		title = L["Help"],
-		width = 600,
-		height = 550,
-		movable = true,
-		closable = true,
-	})
 
 	-- Update content and show
 	self.helpDialog:SetTitle(content.title)
@@ -585,20 +550,6 @@ function Utils:CountSecrets(results)
 	end
 	return 0
 end
-function Utils:DeepCopy(orig)
-	if F and F.DeepCopy then
-		return F:DeepCopy(orig)
-	end
-	-- Fallback: shallow copy for tables, identity for other types
-	if type(orig) ~= "table" then
-		return orig
-	end
-	local copy = {}
-	for k, v in pairs(orig) do
-		copy[k] = v
-	end
-	return copy
-end
 function Utils:SafeCall(func, ...)
 	if F and F.SafeCall then
 		return F:SafeCall(func, ...)
@@ -631,19 +582,15 @@ function Utils:DetectErrorSource(errorMsg)
 		return nil
 	end
 
-	-- Look for addon name in path (e.g., "ActionHud\Core.lua" or "ActionHud/Core.lua")
-	local addon = errorMsg:match("([%w_!]+)[/\\]")
+	-- AddOns paths first (also matches truncated "...ce/AddOns/" prefixes); the generic
+	-- pattern below would otherwise return "Interface" or "AddOns"
+	local addon = errorMsg:match("[Aa]dd[Oo]ns[/\\]([%w_!]+)[/\\]")
 	if addon then
 		return addon
 	end
 
-	-- Look for Interface/AddOns path (forward slash)
-	addon = errorMsg:match("Interface/AddOns/([%w_!]+)/")
-	if addon then
-		return addon
-	end
-
-	return nil
+	-- Stripped paths (e.g., "ActionHud\Core.lua" or "ActionHud/Core.lua")
+	return errorMsg:match("([%w_!]+)[/\\]")
 end
 
 --- Colorizes a stack trace line for UI display

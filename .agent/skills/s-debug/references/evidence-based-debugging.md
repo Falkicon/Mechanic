@@ -43,18 +43,7 @@ Add **3-8 small instrumentation logs** covering:
 | Suspected error/edge case values | Catch unexpected states |
 | State mutations | Track when/how data changes |
 
-**Log Payload Structure:**
-```json
-{
-  "sessionId": "debug-session",
-  "runId": "run1",
-  "hypothesisId": "A",
-  "location": "file.js:42",
-  "message": "Function entry",
-  "data": { "param1": "value", "param2": 123 },
-  "timestamp": 1704567890000
-}
-```
+**Log payload (one line of text per log):** `runId`, `hypothesisId`, `location` (`File.lua:42`), `message`, and a short `data` string.
 
 **Critical Rules:**
 - Each log must map to at least one hypothesis (include `hypothesisId`)
@@ -67,8 +56,8 @@ Provide clear reproduction steps:
 
 ```markdown
 <reproduction_steps>
-1. Restart the application
-2. Navigate to [specific page/feature]
+1. `/reload` in WoW and tell me when it has finished
+2. Open [specific panel/feature]
 3. Perform [specific action]
 4. Observe [expected vs actual behavior]
 </reproduction_steps>
@@ -81,7 +70,7 @@ Provide clear reproduction steps:
 
 ### Step 4: Analyze Logs
 
-After user confirms reproduction, read the log file and evaluate **each hypothesis**:
+After the user confirms the reproduction and the reload, read the logs with `addon.output` (same diagnostic target as before) and evaluate **each hypothesis**:
 
 ```markdown
 ## Hypothesis Evaluation
@@ -128,7 +117,7 @@ Ask user to reproduce again with the fix applied:
 
 ```markdown
 <reproduction_steps>
-1. Restart the application (with fix applied)
+1. `/reload` in WoW with the fix installed (and tell me when it finishes)
 2. Perform the same actions as before
 3. Confirm the bug is resolved
 </reproduction_steps>
@@ -160,39 +149,15 @@ Then remove all instrumentation logs from the code.
 
 ---
 
-## Instrumentation Templates
-
-### JavaScript/TypeScript (HTTP)
-
-```javascript
-// #region agent log
-fetch('http://127.0.0.1:PORT/ingest/SESSION_ID',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'file.js:LINE',message:'desc',data:{k:v},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-// #endregion
-```
-
-### Python (File Append)
-
-```python
-# region agent log
-import json; open('/path/to/debug.log','a').write(json.dumps({"location":"file.py:LINE","message":"desc","data":{"k":"v"},"timestamp":__import__('time').time()*1000,"sessionId":"debug-session","hypothesisId":"A"})+'\n')
-# endregion
-```
-
-### Lua (WoW Addons)
+## Instrumentation Template (WoW addons)
 
 ```lua
 -- #region agent log
-if MechanicLib then MechanicLib:Log("DEBUG", "location=File.lua:LINE msg=desc hypothesisId=A data=" .. tostring(val), MechanicLib.Categories.CORE) end
+if MechanicLib then MechanicLib:Log("MyAddon", "hypothesis=A loc=File.lua:LINE msg=desc data=" .. tostring(val), MechanicLib.Categories.CORE) end
 -- #endregion
 ```
 
-### Go (File Append)
-
-```go
-// #region agent log
-func() { f, _ := os.OpenFile("/path/to/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); defer f.Close(); json.NewEncoder(f).Encode(map[string]interface{}{"location": "file.go:LINE", "message": "desc", "data": map[string]interface{}{"k": "v"}, "timestamp": time.Now().UnixMilli(), "sessionId": "debug-session", "hypothesisId": "A"}) }()
-// #endregion
-```
+The first argument is your addon name. Lines reach the agent through `addon.output` after a confirmed reload (see [using-mechanic](../../using-mechanic/SKILL.md)); only the last 50 lines per addon are synced, so keep instrumentation sparse and clear stale output by reloading before each run. Never log secret values (check `issecretvalue`).
 
 ---
 
@@ -214,7 +179,7 @@ func() { f, _ := os.OpenFile("/path/to/debug.log", os.O_APPEND|os.O_CREATE|os.O_
 |--------|-----|
 | Generate 3-5 hypotheses first | Ensures systematic investigation |
 | Map each log to a hypothesis | Ensures purposeful instrumentation |
-| Clear log file before each run | Prevents mixing old/new data |
+| Fresh logs before each run (reload first) | Prevents mixing old/new data |
 | Cite log lines as evidence | Proves conclusions are data-driven |
 | Wait for user confirmation | Timing between changes and effects varies |
 

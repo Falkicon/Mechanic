@@ -1,90 +1,32 @@
 ---
 name: k-fencore
 description: >
-  Context for FenCore - the pure logic library for WoW addons. Covers
-  utility functions, math helpers, table operations, and environment
-  detection. Load this when working with FenCore or needing utility functions.
-  Triggers: fencore, utility, math, table, logic, pure functions.
+  Context for FenCore, the pure-logic library for WoW addons (no UI), and how
+  agents discover its functions through the fencore-catalog, fencore-search and
+  fencore-info commands. Load when looking for utility functions before writing
+  your own. Triggers: fencore, utility function, pure logic, math helper, table
+  helper, catalog.
 ---
 
-# FenCore Library
+# FenCore
 
-FenCore is a pure logic library for WoW addons - no UI dependencies, just utility functions.
+FenCore is a pure logic library for WoW addons: side-effect-free utility functions with no UI dependencies, meant for the Core layer of an addon and testable without WoW. It lives in its own repository and is **not vendored in this repo** (`Mechanic.toc` lists it only as an optional dependency), so this skill does not duplicate its API. Ask the commands below instead of guessing function names.
 
-## Design Philosophy
+## Discovering functions (MCP)
 
-- **Pure Functions**: No side effects, predictable outputs
-- **No UI Dependencies**: Works in any layer of your addon
-- **Testable**: All functions can be unit tested without WoW
-- **Documented**: Every function has clear input/output contracts
+FenCore registers a catalog with MechanicLib when it loads in game; Mechanic syncs it into `MechanicDB`, and the desktop commands read it from the selected target.
 
-## MCP Tools
+| Task | Tool |
+|---|---|
+| List every domain and function | `fencore-catalog` |
+| Search by name or description | `fencore-search` with `query` (and optional `limit`) |
+| Details, params, returns, example | `fencore-info` with `domain` and `function` |
 
-| Task | MCP Tool |
-|------|----------|
-| List All Functions | `fencore.catalog()` |
-| Search Functions | `fencore.search(query="clamp")` |
-| Get Function Details | `fencore.info(domain="Math", function="Clamp")` |
+All three take the optional diagnostic `target` ([using-mechanic](../using-mechanic/SKILL.md)). They return `CATALOG_NOT_FOUND` when FenCore did not register a catalog in that profile: make sure FenCore is loaded, ask the user to `/reload`, wait for confirmation, retry.
 
-## Domains
+## Using it in an addon
 
-FenCore organizes functions by domain:
-
-| Domain | Purpose | Examples |
-|--------|---------|----------|
-| **Math** | Numeric operations | `Clamp`, `Round`, `Lerp`, `InRange` |
-| **Table** | Table manipulation | `Copy`, `Merge`, `Filter`, `Map` |
-| **String** | String utilities | `Split`, `Trim`, `StartsWith`, `Format` |
-| **Color** | Color manipulation | `HexToRGB`, `RGBToHex`, `Lighten`, `Darken` |
-| **Time** | Time formatting | `FormatDuration`, `FormatTime`, `ParseDuration` |
-| **Environment** | WoW detection | `IsRetail`, `IsClassic`, `GetExpansion` |
-
-## Usage Pattern
-
-```lua
-local FenCore = LibStub("FenCore")
-
--- Access by domain
-local Math = FenCore.Math
-local result = Math.Clamp(value, 0, 100)
-
--- Or direct access
-local clamped = FenCore.Math.Clamp(value, 0, 100)
-```
-
-## Common Functions
-
-### Math
-
-```lua
-FenCore.Math.Clamp(value, min, max)     -- Constrain value to range
-FenCore.Math.Round(value, decimals)      -- Round to decimal places
-FenCore.Math.Lerp(a, b, t)              -- Linear interpolation
-FenCore.Math.InRange(value, min, max)   -- Check if value in range
-```
-
-### Table
-
-```lua
-FenCore.Table.Copy(tbl)                 -- Shallow copy
-FenCore.Table.DeepCopy(tbl)             -- Deep copy
-FenCore.Table.Merge(base, override)     -- Merge tables
-FenCore.Table.Filter(tbl, predicate)    -- Filter by function
-FenCore.Table.Map(tbl, transform)       -- Transform values
-```
-
-### Environment
-
-```lua
-FenCore.Environment.IsRetail()          -- true if retail client
-FenCore.Environment.IsClassic()         -- true if classic client
-FenCore.Environment.GetExpansion()      -- "TWW", "Classic", etc.
-FenCore.Environment.GetBuildInfo()      -- version, build, date
-```
-
-## Best Practices
-
-1. **Use for Core layer** - FenCore belongs in your addon's pure logic layer
-2. **Don't wrap unnecessarily** - Call FenCore directly, don't create wrappers
-3. **Check domain first** - Use `fencore.search` to find existing functions before writing your own
-4. **Prefer pure functions** - If you need state, that belongs in Bridge layer
+- Check `fencore-search` before writing a helper; call FenCore directly instead of wrapping it.
+- Take the exact access pattern (global versus `LibStub`) and signatures from `fencore-info` / FenCore's own README; do not rely on remembered examples.
+- Keep FenCore calls in the Core layer. State belongs in the Bridge layer.
+- Treat FenCore as optional when the addon should run without it: guard the global/lib lookup like any optional dependency.

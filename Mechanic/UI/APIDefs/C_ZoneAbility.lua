@@ -7,7 +7,6 @@ APIDefs["C_ZoneAbility.GetActiveAbilities"] = {
     name = "GetActiveAbilities",
     category = "general",
     subcategory = "c_zoneability",
-    func = _G["C_ZoneAbility"] and _G["C_ZoneAbility"]["GetActiveAbilities"],
     funcPath = "C_ZoneAbility.GetActiveAbilities",
     params = {  },
     returns = { { name = "zoneAbilities", type = "table", canBeSecret = false } },
@@ -17,13 +16,11 @@ APIDefs["C_ZoneAbility.GetActiveAbilities"] = {
 APIDefs["C_ZoneAbility.GetZoneAbilityIcon"] = {
     key = "C_ZoneAbility.GetZoneAbilityIcon",
     name = "GetZoneAbilityIcon",
-    category = "combat_midnight",
+    category = "general",
     subcategory = "c_zoneability",
-    func = _G["C_ZoneAbility"] and _G["C_ZoneAbility"]["GetZoneAbilityIcon"],
     funcPath = "C_ZoneAbility.GetZoneAbilityIcon",
     params = { { name = "zoneAbilitySpellID", type = "number", default = nil } },
     returns = { { name = "zoneAbilityIconID", type = "number", canBeSecret = false } },
-    midnightImpact = "RESTRICTED",
-    protected = true,
+    midnightImpact = "NORMAL",
     midnightNote = "Secret behavior: SecretArguments=AllowedWhenUntainted",
 }

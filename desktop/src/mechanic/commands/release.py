@@ -3,17 +3,131 @@ Release pipeline commands for WoW addon development.
 Handles version bumping, changelog updates, and git operations.
 """
 
-from afd import CommandResult, success, error
-from afd.core.metadata import create_source
-from pydantic import BaseModel, Field
-from typing import Any, List, Optional
 import asyncio
 import re
 import subprocess
 from datetime import datetime
+from pathlib import Path
+from typing import Any, List, Optional
 
-# Use centralized config
+from afd import CommandResult, error, success
+from afd.core.metadata import create_source
+from pydantic import BaseModel, Field
+
 from ..config import find_addon_path
+from ._common import (
+    addon_not_found,
+    is_valid_version,
+    read_text_eol,
+    write_text_eol,
+)
+
+CHANGELOG_CATEGORIES = (
+    "Added",
+    "Changed",
+    "Deprecated",
+    "Removed",
+    "Fixed",
+    "Security",
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def _git(cwd: Path, *args: str, timeout: int = 30):
+    """Run git in ``cwd`` off the event loop (no shell; output decoded as UTF-8)."""
+    return await asyncio.to_thread(
+        subprocess.run,
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+
+
+def _git_missing():
+    return error(
+        code="GIT_NOT_FOUND",
+        message="Git is not installed or not in PATH",
+        suggestion="Install Git and ensure it's in your PATH",
+    )
+
+
+def _git_timeout(suggestion: str = "Check for large files or network issues"):
+    return error(
+        code="TIMEOUT", message="Git operation timed out", suggestion=suggestion
+    )
+
+
+def _invalid_version_error(version: str):
+    return error(
+        code="INVALID_VERSION",
+        message=f"Invalid version {version!r}",
+        suggestion="Use letters, digits, '.', '_', '+' or '-' only, e.g. 1.2.0",
+    )
+
+
+def normalize_category(category: str) -> Optional[str]:
+    for known in CHANGELOG_CATEGORIES:
+        if category.strip().lower() == known.lower():
+            return known
+    return None
+
+
+def _invalid_category_error(category: str):
+    return error(
+        code="INVALID_CATEGORY",
+        message=f"Unknown changelog category {category!r}",
+        suggestion=f"Use one of: {', '.join(CHANGELOG_CATEGORIES)}",
+    )
+
+
+def pick_toc(addon_path: Path, addon: str) -> Optional[Path]:
+    tocs = sorted(addon_path.glob("*.toc"))
+    return next((t for t in tocs if t.stem == addon), tocs[0] if tocs else None)
+
+
+def apply_version(content: str, version: str) -> str:
+    """Set ``## Version:`` in TOC text (LF newlines), appending it when missing."""
+    new_content, count = re.subn(
+        r"^(##[ \t]*Version:)[ \t]*.*$",
+        lambda m: f"{m.group(1)} {version}",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count:
+        return new_content
+    sep = "" if content.endswith("\n") or not content else "\n"
+    return f"{content}{sep}## Version: {version}\n"
+
+
+def format_changelog_entry(
+    version: str, category: str, message: str, today: str
+) -> str:
+    bullet = "\n  ".join(line.strip() for line in message.strip().splitlines())
+    return f"## [{version}] - {today}\n\n### {category}\n- {bullet}\n"
+
+
+def insert_changelog_entry(content: str, entry: str, addon: str) -> str:
+    """Put ``entry`` above the newest release heading, keeping any intro text."""
+    if not content.strip():
+        return (
+            f"# Changelog\n\nAll notable changes to {addon} will be documented in this file.\n\n"
+            + entry
+        )
+    heading = re.search(r"^## \[", content, re.MULTILINE)
+    if heading:
+        return content[: heading.start()] + entry + "\n" + content[heading.start() :]
+    if not re.match(r"\s*#[ \t]+\S", content):
+        content = "# Changelog\n\n" + content
+    return content.rstrip("\n") + "\n\n" + entry
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -48,50 +162,28 @@ def register_commands(server):
     async def bump_version(
         input: VersionBumpInput, context: Any = None
     ) -> CommandResult[VersionBumpResult]:
+        if not is_valid_version(input.version):
+            return _invalid_version_error(input.version)
+
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Find .toc file
-        toc_files = list(addon_path.glob("*.toc"))
-        if not toc_files:
+        main_toc = pick_toc(addon_path, input.addon)
+        if not main_toc:
             return error(
                 code="NO_TOC",
                 message="No .toc file found in addon folder",
                 suggestion="Ensure the addon has a valid .toc file",
             )
 
-        main_toc = None
-        for toc in toc_files:
-            if toc.stem == input.addon:
-                main_toc = toc
-                break
-        if not main_toc:
-            main_toc = toc_files[0]
+        content, eol = await asyncio.to_thread(read_text_eol, main_toc)
+        match = re.search(r"^##[ \t]*Version:[ \t]*(.*)$", content, re.MULTILINE)
+        old_version = match.group(1).strip() if match else None
 
-        # Read and update
-        content = main_toc.read_text(encoding="utf-8")
-        old_version = None
-
-        # Extract old version
-        match = re.search(r"^## Version:\s*(.+)$", content, re.MULTILINE)
-        if match:
-            old_version = match.group(1).strip()
-
-        # Replace version
-        new_content = re.sub(
-            r"^(## Version:)\s*.+$", f"\\1 {input.version}", content, flags=re.MULTILINE
+        await asyncio.to_thread(
+            write_text_eol, main_toc, apply_version(content, input.version), eol
         )
-
-        if new_content == content and "## Version:" not in content:
-            # Add version field if missing
-            new_content = content + f"\n## Version: {input.version}\n"
-
-        main_toc.write_text(new_content, encoding="utf-8")
 
         src = create_source(
             type="file",
@@ -121,7 +213,8 @@ def register_commands(server):
         version: str = Field(..., description="Version for the changelog entry")
         message: str = Field(..., description="Change description")
         category: str = Field(
-            "Changed", description="Category: Added, Changed, Fixed, Removed"
+            "Changed",
+            description="Category: Added, Changed, Deprecated, Removed, Fixed, Security",
         )
         path: Optional[str] = Field(None, description="Override path to addon folder")
 
@@ -140,30 +233,33 @@ def register_commands(server):
     async def add_changelog(
         input: ChangelogAddInput, context: Any = None
     ) -> CommandResult[ChangelogAddResult]:
-        addon_path = find_addon_path(input.addon, input.path)
-        if not addon_path:
+        if not is_valid_version(input.version):
+            return _invalid_version_error(input.version)
+        category = normalize_category(input.category)
+        if category is None:
+            return _invalid_category_error(input.category)
+        if not input.message.strip():
             return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
+                code="EMPTY_MESSAGE",
+                message="The changelog message is empty",
+                suggestion="Describe the change in one or two sentences",
             )
 
-        changelog_path = addon_path / "CHANGELOG.md"
-        today = datetime.now().strftime("%Y-%m-%d")
+        addon_path = find_addon_path(input.addon, input.path)
+        if not addon_path:
+            return addon_not_found(input.addon)
 
-        new_entry = f"\n## [{input.version}] - {today}\n\n### {input.category}\n- {input.message}\n"
+        changelog_path = addon_path / "CHANGELOG.md"
+        entry = format_changelog_entry(
+            input.version, category, input.message, datetime.now().strftime("%Y-%m-%d")
+        )
 
         if changelog_path.exists():
-            content = changelog_path.read_text(encoding="utf-8")
-            # Insert after header
-            if "# Changelog" in content:
-                content = content.replace("# Changelog", f"# Changelog{new_entry}", 1)
-            else:
-                content = new_entry + content
+            content, eol = await asyncio.to_thread(read_text_eol, changelog_path)
         else:
-            content = f"# Changelog\n\nAll notable changes to {input.addon} will be documented in this file.{new_entry}"
-
-        changelog_path.write_text(content, encoding="utf-8")
+            content, eol = "", "\n"
+        updated = insert_changelog_entry(content, entry, input.addon)
+        await asyncio.to_thread(write_text_eol, changelog_path, updated, eol)
 
         src = create_source(
             type="file",
@@ -172,6 +268,7 @@ def register_commands(server):
             location=str(changelog_path),
         )
 
+        preview = input.message.strip().splitlines()[0]
         return success(
             data=ChangelogAddResult(
                 addon=input.addon,
@@ -179,7 +276,8 @@ def register_commands(server):
                 changelog_file=str(changelog_path),
                 entry_added=True,
             ),
-            reasoning=f"Added changelog entry for v{input.version}: {input.message[:50]}...",
+            reasoning=f"Added changelog entry for v{input.version}: {preview[:50]}"
+            + ("..." if len(preview) > 50 else ""),
             sources=[src],
             confidence=1.0,
         )
@@ -201,108 +299,69 @@ def register_commands(server):
 
     @server.command(
         name="git.commit",
-        description="Stage all addon changes and create a git commit",
+        description="Stage all addon changes and create a git commit limited to the addon folder",
         input_schema=GitCommitInput,
         output_schema=GitCommitResult,
     )
     async def git_commit(
         input: GitCommitInput, context: Any = None
     ) -> CommandResult[GitCommitResult]:
+        if not input.message.strip():
+            return error(
+                code="EMPTY_MESSAGE",
+                message="The commit message is empty",
+                suggestion="Provide a commit message",
+            )
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
         try:
-            # Stage all changes
-            stage_result = await asyncio.to_thread(
-                subprocess.run,
-                ["git", "add", "-A", "--", "."],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if stage_result.returncode != 0:
+            stage = await _git(addon_path, "add", "-A", "--", ".")
+            if stage.returncode != 0:
                 return error(
                     code="GIT_STAGE_FAILED",
-                    message=stage_result.stderr.strip() or "Failed to stage changes",
+                    message=stage.stderr.strip() or "Failed to stage changes",
                     suggestion="Resolve the git error and retry the commit",
                 )
 
-            # Get staged file count
-            status = await asyncio.to_thread(
-                subprocess.run,
-                ["git", "diff", "--cached", "--name-only", "--", "."],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=10,
+            staged = await _git(
+                addon_path, "diff", "--cached", "--name-only", "--", ".", timeout=10
             )
-            if status.returncode != 0:
+            if staged.returncode != 0:
                 return error(
                     code="GIT_STATUS_FAILED",
-                    message=status.stderr.strip() or "Failed to inspect staged changes",
+                    message=staged.stderr.strip() or "Failed to inspect staged changes",
                     suggestion="Verify the addon path is inside a git repository",
                 )
-            files_staged = len([f for f in status.stdout.splitlines() if f.strip()])
+            files_staged = len([f for f in staged.stdout.splitlines() if f.strip()])
 
-            # Commit
-            commit_result = await asyncio.to_thread(
-                subprocess.run,
-                ["git", "commit", "-m", input.message],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+            # Nothing staged in the addon folder: never commit what else is staged
+            if files_staged == 0:
+                return success(
+                    data=GitCommitResult(
+                        addon=input.addon, message=input.message, files_staged=0
+                    ),
+                    reasoning="No changes to commit in the addon folder",
+                    confidence=1.0,
+                )
 
-            # Get commit hash
-            hash_result = await asyncio.to_thread(
-                subprocess.run,
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            commit_hash = (
-                hash_result.stdout.strip() if hash_result.returncode == 0 else None
-            )
-
+            # The pathspec keeps files staged elsewhere in the repository out of the commit
+            commit = await _git(addon_path, "commit", "-m", input.message, "--", ".")
+            if commit.returncode != 0:
+                return error(
+                    code="GIT_COMMIT_FAILED",
+                    message=commit.stderr.strip()
+                    or commit.stdout.strip()
+                    or "Git commit failed",
+                    suggestion="Resolve the git error and retry the commit",
+                )
+            head = await _git(addon_path, "rev-parse", "--short", "HEAD", timeout=10)
+            commit_hash = head.stdout.strip() if head.returncode == 0 else None
         except FileNotFoundError:
-            return error(
-                code="GIT_NOT_FOUND",
-                message="Git is not installed or not in PATH",
-                suggestion="Install Git and ensure it's in your PATH",
-            )
+            return _git_missing()
         except subprocess.TimeoutExpired:
-            return error(
-                code="TIMEOUT",
-                message="Git operation timed out",
-                suggestion="Check for large files or network issues",
-            )
-
-        commit_output = (commit_result.stdout + commit_result.stderr).lower()
-        if commit_result.returncode != 0 and "nothing to commit" in commit_output:
-            return success(
-                data=GitCommitResult(
-                    addon=input.addon, message=input.message, files_staged=0
-                ),
-                reasoning="No changes to commit",
-                confidence=1.0,
-            )
-        if commit_result.returncode != 0:
-            return error(
-                code="GIT_COMMIT_FAILED",
-                message=commit_result.stderr.strip()
-                or commit_result.stdout.strip()
-                or "Git commit failed",
-                suggestion="Resolve the git error and retry the commit",
-            )
+            return _git_timeout()
 
         src = create_source(
             type="git",
@@ -349,13 +408,11 @@ def register_commands(server):
     async def git_tag(
         input: GitTagInput, context: Any = None
     ) -> CommandResult[GitTagResult]:
+        if not is_valid_version(input.version):
+            return _invalid_version_error(input.version)
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
         tag_name = (
             f"v{input.version}" if not input.version.startswith("v") else input.version
@@ -363,50 +420,18 @@ def register_commands(server):
         tag_message = input.message or f"Release {tag_name}"
 
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["git", "tag", "-a", tag_name, "-m", tag_message],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except FileNotFoundError:
-            return error(
-                code="GIT_NOT_FOUND",
-                message="Git is not installed or not in PATH",
-                suggestion="Install Git and ensure it's in your PATH",
-            )
-        except subprocess.TimeoutExpired:
-            return error(
-                code="TIMEOUT",
-                message="Git operation timed out",
-                suggestion="Check for network issues",
-            )
-
-        if result.returncode != 0:
-            if "already exists" in result.stderr.lower():
+            result = await _git(addon_path, "tag", "-a", tag_name, "-m", tag_message)
+            if result.returncode != 0 and "already exists" in result.stderr.lower():
                 try:
-                    existing = await asyncio.to_thread(
-                        subprocess.run,
-                        [
-                            "git",
-                            "rev-parse",
-                            "--verify",
-                            f"refs/tags/{tag_name}^{{commit}}",
-                        ],
-                        cwd=str(addon_path),
-                        capture_output=True,
-                        text=True,
+                    existing = await _git(
+                        addon_path,
+                        "rev-parse",
+                        "--verify",
+                        f"refs/tags/{tag_name}^{{commit}}",
                         timeout=10,
                     )
-                    intended = await asyncio.to_thread(
-                        subprocess.run,
-                        ["git", "rev-parse", "--verify", "HEAD^{commit}"],
-                        cwd=str(addon_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
+                    intended = await _git(
+                        addon_path, "rev-parse", "--verify", "HEAD^{commit}", timeout=10
                     )
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     return error(
@@ -436,6 +461,12 @@ def register_commands(server):
                         "intended_commit": intended.stdout.strip(),
                     },
                 )
+        except FileNotFoundError:
+            return _git_missing()
+        except subprocess.TimeoutExpired:
+            return _git_timeout("Check for network issues")
+
+        if result.returncode != 0:
             return error(
                 code="GIT_ERROR",
                 message=f"Failed to create tag: {result.stderr}",
@@ -486,6 +517,47 @@ def register_commands(server):
         failed_step: Optional[str] = None
         recovery: List[str] = Field(default_factory=list)
 
+    async def preflight_release(addon_path: Path, tag: str):
+        """Return an error result when the repository cannot take this release."""
+        try:
+            valid_tag = await _git(addon_path, "check-ref-format", f"refs/tags/{tag}")
+            head = await _git(addon_path, "rev-parse", "--verify", "HEAD^{commit}")
+            existing = await _git(
+                addon_path, "show-ref", "--verify", "--quiet", f"refs/tags/{tag}"
+            )
+            staged = await _git(addon_path, "diff", "--cached", "--name-only")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return error(
+                code="PREFLIGHT_FAILED",
+                message=f"Git preflight failed: {exc}",
+                suggestion="Check Git availability and repository access",
+            )
+        if valid_tag.returncode or head.returncode or staged.returncode:
+            return error(
+                code="PREFLIGHT_FAILED",
+                message="Invalid release tag or Git repository without a readable HEAD/index",
+                suggestion="Use a valid version and a repository with an initial commit",
+            )
+        if existing.returncode not in (0, 1):
+            return error(
+                code="PREFLIGHT_FAILED",
+                message="Unable to inspect existing release tags",
+                suggestion="Resolve the Git reference error before releasing",
+            )
+        if existing.returncode == 0:
+            return error(
+                code="TAG_CONFLICT",
+                message=f"Release tag {tag} already exists",
+                suggestion="Choose a new version; release.all creates a new release commit and never moves existing tags",
+            )
+        if staged.stdout.strip():
+            return error(
+                code="STAGED_CHANGES",
+                message="The repository already contains staged changes",
+                suggestion="Commit or unstage existing changes before release.all so its commit scope is clear",
+            )
+        return None
+
     @server.command(
         name="release.all",
         description="Preflight and run version bump, changelog, commit and tag; supports dry_run",
@@ -495,15 +567,17 @@ def register_commands(server):
     async def release_all(
         input: ReleaseAllInput, context: Any = None
     ) -> CommandResult[ReleaseAllResult]:
+        if not is_valid_version(input.version):
+            return _invalid_version_error(input.version)
+        category = normalize_category(input.category)
+        if category is None:
+            return _invalid_category_error(input.category)
+
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
-        tocs = sorted(addon_path.glob("*.toc"))
-        if not tocs:
+            return addon_not_found(input.addon)
+        toc = pick_toc(addon_path, input.addon)
+        if not toc:
             return error(
                 code="NO_TOC",
                 message="No .toc file found",
@@ -511,52 +585,10 @@ def register_commands(server):
             )
         tag = input.version if input.version.startswith("v") else f"v{input.version}"
 
-        async def git(*args):
-            return await asyncio.to_thread(
-                subprocess.run,
-                ["git", *args],
-                cwd=str(addon_path),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+        failure = await preflight_release(addon_path, tag)
+        if failure is not None:
+            return failure
 
-        try:
-            valid_tag = await git("check-ref-format", f"refs/tags/{tag}")
-            head = await git("rev-parse", "--verify", "HEAD^{commit}")
-            existing = await git("show-ref", "--verify", "--quiet", f"refs/tags/{tag}")
-            staged = await git("diff", "--cached", "--name-only")
-            if valid_tag.returncode or head.returncode or staged.returncode:
-                return error(
-                    code="PREFLIGHT_FAILED",
-                    message="Invalid release tag or Git repository without a readable HEAD/index",
-                    suggestion="Use a valid version and a repository with an initial commit",
-                )
-            if existing.returncode not in (0, 1):
-                return error(
-                    code="PREFLIGHT_FAILED",
-                    message="Unable to inspect existing release tags",
-                    suggestion="Resolve the Git reference error before releasing",
-                )
-            if existing.returncode == 0:
-                return error(
-                    code="TAG_CONFLICT",
-                    message=f"Release tag {tag} already exists",
-                    suggestion="Choose a new version; release.all creates a new release commit and never moves existing tags",
-                )
-            if staged.stdout.strip():
-                return error(
-                    code="STAGED_CHANGES",
-                    message="The repository already contains staged changes",
-                    suggestion="Commit or unstage existing changes before release.all so its commit scope is clear",
-                )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return error(
-                code="PREFLIGHT_FAILED",
-                message=f"Git preflight failed: {exc}",
-                suggestion="Check Git availability and repository access",
-            )
-        toc = next((item for item in tocs if item.stem == input.addon), tocs[0])
         data = ReleaseAllResult(
             addon=input.addon,
             version=input.version,
@@ -598,7 +630,7 @@ def register_commands(server):
                     **common,
                     "version": input.version,
                     "message": input.message,
-                    "category": input.category,
+                    "category": category,
                 },
             ),
             (
@@ -616,7 +648,15 @@ def register_commands(server):
         ]
         for command, params in calls:
             result = await server.execute(command, params, context=context)
-            if not result.success:
+            failed_message = result.error.message if not result.success else None
+            # A release commit that recorded nothing would tag an unrelated commit
+            if (
+                result.success
+                and command == "git.commit"
+                and not result.data.commit_hash
+            ):
+                failed_message = "nothing was committed for the release"
+            if failed_message is not None:
                 data.failed_step = command
                 data.recovery = [
                     "Inspect git status and git diff (including --cached) before changing or retrying the release.",
@@ -625,13 +665,13 @@ def register_commands(server):
                 ]
                 failure = error(
                     code="RELEASE_PARTIAL_FAILURE",
-                    message=f"Release stopped at {command}: {result.error.message}",
+                    message=f"Release stopped at {command}: {failed_message}",
                     suggestion=data.recovery[0],
                     details={
                         "failed_step": command,
                         "steps_completed": data.steps_completed,
                         "recovery": data.recovery,
-                        "cause": result.error.model_dump(),
+                        "cause": result.error.model_dump() if result.error else None,
                     },
                 )
                 failure.data = data

@@ -8,11 +8,17 @@ the package import from creating a real ``~/.mechanic`` database.
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import tempfile
 from importlib.metadata import version
 from pathlib import Path
+
+# ``desktop/`` of the checkout this script runs from (its sources are only used
+# to learn which files the installed wheel must contain).
+SOURCE_ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
@@ -61,7 +67,70 @@ def main() -> int:
         assert schema_response.status_code == 200, schema_response.text
         assert "MechanicSchemaForm" in schema_response.text
 
-    print("wheel smoke: installed import, dashboard resource, and HTTP route passed")
+        # Every dashboard asset of the source tree must ship and be served with
+        # a sensible content type.
+        expected_types = {".js": "javascript", ".css": "text/css", ".html": "text/html"}
+        source_dashboard = SOURCE_ROOT / "dashboard"
+        assets = sorted(
+            p.name for p in source_dashboard.iterdir() if p.suffix in expected_types
+        )
+        assert {"index.html", "dashboard.css", "schema-form.js"} <= set(assets), assets
+        for name in assets:
+            assert files("mechanic.dashboard").joinpath(name).is_file(), name
+            response = client.get(f"/dashboard/{name}")
+            assert response.status_code == 200, (name, response.status_code)
+            kind = expected_types[Path(name).suffix]
+            assert kind in response.headers["content-type"], (
+                name,
+                response.headers["content-type"],
+            )
+
+        health = client.get("/health").json()
+        assert health["status"] == "healthy", health
+        assert health["version"] == mechanic.__version__, health
+        assert "port" in health, health
+
+        # Runtime data files must be packaged rather than found next to a checkout.
+        from mechanic.resources import resource_path
+
+        source_src = SOURCE_ROOT / "src"
+        resource_dir = source_src / "mechanic" / "resources"
+        packaged = sorted(
+            p.name for p in resource_dir.iterdir() if p.suffix in {".lua", ".json"}
+        )
+        assert "checksums.json" in packaged, packaged
+        for name in packaged:
+            assert resource_path(name).is_file(), f"missing packaged resource {name}"
+            # The throwaway venv may live inside the checkout (CI uses desktop/wheel-env),
+            # so only the source package directory counts as "next to a checkout".
+            assert not resource_path(name).resolve().is_relative_to(source_src), name
+
+        # The installed entry point must start, and --help must not create history.
+        data_dir = Path(os.environ["MECHANIC_DATA_DIR"])
+        help_run = subprocess.run(
+            [sys.executable, "-m", "mechanic.cli", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert help_run.returncode == 0, help_run.stdout + help_run.stderr
+        assert "Mechanic Desktop" in help_run.stdout, help_run.stdout
+        assert not data_dir.exists(), "--help initialized the history database"
+
+        setup_run = subprocess.run(
+            [sys.executable, "-m", "mechanic.cli", "--json", "setup", "--verify"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert setup_run.returncode == 0, setup_run.stdout + setup_run.stderr
+        summary = json.loads(setup_run.stdout)
+        assert summary["source_checkout"] is False, summary
+        assert summary["tools"] and summary["tools"][0]["name"] != "error", summary
+
+    print(
+        "wheel smoke: installed import, dashboard assets, resources, CLI and HTTP routes passed"
+    )
     return 0
 
 

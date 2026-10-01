@@ -1,8 +1,8 @@
 # Packaging and Release
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-22
+Last updated: 2026-09-30
 
 ---
 
@@ -138,12 +138,12 @@ git push origin main --tags
 
 ## Pre-Release Checklist
 
-Before tagging a release, you **MUST** complete the automated validation sweep using the CLI (No approval needed):
+Before tagging a release, complete the validation sweep with the `mech` CLI (or the same commands over MCP):
 
-1.  **Validate TOC**: Run `addon-dev validate --all` to ensure interface versions and files are correct.
-2.  **Full Linting**: Run `addon-dev lint <name>` to catch any remaining syntax or style issues.
-3.  **Unit Tests**: Run `addon-dev test <name>` to ensure all tests pass.
-4.  **Midnight Audit**: Run `addon-dev fix-deprecations <name>` to verify compatibility.
+1.  **Validate TOC**: Run `mech call addon.validate '{"addon": "<name>"}'` to ensure interface versions and files are correct.
+2.  **Full Linting**: Run `mech call addon.lint '{"addon": "<name>"}'` to catch any remaining syntax or style issues.
+3.  **Unit Tests**: Run `mech call addon.test '{"addon": "<name>"}'` to ensure all tests pass.
+4.  **Deprecation Scan**: Run `mech call addon.deprecations '{"addon": "<name>"}'` to check for deprecated API calls.
 
 ---
 
@@ -152,30 +152,31 @@ Before tagging a release, you **MUST** complete the automated validation sweep u
 Every push and pull request to the `main` branch triggers an automated quality gate in GitHub Actions.
 
 ### Automated Checks
-- **Linting**: Runs `addon-dev lint --all` to catch syntax and compatibility issues.
-- **Testing**: Runs `addon-dev test --all` to ensure no logic regressions.
-- **TOC Validation**: Runs `addon-dev validate --all` to verify interface versions and file existence.
-- **Formatting**: Runs StyLua check to ensure code style consistency.
+A typical addon workflow (this repository's own workflow lives in `.github/workflows/ci.yml`) runs:
+
+- **Linting**: Luacheck (`addon.lint` locally)
+- **Testing**: Busted or the sandbox (`addon.test` / `sandbox.test` locally)
+- **TOC Validation**: `addon.validate` for interface versions and file existence
+- **Formatting**: StyLua check (`addon.format` with `"check": true`)
 
 ### Weekly Audit
-A scheduled workflow runs every Monday at 9 AM UTC to scan all addons for new deprecated APIs using `addon-dev fix-deprecations`. If issues are found, a GitHub issue is automatically created.
+You can also schedule a workflow that runs `addon.deprecations` weekly and opens an issue when it reports findings.
 
 ---
 
 ## Automated Release Execution
 
-This workspace uses the **unified CLI** to automate versioning, changelog updates, and git tagging.
+The `mech` CLI automates versioning, changelog updates, and git tagging with a preflight.
 
-### CLI (Preferred)
 ```bash
-addon-dev release "Weekly" "1.3.0" "Midnight compatibility and performance fixes."
+# Preview first; nothing is changed
+mech release "Weekly" "1.3.0" "Midnight compatibility and performance fixes." --dry-run
+
+# Run the release
+mech release "Weekly" "1.3.0" "Midnight compatibility and performance fixes."
 ```
 
-### Cursor Command
-Trigger the release workflow using the native command:
-```powershell
-@release I'm ready to push "Weekly" v1.3.0
-```
+MCP clients call `release.all` with the same inputs (`addon`, `version`, `message`, `dry_run`). See [Release Automation](../integration/release.md).
 
 ---
 
@@ -184,7 +185,7 @@ Trigger the release workflow using the native command:
 ### Pre-Patch Preparation (Before Jan 20, 2026)
 
 1. **Test on PTR/Beta** when available
-2. **Update interface version** to 120000
+2. **Update interface version** to the current build (120000 for 12.0; this repository now uses 120100)
 3. **Add secret value handling** where needed
 4. **Test in instance content** (raids, M+)
 5. **Prepare fallback/degraded modes**
@@ -200,8 +201,8 @@ Midnight release  -> v2.0.0 (Interface: 120000)
 ### Multi-Version TOC
 
 ```toc
-## Interface: 120000
-## Interface-Retail: 120000
+## Interface: 120100
+## Interface-Retail: 120100
 
 ## Title: My Addon
 ## Version: 2.0.0

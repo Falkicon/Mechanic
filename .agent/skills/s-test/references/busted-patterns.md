@@ -133,16 +133,11 @@ return {
 
 ## Running Tests
 
-```bash
-# All tests
-mech call addon.test '{"addon": "MyAddon"}'
-
-# With coverage
-mech call addon.test '{"addon": "MyAddon", "coverage": true}'
-
-# Specific file
-busted tests/core_spec.lua
-
-# With tag
-busted --tags=unit
 ```
+addon.test(addon="MyAddon")                    # all tests (MCP tool)
+addon.test(addon="MyAddon", coverage=true)     # with coverage
+```
+
+By hand (people, in the addon folder): `busted tests/core_spec.lua`, `busted --tags=unit`.
+
+The lighter `sandbox.test` tool uses a smaller assertion set, no `.busted` config and loads only `Core/` ([s-test](../SKILL.md)).

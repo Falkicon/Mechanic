@@ -1,60 +1,38 @@
-<# 
+<#
 .SYNOPSIS
-    Syncs .claude content to .agent for Antigravity compatibility
+    Regenerates .agent/ (Antigravity layout) from the canonical .claude/ content.
 
 .DESCRIPTION
-    Copies commands → workflows, skills → skills, ecosystem → rules
-    Run from the Mechanic folder: .\\.claude\\sync-ide.ps1
+    Thin wrapper around .claude/sync_ide.py, which holds the logic so the same check can
+    run in tests and CI. .claude/ is canonical; .agent/ is generated output (skills,
+    workflows and rules/ecosystem.md). Run from anywhere:
+
+        .\.claude\sync-ide.ps1           # regenerate
+        .\.claude\sync-ide.ps1 -Check    # fail when .agent/ is out of sync
 #>
+param([switch]$Check)
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSScriptRoot
+$script = Join-Path $PSScriptRoot "sync_ide.py"
 
-Write-Host "Syncing .claude -> .agent..." -ForegroundColor Cyan
-
-# Ensure target directories exist
-$agentDir = Join-Path $root ".agent"
-$workflowsDir = Join-Path $agentDir "workflows"
-$skillsDir = Join-Path $agentDir "skills"
-$rulesDir = Join-Path $agentDir "rules"
-
-New-Item -ItemType Directory -Force -Path $workflowsDir | Out-Null
-New-Item -ItemType Directory -Force -Path $skillsDir | Out-Null
-New-Item -ItemType Directory -Force -Path $rulesDir | Out-Null
-
-# Source directories
-$claudeDir = Join-Path $root ".claude"
-$commandsDir = Join-Path $claudeDir "commands"
-$srcSkillsDir = Join-Path $claudeDir "skills"
-$ecosystemFile = Join-Path $srcSkillsDir "k-ecosystem\SKILL.md"
-
-# Sync commands → workflows (strip c- prefix, add YAML frontmatter)
-Write-Host "  commands/ -> workflows/ (with frontmatter)" -ForegroundColor Gray
-Get-ChildItem -Path $commandsDir -Filter "*.md" | ForEach-Object {
-    $srcFile = $_
-    # Strip c- prefix from filename
-    $newName = $srcFile.Name -replace "^c-", ""
-    $destFile = Join-Path $workflowsDir $newName
-    
-    # Read content and extract first line as description
-    $content = Get-Content -Path $srcFile.FullName -Raw
-    $lines = $content -split "`r?`n"
-    $description = $lines[0].Trim()
-    
-    # Add YAML frontmatter
-    $frontmatter = "---`ndescription: $description`n---`n`n"
-    $newContent = $frontmatter + $content
-    
-    Set-Content -Path $destFile -Value $newContent -NoNewline
-    Write-Host "    $($srcFile.Name) -> $newName" -ForegroundColor DarkGray
+# Probe every candidate on PATH: the Windows Store "python" stub exists but exits non-zero.
+$python = $null
+foreach ($candidate in @(@("py", "-3"), @("python3"), @("python"))) {
+    $extra = @($candidate | Select-Object -Skip 1)
+    foreach ($command in @(Get-Command $candidate[0] -All -ErrorAction SilentlyContinue)) {
+        $ok = $false
+        try {
+            $ErrorActionPreference = "Continue"
+            & $command.Source @extra --version *> $null
+            $ok = ($LASTEXITCODE -eq 0)
+        } catch { $ok = $false } finally { $ErrorActionPreference = "Stop" }
+        if ($ok) { $python = @($command.Source) + $extra; break }
+    }
+    if ($python) { break }
 }
+if (-not $python) { throw "Python 3 is required (py, python3 or python on PATH)." }
 
-# Sync skills → skills  
-Write-Host "  skills/ -> skills/" -ForegroundColor Gray
-Copy-Item -Path "$srcSkillsDir\*" -Destination $skillsDir -Recurse -Force
-
-# Sync ecosystem → rules
-Write-Host "  k-ecosystem/SKILL.md -> rules/ecosystem.md" -ForegroundColor Gray
-Copy-Item -Path $ecosystemFile -Destination (Join-Path $rulesDir "ecosystem.md") -Force
-
-Write-Host "Done!" -ForegroundColor Green
+$arguments = @($python | Select-Object -Skip 1) + @($script)
+if ($Check) { $arguments += "--check" }
+& $python[0] @arguments
+exit $LASTEXITCODE

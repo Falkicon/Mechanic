@@ -30,9 +30,8 @@ function test()
 end
 """
         depth_info = analyze_nesting_depth(code)
-        # Check that we track some depth
-        max_depth = max(d for _, d, _ in depth_info)
-        assert max_depth >= 1
+        assert max(d for _, d, _ in depth_info) == 1
+        assert [d for line, d, _ in depth_info if line == 4] == [1]
 
     def test_deep_nesting(self):
         """Test detection of deep nesting."""
@@ -54,8 +53,7 @@ function test()
 end
 """
         depth_info = analyze_nesting_depth(code)
-        max_depth = max(d for _, d, _ in depth_info)
-        assert max_depth >= 5
+        assert max(d for _, d, _ in depth_info) == 6
 
 
 class TestDeepNestingDetection:
@@ -89,8 +87,9 @@ function DeepFunction()
 end
 """)
         issues = find_deep_nesting(temp_addon, [lua_file], max_depth=5)
-        assert len(issues) >= 1
+        assert len(issues) == 1
         assert issues[0].category == ComplexityCategory.DEEP_NESTING.value
+        assert issues[0].value == 6
 
 
 class TestLongFunctions:
@@ -114,8 +113,9 @@ class TestLongFunctions:
         lua_file.write_text("\n".join(lines))
 
         issues = find_long_functions(temp_addon, [lua_file], max_lines=100)
-        assert len(issues) >= 1
+        assert len(issues) == 1
         assert issues[0].category == ComplexityCategory.LONG_FUNCTION.value
+        assert issues[0].name == "VeryLongFunction"
 
 
 class TestLongFiles:
@@ -160,8 +160,8 @@ function Calculate()
 end
 """)
         issues = find_magic_numbers(temp_addon, [lua_file])
-        # Should detect at least one magic number
-        assert len(issues) >= 1
+        # 42 is flagged; values below 10 and the comments are not
+        assert [i.name for i in issues] == ["Number 42"]
 
     def test_ignore_named_constants(self, temp_addon):
         """Test that named constants are not flagged."""

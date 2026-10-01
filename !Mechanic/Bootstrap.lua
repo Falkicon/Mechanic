@@ -20,7 +20,7 @@ _G.Mechanic = Mechanic
 _G.MechanicNS = ns  -- Shared namespace for main addon
 
 -- Version from metadata
-Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "1.4.2"
+Mechanic.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "unknown"
 Mechanic.isBootstrap = true  -- Flag indicating main addon not yet loaded
 
 -- Placeholder for main addon to populate
@@ -67,7 +67,6 @@ local defaults = {
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGOUT")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
@@ -87,9 +86,14 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         local target = _G.MECHANIC_DIAGNOSTIC_TARGET
         -- Queue files are shared by every account on this client. Never execute
         -- a character-bound request on another character or unknown identity.
-        local matches = not target or (not target.character or target.character == character)
-        if target and target.profile and target.profile ~= profile then
-            matches = false
+        -- A malformed (non-table) target fails closed, matching Core.
+        local matches = target == nil or type(target) == "table"
+        if matches and target then
+            if target.character and target.character ~= character then
+                matches = false
+            elseif target.profile and target.profile ~= profile then
+                matches = false
+            end
         end
         if not matches then
             _G.MECHANIC_LUA_QUEUE = nil
@@ -116,11 +120,6 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Process queues immediately (before main addon loads)
         Mechanic:ProcessLuaEvalQueue()
         Mechanic:ProcessAPITestQueue()
-        
-        -- Fire event for any listeners
-        if Mechanic.callbacks then
-            Mechanic.callbacks:Fire("MECHANIC_BOOTSTRAP_READY")
-        end
         
         self:UnregisterEvent("ADDON_LOADED")
     end
@@ -296,12 +295,6 @@ function Mechanic:OnMainAddonLoaded(mainAddon)
             end
         end
         ns.pendingRegistrations = nil
-    end
-    
-    -- Transfer pending API queue
-    if ns.pendingAPIQueue then
-        mainAddon.pendingAPIQueue = ns.pendingAPIQueue
-        ns.pendingAPIQueue = nil
     end
     
     -- Mark bootstrap complete

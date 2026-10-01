@@ -171,7 +171,7 @@ def test_cli_addon_output():
     runner = CliRunner()
     result = runner.invoke(main, ["addon.output"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "TARGET_NOT_FOUND" in result.output
 
 
@@ -180,7 +180,7 @@ def test_cli_addon_output_json():
     runner = CliRunner()
     result = runner.invoke(main, ["--json", "addon.output"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     data = json.loads(result.output)
     assert data["success"] is False
     assert data["error"]["code"] == "TARGET_NOT_FOUND"
@@ -191,7 +191,7 @@ def test_cli_addon_output_agent():
     runner = CliRunner()
     result = runner.invoke(main, ["--agent", "addon.output"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     assert "TARGET_NOT_FOUND" in result.output
 
 
@@ -385,7 +385,7 @@ def test_cli_agent_flag():
     runner = CliRunner()
     result = runner.invoke(main, ["--agent", "addon.output"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
 
 
 def test_cli_json_quiet_combined():

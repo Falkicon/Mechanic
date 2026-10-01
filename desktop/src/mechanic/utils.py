@@ -5,6 +5,10 @@ Utility functions for Mechanic Desktop.
 import subprocess
 import sys
 
+# Focusing the client and sending keys takes well under a second; a hung
+# PowerShell/osascript must not block the caller indefinitely.
+RELOAD_TIMEOUT_SECONDS = 15
+
 
 def trigger_wow_reload(keys: str = "^+r", delay: float = 0.1) -> bool:
     """
@@ -38,7 +42,10 @@ def _trigger_reload_windows(keys: str, delay: float) -> bool:
     # Escape single quotes for PowerShell
     keys = keys.replace("'", "''")
 
-    # Try multiple window titles common in WoW development
+    # Exact client window titles common in WoW development. AppActivate(title)
+    # matches any window whose title merely *starts* with the text (an Explorer
+    # window on the install folder, a browser tab...), so resolve the game's
+    # own process by exact title and activate it by process id instead.
     window_titles = [
         "World of Warcraft",
         "World of Warcraft (Beta)",
@@ -48,13 +55,13 @@ def _trigger_reload_windows(keys: str, delay: float) -> bool:
     ps_script = f"""
     $wshell = New-Object -ComObject WScript.Shell;
     $titles = @({", ".join(f"'{t}'" for t in window_titles)})
+    $game = Get-Process | Where-Object {{
+        $_.ProcessName -like 'Wow*' -and $titles -contains $_.MainWindowTitle
+    }} | Select-Object -First 1
     $found = $false
-    
-    foreach ($title in $titles) {{
-        if ($wshell.AppActivate($title)) {{
-            $found = $true
-            break
-        }}
+
+    if ($game -and $wshell.AppActivate($game.Id)) {{
+        $found = $true
     }}
 
     if ($found) {{
@@ -72,9 +79,10 @@ def _trigger_reload_windows(keys: str, delay: float) -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=RELOAD_TIMEOUT_SECONDS,
         )
         return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -114,8 +122,12 @@ def _trigger_reload_macos(keys: str, delay: float) -> bool:
 
     try:
         result = subprocess.run(
-            ["osascript", "-e", script], capture_output=True, text=True, check=False
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=RELOAD_TIMEOUT_SECONDS,
         )
         return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False

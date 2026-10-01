@@ -6,6 +6,13 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 
+# Retention caps keep the history database bounded for long-running dashboards.
+MAX_COMMAND_ROWS = 1000
+MAX_RELOAD_ROWS = 200
+# A single stored command result larger than this is replaced by a stub.
+MAX_RESULT_BYTES = 1_000_000
+
+
 class Storage:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -109,8 +116,13 @@ class Storage:
 
             # Extract tests and perf from data if available
             for addon, data in addons_data.items():
-                if "tests" in data:
-                    for test in data["tests"]:
+                if not isinstance(data, dict):
+                    continue
+                tests = data.get("tests")
+                if isinstance(tests, list):
+                    for test in tests:
+                        if not isinstance(test, dict):
+                            continue
                         cursor.execute(
                             "INSERT INTO test_results (reload_id, addon, test_name, passed, duration_ms, error_message) VALUES (?, ?, ?, ?, ?, ?)",
                             (
@@ -123,13 +135,27 @@ class Storage:
                             ),
                         )
 
-                if "perf" in data:
-                    perf = data["perf"]
+                perf = data.get("perf")
+                if isinstance(perf, dict):
                     cursor.execute(
                         "INSERT INTO perf_metrics (reload_id, addon, memory_kb, load_time_ms) VALUES (?, ?, ?, ?)",
                         (reload_id, addon, perf.get("memory"), perf.get("load_time")),
                     )
+            self._prune_reloads(cursor)
             return reload_id
+
+    @staticmethod
+    def _prune_reloads(cursor) -> None:
+        """Drop reload rows (and their child rows) beyond MAX_RELOAD_ROWS."""
+        cutoff = cursor.execute(
+            "SELECT id FROM reload_history ORDER BY id DESC LIMIT 1 OFFSET ?",
+            (MAX_RELOAD_ROWS,),
+        ).fetchone()
+        if cutoff is None:
+            return
+        for table in ("test_results", "perf_metrics"):
+            cursor.execute(f"DELETE FROM {table} WHERE reload_id <= ?", (cutoff[0],))
+        cursor.execute("DELETE FROM reload_history WHERE id <= ?", (cutoff[0],))
 
     @staticmethod
     def read_latest_metrics(db_path: Path):
@@ -165,6 +191,18 @@ class Storage:
         self, command: str, result: Dict[str, Any], addon: Optional[str] = None
     ) -> int:
         """Save a command execution result to the database."""
+        payload = json.dumps(result, default=str)
+        if len(payload) > MAX_RESULT_BYTES:
+            payload = json.dumps(
+                {
+                    "success": result.get("success", False),
+                    "error": result.get("error"),
+                    "data": None,
+                    "truncated": True,
+                    "original_bytes": len(payload),
+                },
+                default=str,
+            )
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -174,41 +212,82 @@ class Storage:
                     addon,
                     datetime.now().isoformat(),
                     result.get("success", False),
-                    json.dumps(result),
+                    payload,
                 ),
             )
-            return cursor.lastrowid
+            row_id = cursor.lastrowid
+            cursor.execute(
+                "DELETE FROM command_results WHERE id <= "
+                "(SELECT id FROM command_results ORDER BY id DESC LIMIT 1 OFFSET ?)",
+                (MAX_COMMAND_ROWS,),
+            )
+            return row_id
 
     def get_command_history(
-        self, command: Optional[str] = None, limit: int = 50
+        self,
+        command: Optional[str] = None,
+        limit: int = 50,
+        max_result_bytes: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Get command execution history, optionally filtered by command name."""
+        """Get command execution history, optionally filtered by command name.
+
+        With ``max_result_bytes`` set, results larger than that are not loaded:
+        the entry carries ``result: None``, ``result_truncated: True`` and
+        ``result_bytes`` instead; fetch one in full with ``get_command_result``.
+        """
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.row_factory = sqlite3.Row
 
-            if command:
-                rows = conn.execute(
-                    "SELECT * FROM command_results WHERE command = ? ORDER BY id DESC LIMIT ?",
-                    (command, limit),
-                ).fetchall()
+            columns = "id, command, addon, timestamp, success, length(result_json) AS result_bytes"
+            params: list = []
+            if max_result_bytes is None:
+                columns += ", result_json"
             else:
-                rows = conn.execute(
-                    "SELECT * FROM command_results ORDER BY id DESC LIMIT ?", (limit,)
-                ).fetchall()
+                columns += ", CASE WHEN length(result_json) <= ? THEN result_json END AS result_json"
+                params.append(max_result_bytes)
+            query = f"SELECT {columns} FROM command_results"
+            if command:
+                query += " WHERE command = ?"
+                params.append(command)
+            query += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+            rows = conn.execute(query, params).fetchall()
 
             results = []
             for row in rows:
                 entry = dict(row)
-                if entry.get("result_json"):
+                raw = entry.pop("result_json", None)
+                if raw is not None:
                     try:
-                        entry["result"] = json.loads(entry["result_json"])
-                        del entry["result_json"]
-                    except Exception:
+                        entry["result"] = json.loads(raw)
+                    except ValueError:
                         entry["result"] = None
+                else:
+                    entry["result"] = None
+                    if max_result_bytes is not None and entry["result_bytes"]:
+                        entry["result_truncated"] = True
                 results.append(entry)
 
             # Reverse so oldest is first (for history navigation)
             return list(reversed(results))
+
+    def get_command_result(self, result_id: int) -> Optional[Dict[str, Any]]:
+        """Return one stored command result in full, or None when it is gone."""
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT id, command, addon, timestamp, success, result_json "
+                "FROM command_results WHERE id = ?",
+                (result_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        entry = dict(row)
+        try:
+            entry["result"] = json.loads(entry.pop("result_json") or "null")
+        except ValueError:
+            entry["result"] = None
+        return entry
 
     def clear_command_history(self, command: Optional[str] = None) -> int:
         """Clear command history, optionally for a specific command only."""

@@ -31,6 +31,8 @@ todos:
     status: pending
 ---
 
+> **ARCHIVED - COMPLETED (reviewed 2026-09-30).** The migration this plan describes has shipped: `research.query`, `api.populate`/`api.generate`/`api.refresh`, `perf.*` and `assets.*` exist as `mech` commands (see [docs/migration-from-addon-dev.md](../../docs/migration-from-addon-dev.md)). The todo `status` values in the front matter were never updated and the paths, commands and `!Mechanic/desktop` locations below describe the plan at the time, not the current layout (the desktop tool lives in `desktop/`). Kept for historical context only.
+
 # Migrate ADDON_DEV/Tools to Mechanic CLI
 
 ## Scope
@@ -135,7 +137,7 @@ After sufficient migration period, remove `cli/` folder entirely.
 
 ## AFD Compliance Requirements
 
-Each migrated tool must follow [AFD principles](D:/Github/Falkicon/afd/AGENTS.md):
+Each migrated tool must follow the AFD principles (see the [`afd` package](https://pypi.org/project/afd/) that Mechanic now depends on):
 
 ### 1. Command-First Design
 

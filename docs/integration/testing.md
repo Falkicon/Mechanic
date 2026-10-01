@@ -50,24 +50,17 @@ MyAddon/
 
 ### Writing Tests
 
-Tests use a Busted-compatible API. Since WoW addons use `local _, ns = ...` for namespace access, you need a helper to load source files with proper varargs:
+Tests use a Busted-compatible API. WoW addons use `local _, ns = ...` for namespace access, but the sandbox loads files without varargs, so load modules with `require` and share the namespace through a global:
 
 ```lua
 -- Tests/Core/tracker_spec.lua
 
--- Set up globals for addon loading (sandbox pattern)
+-- Shared namespace table: sandbox-loaded files get no (addonName, ns) varargs,
+-- so the Core modules fall back to this global (local _, ns = ...; ns = ns or _G.ns)
 _G.ns = { Actions = {} }
 
--- Stub the vararg loader that WoW addons use
-local function loadAddonFile(path)
-    local chunk = loadfile(path)
-    if chunk then
-        chunk("MyAddon", _G.ns)  -- Pass addon name and namespace
-    end
-end
-
--- Load the Core layer files
-loadAddonFile("Core/Actions/tracker.lua")
+-- require resolves dotted module names beneath the addon folder only
+require("Core.Actions.tracker")
 local Tracker = _G.ns.Actions.Tracker
 
 -- Tests
@@ -109,7 +102,7 @@ end)
 mech call sandbox.generate
 
 # Run tests for an addon
-mech call sandbox.test -i '{"addon": "MyAddon"}'
+mech call sandbox.test '{"addon": "MyAddon"}'
 ```
 
 ### What Failures Look Like
@@ -131,17 +124,17 @@ Tests: 42 total, 41 passed, 1 failed
 - Check the line number in the stack trace
 - Look at what the test expected vs. what it got
 - Add `print()` statements temporarily to see intermediate values
-- Run with `--verbose` for more detail: `mech call sandbox.test -i '{"addon": "MyAddon", "verbose": true}'`
+- Run a subset with `filter`: `mech call sandbox.test '{"addon": "MyAddon", "filter": "capped"}'`. Failures are listed first in the result.
 
 ### How It Works
 
-1. `sandbox.generate` parses WoW's APIDefs and generates Lua stubs (~5000+ APIs)
-2. `sandbox.test` builds a test script with:
-   - WoW API stubs
-   - Test framework
-   - All `*.lua` files from `Core/` (source files)
-   - All `*_spec.lua` files from `Core/` and `Tests/` (test files)
-3. Tests run in plain Lua 5.1 with mocked WoW environment
+1. `sandbox.generate` turns the APIDefs in `Mechanic/UI/APIDefs` (about 4,500 APIs generated from the 12.0.1 Blizzard source) into Lua stubs. Stubs are optional for `sandbox.test`; without them the result notes that none were generated.
+2. `sandbox.test` runs a Lua 5.1 interpreter with:
+   - the WoW API stubs, if generated
+   - the packaged busted-style framework (no generated framework or external Busted is needed)
+   - the top-level `Core/*.lua` files (`init.lua` first). Subfolders are loaded by your specs with `require`.
+   - every `*_spec.lua` under `Core/` and `Tests/`
+3. Everything runs in a restricted environment: only whitelisted globals are available (no `os`, `io`, `package`, `debug`, `dofile`, `loadfile`, `load`, `getfenv`/`setfenv`, `string.dump`), `require` cannot leave the addon folder, runs time out (30 seconds for `sandbox.exec`, 60 seconds for `sandbox.test`) and output is capped at 256 KB. Memory is not limited. Use `addon.test` (Busted) for specs that need real file or process access.
 
 ---
 
@@ -159,7 +152,7 @@ MyAddon/
 
 ### Example Test File
 
-See [Flightsim/Tests/helpers_spec.lua](../../../Flightsim/Tests/helpers_spec.lua)
+This pattern comes from the Flightsim addon (sibling repository):
 
 ```lua
 -- Tests/helpers_spec.lua
@@ -207,10 +200,10 @@ end)
 
 ```bash
 # Run all tests
-mech call addon.test -i '{"addon": "MyAddon"}'
+mech call addon.test '{"addon": "MyAddon"}'
 
 # With coverage
-mech call addon.test -i '{"addon": "MyAddon", "coverage": true}'
+mech call addon.test '{"addon": "MyAddon", "coverage": true}'
 ```
 
 ---
