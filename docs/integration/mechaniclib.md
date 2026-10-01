@@ -35,7 +35,7 @@ end
 
 ## Full Registration (All Features)
 
-See [Flightsim](../../../Flightsim/Flightsim.lua) for a complete example:
+The Flightsim addon (a sibling repository, not part of this repo) registers every capability:
 
 ```lua
 MechanicLib:Register(ADDON_NAME, {
@@ -75,13 +75,14 @@ MechanicLib:Register(ADDON_NAME, {
         end,
     },
     
-    -- Settings exposed in Mechanic UI
+    -- Settings exposed in Mechanic UI (an AceConfig-3.0 options "args" table)
     settings = {
         debugMode = {
             type = "toggle",
             name = "Debug Mode",
-            get = function() return MyAddonDB.profile.debugMode end,
-            set = function(v) MyAddonDB.profile.debugMode = v end,
+            order = 1,
+            get = function(info) return MyAddonDB.profile.debugMode end,
+            set = function(info, value) MyAddonDB.profile.debugMode = value end,
         },
     },
 })
@@ -99,8 +100,8 @@ MechanicLib:Register(ADDON_NAME, {
 | `tests` | table | Testing integration hooks |
 | `performance` | table | Performance metrics hooks |
 | `tools` | table | Custom tools panel |
-| `inspect` | table | Frame watch list |
-| `settings` | table | Exposed settings |
+| `inspect` | table | Frame watch list; `getWatchFrames()` is called when you register, so register after your frames exist |
+| `settings` | table | AceConfig-3.0 `args` table shown under Mechanic's options; `get`/`set` receive `info` first (`set(info, value)`) |
 
 ---
 

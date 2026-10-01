@@ -17,7 +17,7 @@ Tools are **actions**. Tests are **assertions**.
 
 ## Button-Based Tools Panel
 
-**Example:** See [Flightsim/Config.lua](../../../Flightsim/Config.lua)
+**Example:** the Flightsim addon (sibling repository) builds its tools panel this way.
 
 ```lua
 --- Create a button helper
@@ -141,5 +141,5 @@ MechanicLib:Register(ADDON_NAME, {
 ## Related Guides
 
 - [MechanicLib Registration](./mechaniclib.md)
-- [Tests Integration](./tests.md)
+- [Test Integration](./testing.md)
 - [Console Integration](./console.md)

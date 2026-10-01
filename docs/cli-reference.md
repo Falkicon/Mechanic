@@ -1,6 +1,6 @@
 # CLI Reference
 
-> Auto-generated from `mechanic-desktop` v0.2.1 on 2026-09-05
+> Auto-generated from `mechanic-desktop` v0.5.0 on 2026-09-30
 
 This document lists all available Mechanic CLI commands and their input parameters.
 Examples are invocation templates: replace placeholders and supply valid values for your addon. Empty arrays/objects and numeric samples illustrate JSON types, not every command's validation rules. For complete schemas and mutation metadata, use `mech --json call commands.list`.
@@ -9,14 +9,18 @@ Examples are invocation templates: replace placeholders and supply valid values 
 
 | Command | Description |
 |---------|-------------|
+| `commands.list` | List command schemas and mutation metadata |
 | `dashboard.metrics` | Get the latest reload and test metrics from the local histor... |
+| `diagnostic.metrics` | Read bounded desktop overhead and optional explicitly select... |
+| `diagnostic.targets` | List deterministic client/account/character/profile diagnost... |
 | `server.shutdown` | Gracefully shut down the Mechanic Desktop server |
 | `sv.discover` | Automatically discover SavedVariables paths for all WoW flav... |
 | `sv.parse` | Parse a WoW SavedVariables file and extract !Mechanic data |
+| `system.pick_file` | Open a native file picker dialog to select a file (Windows o... |
 | `addon.complexity` | Detect code complexity issues in a WoW addon (nesting, long ... |
 | `addon.create` | Create a new WoW addon from a template |
 | `addon.deadcode` | Detect dead code in a WoW addon (unused functions, orphaned ... |
-| `addon.deprecations` | Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-1... |
+| `addon.deprecations` | Scan a WoW addon's Lua files for deprecated API calls |
 | `addon.format` | Run StyLua formatter on a WoW addon |
 | `addon.lint` | Run Luacheck linter on a WoW addon |
 | `addon.output` | Get all addon output (errors, tests, console) for agent cons... |
@@ -25,19 +29,19 @@ Examples are invocation templates: replace placeholders and supply valid values 
 | `addon.test` | Run Busted unit tests on a WoW addon |
 | `addon.validate` | Validate a WoW addon's .toc file for common issues |
 | `changelog.add` | Add an entry to the addon's CHANGELOG.md |
-| `git.commit` | Stage all addon changes and create a git commit |
+| `git.commit` | Stage all addon changes and create a git commit limited to t... |
 | `git.tag` | Create an annotated git tag for an addon release |
+| `release.all` | Preflight and run version bump, changelog, commit and tag; s... |
 | `version.bump` | Update the version in a WoW addon's .toc file |
 | `atlas.scan` | Scan wow-ui-source for atlas icons and generate searchable i... |
 | `atlas.search` | Search Blizzard UI atlas icons by name pattern (supports wil... |
 | `locale.extract` | Extract potential localizable strings from addon code |
 | `locale.validate` | Validate locale coverage against the enUS baseline |
+| `env.status` | Get Mechanic environment configuration and status |
 | `libs.check` | Check addon library status against libs.json config |
 | `libs.init` | Creates a libs.json config file from currently installed lib... |
 | `libs.sync` | Sync addon libraries based on libs.json config |
 | `tools.status` | Check the status of development tools (luacheck, stylua, etc... |
-| `docs.generate` | Generate CLI reference documentation from registered command... |
-| `docs.stale` | Detect stale or broken documentation in a WoW addon |
 | `api.download` | Download FrameXML from Townlong Yak and optionally refresh A... |
 | `api.generate` | Generate APIDefs Lua files from api_database.json for Mechan... |
 | `api.info` | Get detailed information about a specific WoW API |
@@ -47,32 +51,42 @@ Examples are invocation templates: replace placeholders and supply valid values 
 | `api.refresh` | Full refresh: parse Blizzard docs and regenerate all APIDefs... |
 | `api.search` | Search WoW APIs by name pattern. Works offline (reads static... |
 | `api.stats` | Get statistics about available WoW APIs |
-| `assets.list` | List asset files in an addon's assets_source and assets fold... |
-| `assets.sync` | Sync addon assets: convert PNG to TGA and copy other files f... |
-| `commands.list` | List command schemas and mutation metadata |
-| `diagnostic.metrics` | Read bounded desktop overhead and optional explicitly select... |
-| `diagnostic.targets` | List deterministic client/account/character/profile diagnost... |
-| `env.status` | Get Mechanic environment configuration and status |
-| `fencore-catalog` | Get full catalog of FenCore logic domains and functions |
-| `fencore-info` | Get detailed info about a specific FenCore function |
-| `fencore-search` | Search FenCore functions by name or description |
 | `lua.queue` | Queue Lua code snippets for in-game execution. After running... |
 | `lua.results` | Get results from the last Lua eval queue execution |
+| `sandbox.exec` | Execute Lua code in a restricted sandbox with WoW API stubs.... |
+| `sandbox.generate` | Generate WoW API stubs from APIDefs for sandbox testing. A n... |
+| `sandbox.status` | Get status of generated WoW API stubs |
+| `sandbox.test` | Run an addon's *_spec.lua tests (Core/ and Tests/) in the re... |
 | `perf.baseline` | Record a performance baseline measurement for an addon |
 | `perf.compare` | Compare current performance against baseline and detect regr... |
 | `perf.list` | List all addons with performance baselines |
 | `perf.report` | Generate a performance report showing history and trends |
-| `release.all` | Preflight and run version bump, changelog, commit and tag; s... |
+| `assets.list` | List asset files in an addon's assets_source and assets fold... |
+| `assets.sync` | Sync addon assets: convert PNG to TGA and copy other files f... |
 | `research.query` | Search the web for addon development information using Gemin... |
-| `sandbox.exec` | Execute Lua code in sandbox environment with WoW API stubs |
-| `sandbox.generate` | Generate WoW API stubs from APIDefs database for sandbox tes... |
-| `sandbox.status` | Get status of generated WoW API stubs |
-| `sandbox.test` | Run Busted tests for an addon's Core layer with WoW API stub... |
-| `system.pick_file` | Open a native file picker dialog to select a file |
+| `fencore-catalog` | Get full catalog of FenCore logic domains and functions |
+| `fencore-info` | Get detailed info about a specific FenCore function |
+| `fencore-search` | Search FenCore functions by name or description |
+| `docs.generate` | Generate CLI reference documentation from registered command... |
+| `docs.stale` | Detect stale or broken documentation in a WoW addon |
 
 ---
 
 ## Core Commands
+
+### `commands.list`
+
+List command schemas and mutation metadata
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call commands.list '{}'
+```
+
+---
 
 ### `dashboard.metrics`
 
@@ -84,6 +98,38 @@ Get the latest reload and test metrics from the local history
 
 ```bash
 mech call dashboard.metrics '{}'
+```
+
+---
+
+### `diagnostic.metrics`
+
+Read bounded desktop overhead and optional explicitly selected addon snapshot
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target` | `object \| null` | No (default: `None`) | Explicit target to include its last saved addon overhead snapshot |
+
+**Example:**
+
+```bash
+mech call diagnostic.metrics '{}'
+```
+
+---
+
+### `diagnostic.targets`
+
+List deterministic client/account/character/profile diagnostic targets
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call diagnostic.targets '{}'
 ```
 
 ---
@@ -135,6 +181,25 @@ mech call sv.parse '{"file_path": "<file_path>"}'
 
 ---
 
+### `system.pick_file`
+
+Open a native file picker dialog to select a file (Windows only)
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | `string` | No (default: `'Select File'`) | Title of the dialog window |
+| `filter` | `string` | No (default: `'All Files (*.*)\|*.*'`) | File filter (e.g., 'Text Files (*.txt)\|*.txt') |
+
+**Example:**
+
+```bash
+mech call system.pick_file '{}'
+```
+
+---
+
 ## Development Commands
 
 ### `addon.complexity`
@@ -151,6 +216,7 @@ Detect code complexity issues in a WoW addon (nesting, long functions, magic num
 | `max_nesting` | `integer` | No (default: `5`) | Maximum allowed nesting depth |
 | `max_function_lines` | `integer` | No (default: `100`) | Maximum lines per function |
 | `max_file_lines` | `integer` | No (default: `500`) | Maximum lines per file |
+| `limit` | `integer` | No (default: `200`) | Maximum issues returned, most severe first (counts cover all issues) |
 
 **Example:**
 
@@ -192,6 +258,7 @@ Detect dead code in a WoW addon (unused functions, orphaned files, etc.)
 | `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
 | `categories` | `array \| null` | No (default: `None`) | Specific categories to check (default: all) |
 | `include_suspicious` | `boolean` | No (default: `True`) | Include lower-confidence findings |
+| `limit` | `integer` | No (default: `200`) | Maximum issues returned, most severe first (counts cover all issues) |
 
 **Example:**
 
@@ -203,7 +270,7 @@ mech call addon.deadcode '{"addon": "<addon>"}'
 
 ### `addon.deprecations`
 
-Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)
+Scan a WoW addon's Lua files for deprecated API calls
 
 **Parameters:**
 
@@ -211,7 +278,6 @@ Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)
 |-------|------|----------|-------------|
 | `addon` | `string` | Yes | Name of the addon to scan |
 | `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
-| `fix` | `boolean` | No (default: `False`) | Attempt to auto-fix deprecated calls |
 | `category` | `string \| null` | No (default: `None`) | Filter by category (e.g., spells, items, containers) |
 | `min_severity` | `string` | No (default: `'warning'`) | Minimum severity: info, warning, or error |
 
@@ -253,7 +319,6 @@ Run Luacheck linter on a WoW addon
 |-------|------|----------|-------------|
 | `addon` | `string` | Yes | Name of the addon to lint |
 | `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
-| `fix` | `boolean` | No (default: `False`) | Not applicable for Luacheck (read-only) |
 
 **Example:**
 
@@ -294,6 +359,7 @@ Detect security issues in a WoW addon (combat lockdown, secret values, taint)
 | `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
 | `categories` | `array \| null` | No (default: `None`) | Specific categories to check (default: all) |
 | `include_suspicious` | `boolean` | No (default: `True`) | Include lower-confidence findings |
+| `limit` | `integer` | No (default: `200`) | Maximum issues returned, most severe first (counts cover all issues) |
 
 **Example:**
 
@@ -375,7 +441,7 @@ Add an entry to the addon's CHANGELOG.md
 | `addon` | `string` | Yes | Name of the addon |
 | `version` | `string` | Yes | Version for the changelog entry |
 | `message` | `string` | Yes | Change description |
-| `category` | `string` | No (default: `'Changed'`) | Category: Added, Changed, Fixed, Removed |
+| `category` | `string` | No (default: `'Changed'`) | Category: Added, Changed, Deprecated, Removed, Fixed, Security |
 | `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
 
 **Example:**
@@ -388,7 +454,7 @@ mech call changelog.add '{"addon": "<addon>","version": "<version>","message": "
 
 ### `git.commit`
 
-Stage all addon changes and create a git commit
+Stage all addon changes and create a git commit limited to the addon folder
 
 **Parameters:**
 
@@ -423,6 +489,29 @@ Create an annotated git tag for an addon release
 
 ```bash
 mech call git.tag '{"addon": "<addon>","version": "<version>"}'
+```
+
+---
+
+### `release.all`
+
+Preflight and run version bump, changelog, commit and tag; supports dry_run
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon |
+| `version` | `string` | Yes | New version string |
+| `message` | `string` | Yes | Changelog entry and release description |
+| `category` | `string` | No (default: `'Changed'`) | Changelog category |
+| `path` | `string \| null` | No (default: `None`) | Override path |
+| `dry_run` | `boolean` | No (default: `False`) | Validate and preview without changing files, index, commits or tags |
+
+**Example:**
+
+```bash
+mech call release.all '{"addon": "<addon>","version": "<version>","message": "<message>"}'
 ```
 
 ---
@@ -528,6 +617,20 @@ mech call locale.validate '{"addon": "<addon>"}'
 
 ## Environment Commands
 
+### `env.status`
+
+Get Mechanic environment configuration and status
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call env.status '{}'
+```
+
+---
+
 ### `libs.check`
 
 Check addon library status against libs.json config
@@ -575,7 +678,7 @@ Sync addon libraries based on libs.json config
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `addon` | `string` | Yes | Name of the addon to sync |
-| `source` | `string \| null` | No (default: `None`) | Source library path (defaults to ADDON_DEV Libs) |
+| `source` | `string \| null` | No (default: `None`) | Source library path (defaults to <dev_path>/Libs, then <dev_path>/MechanicLocal/Libs) |
 | `dry_run` | `boolean` | No (default: `False`) | Preview changes without applying |
 | `force` | `boolean` | No (default: `False`) | Force update existing libraries (replaces them) |
 | `remove_extra` | `boolean` | No (default: `False`) | Remove libraries not in config |
@@ -604,49 +707,7 @@ mech call tools.status '{}'
 
 ---
 
-## Documentation Commands
-
-### `docs.generate`
-
-Generate CLI reference documentation from registered commands
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `output_path` | `string \| null` | No (default: `None`) | Output file path. Defaults to docs/cli-reference.md |
-| `format` | `string` | No (default: `'markdown'`) | Output format: 'markdown' or 'json' |
-
-**Example:**
-
-```bash
-mech call docs.generate '{}'
-```
-
----
-
-### `docs.stale`
-
-Detect stale or broken documentation in a WoW addon
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon to analyze |
-| `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
-| `include_suspicious` | `boolean` | No (default: `True`) | Include lower-confidence findings |
-| `commits_threshold` | `integer` | No (default: `10`) | Flag docs not updated in this many commits |
-
-**Example:**
-
-```bash
-mech call docs.stale '{"addon": "<addon>"}'
-```
-
----
-
-## Other Commands
+## API Reference Commands
 
 ### `api.download`
 
@@ -656,8 +717,8 @@ Download FrameXML from Townlong Yak and optionally refresh API definitions
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `build_id` | `string \| null` | No (default: `None`) | Specific build ID to download (e.g., '64889'). If not provided, fetches latest. |
-| `output_path` | `string \| null` | No (default: `None`) | Where to extract the download. Defaults to _dev_/framexml/{version} |
+| `build_id` | `string \| null` | No (default: `None`) | Build ID to download (digits only, e.g., '64889'). Required. |
+| `output_path` | `string \| null` | No (default: `None`) | Where to extract the download. Defaults to <data_dir>/framexml/{version} |
 | `refresh` | `boolean` | No (default: `True`) | Run api.refresh after download |
 
 **Example:**
@@ -670,14 +731,15 @@ mech call api.download '{}'
 
 ### `api.generate`
 
-Generate APIDefs Lua files from api_database.json for Mechanic
+Generate APIDefs Lua files from api_database.json for Mechanic (defaults to the repository's Mechanic/UI/APIDefs)
 
 **Parameters:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `database_path` | `string \| null` | No (default: `None`) | Path to api_database.json (defaults to data_dir) |
-| `output_path` | `string \| null` | No (default: `None`) | Output path for APIDefs (defaults to Mechanic/UI/APIDefs) |
+| `output_path` | `string \| null` | No (default: `None`) | Output folder for APIDefs (defaults to the repository's Mechanic/UI/APIDefs). Must be named 'APIDefs' unless allow_any_output_dir is set. |
+| `allow_any_output_dir` | `boolean` | No (default: `False`) | Allow an output folder that is not named 'APIDefs' |
 
 **Example:**
 
@@ -773,6 +835,9 @@ Full refresh: parse Blizzard docs and regenerate all APIDefs in one step
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `source_path` | `string` | Yes | Path to wow-ui-source repository root or Townlong Yak extract |
+| `output_path` | `string \| null` | No (default: `None`) | APIDefs output folder (see api.generate) |
+| `database_path` | `string \| null` | No (default: `None`) | api_database.json location (defaults to data_dir) |
+| `allow_any_output_dir` | `boolean` | No (default: `False`) | Allow an output folder that is not named 'APIDefs' |
 
 **Example:**
 
@@ -817,154 +882,7 @@ mech call api.stats '{}'
 
 ---
 
-### `assets.list`
-
-List asset files in an addon's assets_source and assets folders
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon |
-
-**Example:**
-
-```bash
-mech call assets.list '{"addon": "<addon>"}'
-```
-
----
-
-### `assets.sync`
-
-Sync addon assets: convert PNG to TGA and copy other files from assets_source to assets
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of the addon to sync assets for |
-| `verbose` | `boolean` | No (default: `False`) | Show detailed output |
-
-**Example:**
-
-```bash
-mech call assets.sync '{"addon": "<addon>"}'
-```
-
----
-
-### `commands.list`
-
-List command schemas and mutation metadata
-
-**Parameters:** None
-
-**Example:**
-
-```bash
-mech call commands.list '{}'
-```
-
----
-
-### `diagnostic.metrics`
-
-Read bounded desktop overhead and optional explicitly selected addon snapshot
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `target` | `object \| null` | No (default: `None`) | Explicit target to include its last saved addon overhead snapshot |
-
-**Example:**
-
-```bash
-mech call diagnostic.metrics '{}'
-```
-
----
-
-### `diagnostic.targets`
-
-List deterministic client/account/character/profile diagnostic targets
-
-**Parameters:** None
-
-**Example:**
-
-```bash
-mech call diagnostic.targets '{}'
-```
-
----
-
-### `env.status`
-
-Get Mechanic environment configuration and status
-
-**Parameters:** None
-
-**Example:**
-
-```bash
-mech call env.status '{}'
-```
-
----
-
-### `fencore-catalog`
-
-Get full catalog of FenCore logic domains and functions
-
-**Parameters:** None
-
-**Example:**
-
-```bash
-mech call fencore-catalog '{}'
-```
-
----
-
-### `fencore-info`
-
-Get detailed info about a specific FenCore function
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `domain` | `string` | Yes | Domain name (e.g., 'Math') |
-| `function` | `string` | Yes | Function name (e.g., 'Clamp') |
-
-**Example:**
-
-```bash
-mech call fencore-info '{"domain": "<domain>","function": "<function>"}'
-```
-
----
-
-### `fencore-search`
-
-Search FenCore functions by name or description
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `query` | `string` | Yes | Search query (partial match on name or description) |
-| `limit` | `integer` | No (default: `20`) | Maximum results to return |
-
-**Example:**
-
-```bash
-mech call fencore-search '{"query": "<query>"}'
-```
-
----
+## Testing Commands
 
 ### `lua.queue`
 
@@ -1003,6 +921,80 @@ mech call lua.results '{}'
 ```
 
 ---
+
+### `sandbox.exec`
+
+Execute Lua code in a restricted sandbox with WoW API stubs. User code sees only whitelisted globals (no os, io, package, debug, require, dofile, loadfile, string.dump or bytecode loading); runs for at most 30s and prints at most 256 KB.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | `string` | Yes | Lua code to execute |
+| `addon` | `string \| null` | No (default: `None`) | Name of addon to load before execution (looks in _dev_ folder) |
+| `load_stubs` | `boolean` | No (default: `True`) | Whether to load WoW API stubs |
+
+**Example:**
+
+```bash
+mech call sandbox.exec '{"code": "<code>"}'
+```
+
+---
+
+### `sandbox.generate`
+
+Generate WoW API stubs from APIDefs for sandbox testing. A namespace is regenerated in place; existing stubs are kept unless force is set or the APIDefs are newer.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `namespace` | `string \| null` | No (default: `None`) | Specific namespace to regenerate in place (e.g., 'C_Spell'); the other namespaces in an existing stubs file are kept. If not provided, generates all. |
+| `force` | `boolean` | No (default: `False`) | Regenerate all stubs even if they are newer than the APIDefs |
+
+**Example:**
+
+```bash
+mech call sandbox.generate '{}'
+```
+
+---
+
+### `sandbox.status`
+
+Get status of generated WoW API stubs
+
+**Parameters:** None
+
+**Example:**
+
+```bash
+mech call sandbox.status '{}'
+```
+
+---
+
+### `sandbox.test`
+
+Run an addon's *_spec.lua tests (Core/ and Tests/) in the restricted sandbox with WoW API stubs and the bundled busted-style framework. filter limits tests by name; failures are listed first.
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of addon to test (looks in _dev_ folder) |
+| `filter` | `string \| null` | No (default: `None`) | Only run tests whose full name contains this text (case-insensitive) |
+
+**Example:**
+
+```bash
+mech call sandbox.test '{"addon": "<addon>"}'
+```
+
+---
+
+## Performance Commands
 
 ### `perf.baseline`
 
@@ -1080,28 +1072,46 @@ mech call perf.report '{"addon": "<addon>"}'
 
 ---
 
-### `release.all`
+## Assets Commands
 
-Preflight and run version bump, changelog, commit and tag; supports dry_run
+### `assets.list`
+
+List asset files in an addon's assets_source and assets folders
 
 **Parameters:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `addon` | `string` | Yes | Name of the addon |
-| `version` | `string` | Yes | New version string |
-| `message` | `string` | Yes | Changelog entry and release description |
-| `category` | `string` | No (default: `'Changed'`) | Changelog category |
-| `path` | `string \| null` | No (default: `None`) | Override path |
-| `dry_run` | `boolean` | No (default: `False`) | Validate and preview without changing files, index, commits or tags |
 
 **Example:**
 
 ```bash
-mech call release.all '{"addon": "<addon>","version": "<version>","message": "<message>"}'
+mech call assets.list '{"addon": "<addon>"}'
 ```
 
 ---
+
+### `assets.sync`
+
+Sync addon assets: convert PNG to TGA and copy other files from assets_source to assets; removes only files a previous sync generated; supports dry_run
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon to sync assets for |
+| `dry_run` | `boolean` | No (default: `False`) | Report what would be converted, copied and removed without changing files |
+
+**Example:**
+
+```bash
+mech call assets.sync '{"addon": "<addon>"}'
+```
+
+---
+
+## Research Commands
 
 ### `research.query`
 
@@ -1123,93 +1133,105 @@ mech call research.query '{"query": "<query>"}'
 
 ---
 
-### `sandbox.exec`
+## FenCore Commands
 
-Execute Lua code in sandbox environment with WoW API stubs
+### `fencore-catalog`
 
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `code` | `string` | Yes | Lua code to execute |
-| `addon` | `string \| null` | No (default: `None`) | Name of addon to load before execution (looks in _dev_ folder) |
-| `load_stubs` | `boolean` | No (default: `True`) | Whether to load WoW API stubs |
-
-**Example:**
-
-```bash
-mech call sandbox.exec '{"code": "<code>"}'
-```
-
----
-
-### `sandbox.generate`
-
-Generate WoW API stubs from APIDefs database for sandbox testing
+Get full catalog of FenCore logic domains and functions
 
 **Parameters:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `namespace` | `string \| null` | No (default: `None`) | Specific namespace to generate (e.g., 'C_Spell'). If not provided, generates all. |
-| `force` | `boolean` | No (default: `False`) | Regenerate even if stubs exist |
+| `target` | `object \| null` | No (default: `None`) |  |
 
 **Example:**
 
 ```bash
-mech call sandbox.generate '{}'
+mech call fencore-catalog '{}'
 ```
 
 ---
 
-### `sandbox.status`
+### `fencore-info`
 
-Get status of generated WoW API stubs
-
-**Parameters:** None
-
-**Example:**
-
-```bash
-mech call sandbox.status '{}'
-```
-
----
-
-### `sandbox.test`
-
-Run Busted tests for an addon's Core layer with WoW API stubs
+Get detailed info about a specific FenCore function
 
 **Parameters:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `addon` | `string` | Yes | Name of addon to test (looks in _dev_ folder) |
-| `filter` | `string \| null` | No (default: `None`) | Filter pattern for test names |
+| `target` | `object \| null` | No (default: `None`) |  |
+| `domain` | `string` | Yes | Domain name (e.g., 'Math') |
+| `function` | `string` | Yes | Function name (e.g., 'Clamp') |
 
 **Example:**
 
 ```bash
-mech call sandbox.test '{"addon": "<addon>"}'
+mech call fencore-info '{"domain": "<domain>","function": "<function>"}'
 ```
 
 ---
 
-### `system.pick_file`
+### `fencore-search`
 
-Open a native file picker dialog to select a file
+Search FenCore functions by name or description
 
 **Parameters:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `title` | `string` | No (default: `'Select File'`) | Title of the dialog window |
-| `filter` | `string` | No (default: `'All Files (*.*)\|*.*'`) | File filter (e.g., 'Text Files (*.txt)\|*.txt') |
+| `target` | `object \| null` | No (default: `None`) |  |
+| `query` | `string` | Yes | Search query (partial match on name or description) |
+| `limit` | `integer` | No (default: `20`) | Maximum results to return |
 
 **Example:**
 
 ```bash
-mech call system.pick_file '{}'
+mech call fencore-search '{"query": "<query>"}'
+```
+
+---
+
+## Documentation Commands
+
+### `docs.generate`
+
+Generate CLI reference documentation from registered commands
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `output_path` | `string \| null` | No (default: `None`) | Output file path. Defaults to docs/cli-reference.md |
+| `format` | `string` | No (default: `'markdown'`) | Output format: 'markdown' or 'json' |
+
+**Example:**
+
+```bash
+mech call docs.generate '{}'
+```
+
+---
+
+### `docs.stale`
+
+Detect stale or broken documentation in a WoW addon
+
+**Parameters:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `addon` | `string` | Yes | Name of the addon to analyze |
+| `path` | `string \| null` | No (default: `None`) | Override path to addon folder |
+| `include_suspicious` | `boolean` | No (default: `True`) | Include lower-confidence findings |
+| `commits_threshold` | `integer` | No (default: `10`) | Flag docs not updated in this many code commits |
+| `limit` | `integer` | No (default: `200`) | Maximum issues returned, most severe first (counts cover all issues) |
+
+**Example:**
+
+```bash
+mech call docs.stale '{"addon": "<addon>"}'
 ```
 
 ---

@@ -47,6 +47,8 @@ In-game development hub for World of Warcraft addon developers. The installed ad
 | `/mech api` | Open API tab |
 | `/mech reload` | Reload UI |
 | `/mech gc` | Force garbage collection |
+| `/mech pause` | Pause or resume capture on the active Console or Errors tab |
+| `/mech clear` | Clear the active Console or Errors tab |
 
 ## For Addon Developers
 

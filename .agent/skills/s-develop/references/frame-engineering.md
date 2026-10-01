@@ -238,7 +238,7 @@ frame:SetFrameLevel(10)
 
 ## Best Practices
 
-1. **Pre-create frames** - Don't create in combat or OnUpdate
+1. **Create frames once, at load** - Not in `OnUpdate`; secure/protected frames cannot be created in combat at all
 2. **Use frame pools** - For dynamic lists, reuse frames
 3. **Parent wisely** - Child frames inherit show/hide/strata
 4. **Name sparingly** - Global names for debugging only

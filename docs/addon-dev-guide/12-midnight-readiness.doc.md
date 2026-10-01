@@ -1,8 +1,8 @@
 # Midnight Readiness
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2026-01-16 (added 12.0.1 nameplate relaxation, achievement changes, housing APIs)
+Last updated: 2026-09-30 (Midnight status note; 2026-01-16: added 12.0.1 nameplate relaxation, achievement changes, housing APIs)
 
 ---
 
@@ -10,9 +10,11 @@ Last updated: 2026-01-16 (added 12.0.1 nameplate relaxation, achievement changes
 
 WoW 12.0 (Midnight) introduces the most significant addon API changes in WoW's history. This guide covers what's changing and how to prepare.
 
-**Key Dates**:
+**Key Dates** (as published when this guide was written):
 - **Pre-patch**: January 20, 2026
 - **Full release**: March 2, 2026
+
+> **Current state**: this repository now targets `## Interface: 120100, 16001` (Retail 12.1.0 and WoW: Forever). The 12.0.x material below describes the Midnight changes; check Blizzard's patch notes and the [API changelog](../api-changelog.md) for later changes.
 
 ---
 
@@ -28,26 +30,19 @@ Blizzard wants combat addons to provide **display customization**, not **decisio
 
 ## Tools for Midnight Auditing
 
-The `ADDON_DEV` environment provides specialized tools for auditing addons against 12.0 changes.
+Mechanic Desktop provides commands for auditing addons against 12.0 changes.
 
-### 1. Blizzard UI Bridge
-Use `search_blizzard_ui` and `read_blizzard_file` to research how Blizzard is handling secret values and duration objects.
-- **Ripgrep Search**: Sub-second searching across all 11.2.8/12.0.0 source files.
-- **Content Distillation**: Use `distill_mode="skeleton"` to quickly understand Blizzard's frame mixins and API documentation without token bloat.
+### 1. Blizzard UI Source
+Clone [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) locally and search it with your editor or `rg` to see how Blizzard handles secret values and duration objects. `api.populate`, `api.refresh` and `atlas.scan` read the same source to build Mechanic's API and atlas data.
 
-### 2. Deprecation Scanner & Auto-Fixer
-Scan for deprecated APIs and optionally auto-fix namespace migrations:
+### 2. Deprecation Scanner
+Scan for deprecated API calls:
 
 ```bash
-# Scan only (dry-run)
-addon-dev fix-deprecations MyAddon
-
-# Apply automatic fixes
-addon-dev fix-deprecations MyAddon --apply
-
-# Generate migration report
-addon-dev fix-deprecations MyAddon --report
+mech call addon.deprecations '{"addon": "MyAddon"}'
 ```
+
+The scanner is report-only (there is no automatic fix mode). It reads a packaged deprecation database; the shipped database is a small seed and the result carries a `DEPRECATION_DB_LIMITED` warning until it is regenerated with `python -m mechanic.deprecations_builder <wow-ui-source path>`.
 
 The tool identifies:
 - Use of `COMBAT_LOG_EVENT_UNFILTERED`
@@ -548,27 +543,23 @@ Update your compatibility matrix with test results.
 
 ## Automated Compatibility Auditing
 
-This workspace provides automated tools to catch Midnight issues before they cause in-game errors.
+Mechanic Desktop provides commands to catch Midnight issues before they cause in-game errors.
 
-### 1. Deprecation Scanner & Auto-Fixer
-Scans for removed or modified Blizzard APIs and can automatically apply safe migrations.
-- **Scan**: `addon-dev fix-deprecations MyAddon` (dry-run mode)
-- **Fix**: `addon-dev fix-deprecations MyAddon --apply` (applies changes)
+### 1. Deprecation Scanner
+Scans for removed or modified Blizzard APIs and reports them.
+- **Scan**: `mech call addon.deprecations '{"addon": "MyAddon"}'` (report only; no auto-fix)
 
-### 2. API Populator
-Automates the discovery of 5,000+ APIs from Blizzard documentation and mines thousands of real-world usage examples from popular addons.
-- **Action**: Maintain the `!Mechanic` API database via `ADDON_DEV/Tools/APIPopulator/`.
+### 2. API Definitions
+The API database behind the API tab and the sandbox stubs is generated from Blizzard's own API documentation (about 4,500 APIs from 12.0.1.64914).
+- **Action**: `mech call api.refresh '{"source_path": "/path/to/wow-ui-source"}'` regenerates `Mechanic/UI/APIDefs`. `api.search` and `api.info` query it offline.
 
-### 3. Midnight Pattern Linting
-Custom linting rules flag secret value leaks, missing `pcall` wrappers, and unsafe anchor modifications.
-- **Action**: Run the Cursor command `@lint` or use the `lint_addon` tool.
-- **New Rules**:
-  - `WOW009`: Detects unsafe anchor modifications on protected Blizzard frames.
-  - `WOW010`: Detects global leakage of secret values during combat.
+### 3. Static Analysis
+- **Lint**: `mech call addon.lint '{"addon": "MyAddon"}'` runs Luacheck.
+- **Security scan**: `mech call addon.security '{"addon": "MyAddon"}'` flags combat-lockdown and secret-value risks; findings are heuristic and need review.
+- **Dead code and complexity**: `addon.deadcode` and `addon.complexity`.
 
-### 4. Blizzard UI Bridge
-Search and read Blizzard's native implementation patterns directly from your development environment.
-- **Action**: Use `search_blizzard_ui(query)` or `read_blizzard_file(path)` to study how Blizzard handles specific UI components without leaving your chat session.
+### 4. Blizzard UI Source
+Search a local `wow-ui-source` checkout to see how Blizzard's own code handles a frame or event.
 - **How it helps**: Quickly find which native frames are protected and how Blizzard themselves styles them in 12.0.
 
 ### 5. !Mechanic API Test Bench

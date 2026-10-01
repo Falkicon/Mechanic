@@ -1,8 +1,8 @@
 # UI Engineering
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2026-01-02
+Last updated: 2026-09-30
 
 ---
 
@@ -105,15 +105,15 @@ end)
 WoW uses **Atlases** for most modern UI elements. Atlases are named texture regions that handle scaling and resolution automatically.
 
 ### Finding Icons
-Use the `AtlasScanner` tool to find the correct atlas name for your UI:
+Use the `atlas.search` command to find the correct atlas name for your UI. Run `atlas.scan` once with a local `wow-ui-source` checkout to build the index:
 
 ```bash
-addon-dev atlas search <keyword>
+mech call atlas.search '{"query": "<keyword>"}'
 ```
 
 **Example**:
 ```bash
-addon-dev atlas search eye
+mech call atlas.search '{"query": "eye"}'
 # Result: socialqueuing-icon-eye
 ```
 
@@ -127,7 +127,7 @@ tex:SetAtlas("socialqueuing-icon-eye")
 
 ## FenUI Library
 
-The `FenUI` library is the recommended framework for building structured, modern-looking UI panels and dashboards in the `ADDON_DEV` environment.
+The `FenUI` library is the recommended framework for building structured, modern-looking UI panels and dashboards in the Mechanic/Fen ecosystem (Mechanic embeds it in `Mechanic/Libs/FenUI`).
 
 ### FenUI Explorer (Storybook)
 For a live, interactive reference of all available FenUI components, use the **FenUI Explorer** addon.
@@ -412,14 +412,15 @@ end
 To maintain high-quality UI assets while ensuring compatibility with WoW's TGA requirements, follow this workflow:
 
 1. **Source Files**: Place your lossless `.png` files in an `assets_source/` folder within your addon directory.
-2. **Automated Conversion**: Use the `addon-dev assets` tool to generate WoW-compatible `.tga` files in the `assets/` folder.
+2. **Automated Conversion**: Use the `assets.sync` command to generate WoW-compatible `.tga` files in the `assets/` folder. It removes only files a previous sync generated (tracked in `assets/.mechanic-assets.json`).
 3. **Power of 2**: The tool will validate that your images have dimensions that are powers of 2 (e.g., 64x64, 128x128), which is required for WoW to render them correctly.
 
 ### Commands
 
 ```bash
-addon-dev assets sync          # Perform a one-time sync of all assets
-addon-dev assets watch         # Watch assets_source/ and sync in real-time
+mech call assets.sync '{"addon": "MyAddon", "dry_run": true}'   # Preview the sync
+mech call assets.sync '{"addon": "MyAddon"}'                    # Sync all assets
+mech call assets.list '{"addon": "MyAddon"}'                    # List source and generated assets
 ```
 
 ### Benefits

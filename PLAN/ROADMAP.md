@@ -1,6 +1,6 @@
 # Mechanic roadmap
 
-This roadmap distinguishes capabilities present in the repository from future work. It does not assign release versions or promise delivery dates. Component versions remain in their TOCs and `desktop/pyproject.toml`; historical release entries are in the [changelogs](../CHANGELOG.md).
+This roadmap distinguishes capabilities present in the repository from future work. It does not assign release versions or promise delivery dates. Component versions remain in their TOCs and `mechanic.__version__` (`desktop/src/mechanic/__init__.py`, read by `desktop/pyproject.toml`); historical release entries are in the [desktop changelog](../CHANGELOG.md) and the [addon changelog](../Mechanic/CHANGELOG.md).
 
 ## Implemented in the current tree
 
@@ -11,6 +11,10 @@ This roadmap distinguishes capabilities present in the repository from future wo
 - Release/sync previews, preflight checks, and partial-failure recovery guidance.
 - Bounded desktop timing metrics and saved addon overhead snapshots.
 - Isolated Python tests, Lua queue/lifecycle regressions, dashboard regressions, and configured GitHub Actions checks including installed-wheel smoke testing.
+- Command input validation errors (`VALIDATION_ERROR`), bounded history, checksum-verified tool setup, and a restricted Lua sandbox for `sandbox.exec` and `sandbox.test`.
+- Lua analyzers (`addon.deadcode`, `addon.security`, `addon.complexity`, `docs.stale`) built on a shared tokenizer, with truncation reporting.
+- A modular dashboard (markup, CSS and separate scripts) driven by `commands.list` and `/health`.
+- The hosted `afd` package as a dependency instead of a vendored copy.
 
 These describe implementation, not proof of every live WoW or platform configuration. See [quality improvements and validation](../docs/quality-improvements.md).
 
@@ -22,7 +26,9 @@ These describe implementation, not proof of every live WoW or platform configura
 | Define and test the full supported SavedVariables grammar | Long-bracket strings, block comments, and assignment detection need explicit coverage |
 | Coordinate concurrent writers and atomic file replacement | Avoid truncated queues/baselines and lost updates across processes |
 | Remediate Python modernization debt incrementally | Keep the focused correctness baseline while reviewing broader rule groups |
-| Validate platform-specific integrations | macOS path discovery exists; setup, file picking, and reload behavior need further work. See the [macOS plan](macos-support.plan.md) |
+| Validate platform-specific integrations | macOS path discovery and an AppleScript reload helper exist but are untested on a Mac; direct tool download is not implemented. See the [macOS plan](macos-support.plan.md) |
+| Complete the deprecated-API database | `addon.deprecations` ships a small seed database and reports `DEPRECATION_DB_LIMITED`; regenerate it from `wow-ui-source` with `python -m mechanic.deprecations_builder` |
+| Cover Retail 12.1.0 API data | Generated API definitions come from 12.0.1.64914; regenerate with `api.refresh` once a 12.1 source tree is available |
 
 The [original quality review](../docs/quality-review-2026-09-05.md) contains the supporting findings and notes which have since been addressed.
 

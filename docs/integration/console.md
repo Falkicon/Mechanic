@@ -6,6 +6,8 @@ Mechanic captures addon output through its in-game Console panel.
 
 ## Option 1: Direct Print (Simplest)
 
+Mechanic post-hooks the global `print` function, so output from `print()` also lands in the Console. A leading `[AddonName]` is used as the source.
+
 ```lua
 -- These appear in Mechanic's Console
 print("[MyAddon] Initialized")
@@ -36,13 +38,14 @@ Log("WARN", "Cache miss for", itemID)
 
 ## Option 3: AceConsole Integration
 
-If using Ace3, your `:Print()` calls are automatically captured:
+AceConsole's `:Print()` writes directly to a chat frame, not through the global `print`, so it is **not** captured. Route messages through `print` or `MechanicLib:Log()` (Option 4) if you want them in the Console:
 
 ```lua
 local MyAddon = LibStub("AceAddon-3.0"):NewAddon("MyAddon", "AceConsole-3.0")
 
 function MyAddon:OnInitialize()
-    self:Print("Addon initialized")  -- Appears in Mechanic Console
+    self:Print("Addon initialized")      -- chat only, not captured
+    print("[MyAddon] Addon initialized") -- chat and Mechanic Console
 end
 ```
 

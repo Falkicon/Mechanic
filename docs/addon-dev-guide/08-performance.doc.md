@@ -1,8 +1,8 @@
 # Performance
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2026-01-02
+Last updated: 2026-09-30
 
 ---
 
@@ -258,30 +258,30 @@ end)
 
 ## Baseline Tracking and Regression Detection
 
-The `ADDON_DEV` environment includes a performance profiling suite for tracking metrics across releases.
+Mechanic Desktop includes `perf.*` commands for tracking metrics across releases.
 
 ### Key Tools
 
 | Tool | Command | Purpose |
 |------|---------|---------|
 | **In-Game Profiler** | `Profiler.lua` | Embeddable module for measuring CPU/Memory |
-| **Baseline Tracker** | `perf.ps1 baseline` | Record a performance baseline for a version |
-| **Regression Check** | `perf.ps1 check` | Compare current metrics against the latest baseline |
-| **History Report** | `perf.ps1 report` | View historical trends and metrics |
+| **Baseline Tracker** | `perf.baseline` | Record a performance baseline for a version |
+| **Regression Check** | `perf.compare` | Compare current metrics against the latest baseline |
+| **History Report** | `perf.report`, `perf.list` | View historical trends and metrics |
 | **Sub-Metrics** | `!Mechanic` Tab | Detailed breakdown via `performance.getSubMetrics` |
 
 ### Standard Workflow
 
 1.  **Collect**: In-game, use `/myaddon perf report` or built-in commands to get `MemoryKB` and `CpuMS`.
 2.  **Record**: Save these metrics as a baseline for your current version.
-    ```powershell
-    .\ADDON_DEV\Tools\PerformanceProfiler\perf.ps1 -Command baseline -Addon "Weekly" -Version "1.2.0" -MemoryKB 450 -CpuMS 2.5
+    ```bash
+    mech call perf.baseline '{"addon": "Weekly", "version": "1.2.0", "memory_kb": 450, "cpu_ms": 2.5}'
     ```
 3.  **Validate**: Before your next release, check your new metrics.
-    ```powershell
-    .\ADDON_DEV\Tools\PerformanceProfiler\perf.ps1 -Command check -Addon "Weekly" -MemoryKB 500 -CpuMS 3.0
+    ```bash
+    mech call perf.compare '{"addon": "Weekly", "memory_kb": 500, "cpu_ms": 3.0}'
     ```
-    If metrics have increased beyond the threshold (50% for memory, 100% for CPU by default), the tool will flag a regression.
+    `perf.compare` flags a regression when a metric exceeds the baseline by its threshold (`memory_threshold` 1.5x and `cpu_threshold` 2x by default).
 
 ---
 

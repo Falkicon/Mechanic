@@ -1,6 +1,6 @@
 # SavedVariables Design
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2026-01-02
 
@@ -208,7 +208,7 @@ self.db = LibStub("AceDB-3.0"):New("AddonDB", DEFAULTS, true)
 local profile = self.db.profile
 ```
 
-See [Library Index](../AGENTS.md#library-index) for AceDB documentation.
+See [Library Index](../integration/libraries.md#library-index) for AceDB documentation.
 
 ---
 

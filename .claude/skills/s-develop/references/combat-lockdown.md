@@ -4,11 +4,13 @@ Protected functions and taint avoidance patterns.
 
 ## Understanding Combat Lockdown
 
-During combat, WoW restricts operations that could give unfair advantages:
-- Creating/modifying frames that affect gameplay
-- Showing/hiding action bars
-- Targeting, casting spells programmatically
-- Moving protected frames
+During combat, WoW restricts operations on **protected** frames and secure actions so addons cannot automate gameplay:
+- Showing, hiding, moving, resizing or re-parenting protected frames (action buttons, unit buttons, secure templates) and frames anchored to them
+- Changing secure attributes (`SetAttribute`) on secure frames
+- Targeting, casting and using items programmatically
+- Creating secure/protected frames
+
+Your own plain frames are **not** restricted: you can create, move, anchor, show and hide ordinary (non-secure) frames in combat. Restrictions apply when a frame is protected, or when anchoring ties your frame to a protected one. In 12.0+ combat also makes some API return values secret ([api-patterns.md](api-patterns.md)).
 
 ## Checking Combat State
 
@@ -25,45 +27,35 @@ self:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Leaving combat
 
 ## Protected vs Unprotected
 
-### Safe During Combat
+### Fine during combat
 
 ```lua
--- Text and visuals
+-- Plain frames and their visuals
+local myFrame = CreateFrame("Frame", nil, UIParent)   -- non-secure template: allowed
+myFrame:SetPoint("CENTER")
+myFrame:Show()
 fontString:SetText("Hello")
 texture:SetTexture("path")
 frame:SetAlpha(0.5)
 
--- Reading data
+-- Reading data (values may be secret in 12.0+; check issecretvalue before using them)
 local name = UnitName("target")
-local health = UnitHealth("player")
 
 -- Timers and callbacks
 C_Timer.After(1, function() end)
-
--- Secure frame visibility (if created properly)
--- See Secure Templates section
 ```
 
-### Blocked During Combat
+### Blocked during combat (protected frames and secure actions)
 
 ```lua
--- Frame creation/destruction
-CreateFrame("Frame", nil, UIParent) -- ❌
-
--- Frame anchoring changes
-frame:SetPoint("CENTER") -- ❌
-frame:ClearAllPoints()   -- ❌
-
--- Parent changes
-frame:SetParent(newParent) -- ❌
-
--- Show/Hide of protected frames
-ActionButton1:Show() -- ❌
-ActionButton1:Hide() -- ❌
-
--- Attributes on protected frames
-frame:SetAttribute("type", "spell") -- ❌
+ActionButton1:Show()                    -- protected frame
+ActionButton1:SetPoint("CENTER")        -- protected frame
+frame:SetAttribute("type", "spell")     -- secure frame attributes
+secureFrame:SetParent(newParent)        -- re-parenting protected frames
+CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")  -- secure frame creation
 ```
+
+`frame:IsProtected()` reports whether a frame is protected (and whether restrictions currently apply). A plain frame that is **anchored to** a protected frame becomes restricted too.
 
 ## Queue Pattern
 
@@ -133,7 +125,7 @@ RegisterStateDriver(frame, "unit", "[mod:shift] focus; target")
 Taint occurs when secure code touches insecure code:
 
 ```lua
--- ❌ Causes taint
+-- Causes taint
 local secureTable = SomeBlizzardSecureTable
 secureTable.myKey = "value"  -- Taints the table
 
@@ -171,7 +163,9 @@ local isTainted, source = issecurevariable(_G, "SomeGlobal")
 
 ## Common Patterns
 
-### Toggle Frame Safely
+### Toggle a Protected Frame Safely
+
+The guard is needed only when `self.frame` is protected or anchored to a protected frame; a plain frame can be toggled in combat.
 
 ```lua
 function MyAddon:ToggleFrame()
@@ -188,7 +182,7 @@ function MyAddon:ToggleFrame()
 end
 ```
 
-### Safe Frame Update
+### Safe Update of a Protected Frame
 
 ```lua
 function MyAddon:UpdateFramePosition(x, y)

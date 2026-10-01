@@ -104,6 +104,6 @@ local frame = CreateFrame("Frame", nil, UIParent)
 Checklist:
 1. .toc filename matches folder name (case-sensitive)
 2. Interface version correct
-3. No Lua syntax errors (`mech call addon.lint '{"addon": "MyAddon"}'`)
+3. No Lua syntax errors (`addon.lint` MCP tool)
 4. Dependencies exist
 5. File paths in .toc correct

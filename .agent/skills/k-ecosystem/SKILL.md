@@ -1,79 +1,84 @@
 ---
 name: k-ecosystem
 description: >
-  Context for the Mechanic/Fen WoW addon development ecosystem. Covers all
-  components (Mechanic, FenCore, FenUI, MechanicLib), their relationships,
-  and AFD principles. Load this at the start of addon work.
-  Triggers: ecosystem, fen, fencore, fenui, mechanic, addon, context.
+  Context for the Mechanic/Fen WoW addon ecosystem: Mechanic (desktop tool,
+  !Mechanic bootstrap addon, Mechanic in-game hub), MechanicLib, FenUI, FenCore,
+  the reload loop, and which skill to load next. Load at the start of addon work
+  or when unsure which skill applies. Triggers: ecosystem, fen, fencore, fenui,
+  mechanic, addon, context, work, build, develop, create, which skill.
 ---
 
 # Fen Ecosystem
 
-The Mechanic/Fen ecosystem is a unified platform for WoW addon development.
+The Mechanic/Fen ecosystem is a development platform for WoW addons. Work is agent-first: every desktop feature is a typed command exposed through MCP.
 
-## The Reload Loop (MANDATORY)
+## The reload loop (live verification)
 
-After ANY addon code change, you MUST verify the changes in-game:
+After any addon code change you must verify in game, and the timing is the user's, not yours:
 
-1. **Ask** the user to `/reload` in WoW (or trigger via keybinding CTRL+SHIFT+R)
-2. **Wait** for the user to confirm the reload is complete
-3. **Then** use the `addon.output` MCP tool (agent_mode=true) to get errors, tests, and console logs
+1. Complete offline checks first (lint, tests).
+2. `diagnostic.targets` -> pick a target; pass the same `target` to `lua.queue` / `api.queue` / `addon.output`.
+3. **Ask the user to `/reload` and wait for their explicit confirmation.** Never call `addon.output` right after a change, and never infer completion from elapsed time.
+4. Then `addon.output` with `agent_mode=true` and the same `target`.
 
-> **CRITICAL**: Do NOT call `addon.output` immediately after changes. The timing between reload and SavedVariables sync is unpredictable. Always wait for user confirmation.
+Full rules, error codes and mutation handling: [using-mechanic](../using-mechanic/SKILL.md).
 
-## Ecosystem Components
+## Components
 
-| Component | Purpose | Key Tools |
-|-----------|---------|-----------|
-| **Mechanic** | Development hub (CLI, MCP, Dashboard) | `env.status`, `addon.output`, `addon.lint`, `addon.test` |
-| **FenCore** | Pure logic library (no UI dependencies) | `fencore.catalog`, `fencore.search`, `fencore.info` |
-| **FenUI** | UI widget library (frames, layouts) | `Layout`, `Panel`, `Tabs`, `Grid`, `Buttons` |
-| **MechanicLib** | Bridge library (addon ↔ Mechanic) | `RegisterAddon`, `Print`, `RegisterTest` |
+| Component | What it is | Where |
+|---|---|---|
+| **Mechanic Desktop** | Python tool: command registry, MCP server (`mech mcp`), CLI (`mech`), web dashboard | `desktop/` |
+| **!Mechanic** | Bootstrap addon, loads first. Owns `MechanicDB` (SavedVariables), `MechanicLib-1.0`, the early queue file | `!Mechanic/` |
+| **Mechanic** | In-game hub (`/mech`): Console, Errors, Tests, Inspect, Performance, Tools, API tabs; aggregates diagnostics into `MechanicDB` | `Mechanic/` |
+| **MechanicLib** | Registration/logging bridge other addons get from `!Mechanic` via LibStub: `Register`, `Log`, `IsEnabled`, watch list | `!Mechanic/Libs/MechanicLib/` (runtime copy; editing source `Mechanic/Libs/MechanicLib/`, keep identical) |
+| **FenUI** | Blizzard-first UI widget library (global `FenUI`, `FenUI:CreatePanel(parent, config)` and friends) | `Mechanic/Libs/FenUI/` (synced copy) |
+| **FenCore** | Pure logic library (math, tables, strings, ...). Not vendored here; its catalog reaches agents through `fencore-*` commands once FenCore is loaded in game | external |
 
-## Component Relationships
+Details: [k-mechanic](../k-mechanic/SKILL.md), [k-fenui](../k-fenui/SKILL.md), [k-fencore](../k-fencore/SKILL.md).
+
+## Addon architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Your Addon                        │
-├─────────────────────────────────────────────────────┤
-│  Core Layer     │  Bridge Layer   │  View Layer     │
-│  (Pure Logic)   │  (Events/Data)  │  (UI Frames)    │
-│                 │                 │                 │
-│  Uses: FenCore  │  Uses: Ace3     │  Uses: FenUI    │
-└─────────────────────────────────────────────────────┘
-         │                 │                 │
-         └────────────┬────┴─────────────────┘
-                      │
-              ┌───────▼───────┐
-              │  MechanicLib  │  (Registers addon with Mechanic)
-              └───────┬───────┘
-                      │
-              ┌───────▼───────┐
-              │   Mechanic    │  (Development hub)
-              └───────────────┘
+Core layer   (pure logic, FenCore)   -> testable offline (sandbox.test, Busted)
+Bridge layer (events, data, Ace3)    -> thin glue
+View layer   (frames, FenUI)         -> display only
+MechanicLib registers the addon with Mechanic; Mechanic aggregates what it reports.
 ```
 
-## Essential MCP Tools
+The Mechanic addon itself is pragmatic (see `Mechanic/AGENTS.md`); the layering is guidance for new addons ([s-develop](../s-develop/SKILL.md)).
 
-| Task | MCP Tool |
-|------|----------|
-| Get Addon Output | `addon.output(agent_mode=true)` |
-| Lint Code | `addon.lint(addon="MyAddon")` |
-| Run Tests | `addon.test(addon="MyAddon")` |
-| Search APIs | `api.search(query="*Spell*")` |
-| Search FenCore | `fencore.search(query="clamp")` |
-| Env Status | `env.status()` |
+## Essential MCP tools
 
-## AFD Core Principles
+| Task | Tool |
+|---|---|
+| Live output | `diagnostic.targets`, then `addon.output(agent_mode=true, target=...)` |
+| Lint / format / validate | `addon.lint`, `addon.format`, `addon.validate` |
+| Tests | `sandbox.test` (offline Core), `addon.test` (Busted) |
+| WoW API lookup | `api.search`, `api.info`, `api.list` |
+| FenCore functions | `fencore-search`, `fencore-info`, `fencore-catalog` |
+| Environment | `env.status`, `tools.status` |
 
-Mechanic follows **Agent-First Development (AFD)** — [github.com/Falkicon/afd](https://github.com/Falkicon/afd)
+## Which skill next
 
-1. **Tool-First**: All functionality exists as an MCP tool before any UI
-2. **Structured Results**: Tools return predictable JSON with `success`, `data`, `error`
-3. **Agent Mode**: Use `agent_mode=true` for AI-optimized output
+| You want to... | Load |
+|---|---|
+| Call Mechanic tools / verify in game | [using-mechanic](../using-mechanic/SKILL.md) |
+| Build or extend an addon | [s-develop](../s-develop/SKILL.md) |
+| Debug with runtime evidence | [s-debug](../s-debug/SKILL.md) |
+| Write or run tests | [s-test](../s-test/SKILL.md) |
+| Lint / format | [s-lint](../s-lint/SKILL.md) |
+| Quality audit / dead code | [s-audit](../s-audit/SKILL.md), [s-clean](../s-clean/SKILL.md) |
+| Look up WoW APIs or Blizzard UI code | [s-research](../s-research/SKILL.md) |
+| Release an addon | [s-release](../s-release/SKILL.md) |
+| Change the desktop tool or add a command | [k-desktop](../k-desktop/SKILL.md) |
+| Regenerate APIDefs | [k-apidefs](../k-apidefs/SKILL.md) |
+| Docs index / writing skills | [k-docs](../k-docs/SKILL.md), [k-create-skill](../k-create-skill/SKILL.md) |
 
-## Related Knowledge
+## AFD principles
 
-- [k-mechanic](../k-mechanic/SKILL.md) - Deep dive into Mechanic tools
-- [k-fencore](../k-fencore/SKILL.md) - FenCore library details
-- [k-fenui](../k-fenui/SKILL.md) - FenUI widget library
+Mechanic follows Agent-First Development:
+
+1. **Commands first**: every capability is a typed command before it gets a UI.
+2. **Structured results**: `success`, `data`, `error` (with `code`, `message`, `suggestion`), plus `reasoning`/`warnings`.
+3. **Audited mutations**: each command is flagged read-only or mutating in `desktop/src/mechanic/commands/catalog.py`.
+4. **Explicit identity**: diagnostics are addressed by a target, never by heuristics.

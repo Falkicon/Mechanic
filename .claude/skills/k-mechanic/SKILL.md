@@ -1,96 +1,57 @@
 ---
 name: k-mechanic
 description: >
-  Context for Mechanic - the WoW addon development hub. Covers the CLI,
-  MCP server, dashboard, in-game modules, and MechanicLib. Load this for
-  deep understanding of Mechanic tooling.
-  Triggers: mechanic, mech, cli, mcp, dashboard, tools, development hub.
+  Context for Mechanic, the WoW addon development hub: desktop tool (command
+  registry, MCP server, CLI, dashboard), the !Mechanic bootstrap and Mechanic
+  in-game addons, and MechanicLib. Load for how the pieces fit, ports, routes and
+  in-game slash commands. Triggers: mechanic, mech, cli, mcp, dashboard,
+  slash command, MechanicLib, MechanicDB, development hub.
 ---
 
 # Mechanic Development Hub
 
-Mechanic is the unified platform for WoW addon development, providing CLI tools, MCP integration, a web dashboard, and in-game diagnostics.
+Mechanic combines a desktop tool and two in-game addons. Agents use it through MCP; people also use the CLI and the web dashboard.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Mechanic Desktop                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │  CLI (mech) │  │ MCP Server  │  │  Dashboard  │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────┬───────────────────────────┘
-                          │ SavedVariables Sync
-┌─────────────────────────▼───────────────────────────┐
-│                  !Mechanic Addon                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │   Console   │  │   Errors    │  │    Tests    │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────┘
+Mechanic Desktop (desktop/)                       commands.list = the single registry
+  MCP server (mech mcp)   CLI (mech)   Dashboard (/dashboard/, same commands via /api/execute)
+        |  reads !Mechanic.lua (SavedVariables holding MechanicDB, one file per account)
+        |  writes MechanicQueue.lua (Lua / API test queue) into the !Mechanic addon folder
+!Mechanic   (bootstrap, loads first)  owns MechanicDB, MechanicLib-1.0, queue execution
+Mechanic    (main addon, /mech)       Console, Errors, Tests, Inspect, Performance, Tools, API
 ```
 
-## MCP Tools (Use These First)
+SavedVariables are written by the game on `/reload` or logout, so desktop reads are only fresh after a confirmed reload ([using-mechanic](../using-mechanic/SKILL.md)).
 
-> **MANDATORY**: ALWAYS use MCP tools directly instead of the shell.
+## Agents: MCP tools
 
-| Task | MCP Tool |
-|------|----------|
-| Env Status | `env.status()` |
-| Get Addon Output | `addon.output(agent_mode=true)` |
-| Lint Addon | `addon.lint(addon="MyAddon")` |
-| Format Addon | `addon.format(addon="MyAddon")` |
-| Run Tests | `addon.test(addon="MyAddon")` |
-| Sync Addon | `addon.sync(addon="MyAddon")` |
-| Search APIs | `api.search(query="*Spell*")` |
+Call tools directly; discover inputs with `commands.list` or the generated [command reference](../using-mechanic/references/afd-commands.md). Pick a `diagnostic.targets` entry and reuse it for queue and read calls. Do not use the shell or `mech` CLI for agent work.
 
 ## Components
 
-### CLI (`mech`)
-
-Command-line interface for all operations:
-- `mech lint <addon>` - Run Luacheck
-- `mech format <addon>` - Run StyLua
-- `mech test <addon>` - Run Busted tests
-- `mech release <addon> <version> "<message>"` - Full release workflow
-
-### MCP Server
-
-Exposes 53 AFD commands as MCP tools for AI agents. All functionality available via `mech call <command>` is also available as MCP tools.
-
-### Dashboard
-
-Web UI at `http://localhost:5173`:
-- Real-time SavedVariables sync
-- Reload trigger button
-- Error/test/console log viewer
-
-### In-Game Modules
-
-The `!Mechanic` addon provides:
-- **Console** - Aggregated print output from all registered addons
-- **Errors** - BugGrabber integration for Lua error capture
-- **Tests** - In-game test results from MechanicLib tests
-- **Inspect** - Frame inspector for UI debugging
-- **API Bench** - Performance testing for WoW APIs
-
-## MechanicLib Integration
-
-Addons register with Mechanic via MechanicLib:
+- **MCP server**: `mech mcp` (stdio by default, configured in the repo's `.mcp.json`). Exposes every registered command with dashed names. Optional SSE transport (`--transport sse`, default `127.0.0.1:3101`) is unauthenticated and exposes mutating commands; never expose it.
+- **CLI** (`mech` or `mechanic`): user fallback. See [cli-commands](references/cli-commands.md).
+- **Dashboard**: `mech dashboard` serves `http://127.0.0.1:3100/dashboard/`. See [dashboard](references/dashboard.md).
+- **In-game hub**: the `Mechanic` addon (`/mech`). See [ingame-modules](references/ingame-modules.md).
+- **MechanicLib**: `LibStub("MechanicLib-1.0", true)`; `Register`, `Log`, `IsEnabled`, watch list. See [mechaniclib](references/mechaniclib.md).
 
 ```lua
-local ML = LibStub("MechanicLib")
-ML:RegisterAddon("MyAddon", {
-    version = "1.0.0",
-    Print = function(...) ML:Print("MyAddon", ...) end,
-})
+local MechanicLib = LibStub("MechanicLib-1.0", true)
+if MechanicLib then
+    MechanicLib:Register("MyAddon", { version = "1.0.0" })
+    MechanicLib:Log("MyAddon", "loaded", MechanicLib.Categories.LOAD)
+end
 ```
 
-## Routing Logic
+## Routing
 
 | Request type | Load reference |
-|--------------|----------------|
-| CLI commands | [references/cli-commands.md](references/cli-commands.md) |
-| AFD commands | [references/afd-commands.md](references/afd-commands.md) |
-| In-game modules | [references/ingame-modules.md](references/ingame-modules.md) |
-| MechanicLib | [references/mechaniclib.md](references/mechaniclib.md) |
-| Dashboard | [references/dashboard.md](references/dashboard.md) |
+|---|---|
+| Every command, input, mutation flag (generated) | [../using-mechanic/references/afd-commands.md](../using-mechanic/references/afd-commands.md) |
+| CLI (user-facing) | [references/cli-commands.md](references/cli-commands.md) |
+| Dashboard, HTTP routes, WebSocket | [references/dashboard.md](references/dashboard.md) |
+| In-game tabs and slash commands | [references/ingame-modules.md](references/ingame-modules.md) |
+| MechanicLib API | [references/mechaniclib.md](references/mechaniclib.md) |
+| Changing the desktop tool itself | [k-desktop](../k-desktop/SKILL.md) |

@@ -24,7 +24,7 @@ The `mech` CLI is the unified command interface for all WoW addon development to
 | `addon-dev format MyAddon` | `mech call addon.format '{"addon": "MyAddon"}'` |
 | `addon-dev format MyAddon --check` | `mech call addon.format '{"addon": "MyAddon", "check": true}'` |
 | `addon-dev validate MyAddon` | `mech call addon.validate '{"addon": "MyAddon"}'` |
-| `addon-dev fix-deprecations MyAddon` | `mech call addon.deprecations '{"addon": "MyAddon", "fix": true}'` |
+| `addon-dev fix-deprecations MyAddon` | `mech call addon.deprecations '{"addon": "MyAddon"}'` (scan only; automatic fixing was removed) |
 
 ### Environment Commands
 
@@ -34,6 +34,7 @@ The `mech` CLI is the unified command interface for all WoW addon development to
 | `addon-dev sync MyAddon` | `mech call addon.sync '{"addon": "MyAddon"}'` |
 | `addon-dev doctor` | `mech call tools.status` |
 | `addon-dev status` | `mech call env.status` |
+| `addon-dev inspect-sv` | No equivalent; use `mech call addon.output` / `sv.parse` for the Mechanic hub data |
 
 ### Localization Commands
 
@@ -54,9 +55,9 @@ The `mech` CLI is the unified command interface for all WoW addon development to
 
 | addon-dev Command | mech Command |
 |-------------------|--------------|
-| `addon-dev release MyAddon 1.2.0 "Message"` | `mech release MyAddon 1.2.0 "Message"` |
+| `addon-dev release MyAddon 1.2.0 "Message"` | `mech release MyAddon 1.2.0 "Message"` (add `--dry-run` to preview) |
 
-Or use individual commands:
+`mech release` runs `release.all`, which does a preflight first. Or use individual commands:
 
 ```bash
 mech call version.bump '{"addon": "MyAddon", "version": "1.2.0"}'
@@ -173,8 +174,8 @@ mech docs
 
 Make sure Mechanic Desktop is installed:
 ```bash
-cd !Mechanic/desktop
-pip install -e .
+cd desktop   # inside the Mechanic repository
+python -m pip install -e .
 ```
 
 ### "Tool not found" errors
@@ -188,7 +189,7 @@ mech setup
 
 Ensure `GEMINI_API_KEY` is set:
 ```bash
-# Copy example and add your key
+# Copy the example (from the repository root) and add your key
 cp desktop/.env.example desktop/.env
-# Edit .env and add your Gemini API key
+# Edit .env and set GEMINI_API_KEY
 ```

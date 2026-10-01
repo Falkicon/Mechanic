@@ -1,8 +1,8 @@
 # TOC Best Practices
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2026-01-02
+Last updated: 2026-09-30
 
 ---
 
@@ -19,10 +19,10 @@ The `.toc` file is your addon's manifest. It controls metadata, load order, and 
 ### Interface Version
 
 ```toc
-## Interface: 120001
+## Interface: 120100
 ```
 
-- Set to the current build's interface number.
+- Set to the current build's interface number (`120100` is Retail 12.1.0). A comma-separated list such as `## Interface: 120100, 16001` targets several clients from one TOC.
 - Find current version: `/dump select(4, GetBuildInfo())`
 - If the interface number doesn't match, the addon is skipped unless the user enables "Load out of date addons."
 
@@ -167,4 +167,4 @@ When Midnight pre-patch launches (January 2026):
 - [ ] Check combat functionality with new restrictions
 - [ ] Verify SavedVariables migrate correctly
 - [ ] Test with `/console scriptErrors 1` enabled
-- [ ] Run `addon-dev fix-deprecations <name>` to find and fix deprecated APIs
+- [ ] Run `mech call addon.deprecations '{"addon": "<name>"}'` to find deprecated APIs

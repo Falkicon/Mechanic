@@ -108,12 +108,23 @@ Commands are organized by domain in `desktop/src/mechanic/commands/`:
 
 ```
 commands/
-├── core.py        # sv.parse, sv.discover, server.shutdown
-├── development.py # addon.validate, addon.lint, addon.format, addon.test
-├── environment.py # addon.create, addon.sync, libs.check
-├── release.py     # version.bump, changelog.add, git.commit, git.tag
+├── core.py        # sv.parse, sv.discover, dashboard.metrics, server.shutdown; module registration
+├── development.py # addon.validate, addon.lint, addon.format, addon.test, addon.deprecations
+├── environment.py # addon.create, addon.sync, libs.check/init/sync, env.status, system.pick_file
+├── release.py     # version.bump, changelog.add, git.commit, git.tag, release.all
 ├── locale.py      # locale.validate, locale.extract
 ├── atlas.py       # atlas.scan, atlas.search
+├── api.py         # api.search, api.info, api.list, api.queue, api.stats
+├── apidefs.py     # api.populate, api.generate, api.refresh, api.download
+├── sandbox.py     # sandbox.generate, sandbox.status, sandbox.exec, sandbox.test
+├── lua.py         # lua.queue, lua.results
+├── perf.py        # perf.baseline, perf.compare, perf.report, perf.list
+├── assets.py      # assets.sync, assets.list
+├── fencore.py     # fencore-catalog, fencore-info, fencore-search
+├── research.py    # research.query
+├── tools.py       # tools.status
+├── docs.py        # docs.generate
+├── deadcode.py, complexity.py, security.py, staledocs.py  # addon.deadcode, addon.complexity, addon.security, docs.stale
 ├── catalog.py     # commands.list and mutation audit
 ├── targets.py     # diagnostic.targets
 ├── diagnostics.py # diagnostic.metrics
@@ -135,6 +146,8 @@ class MyOutput(BaseModel):
 ```
 
 ### 3. Use the Result Helpers
+
+The command framework is the hosted `afd` package (a PyPI dependency declared in `desktop/pyproject.toml`; there is no vendored copy).
 
 ```python
 from afd import success, error
@@ -189,7 +202,7 @@ For diagnostic commands, use the shared `DiagnosticTarget`/`SelectedTarget` mode
 
 ### Python (Desktop)
 
-- **Formatter:** Ruff; CI runs `ruff format --check src/ tests/`
+- **Formatter:** Ruff; CI runs `ruff format --check src/ tests/ scripts/`
 - **Lint:** Ruff correctness rules `E4,E7,E9,F`, pinned in `desktop/constraints-dev.txt`; broader modernization debt is recorded in the [review](docs/quality-review-2026-09-05.md)
 - **Type hints:** Required for public functions and schemas
 - **Docstrings:** Required for commands, optional elsewhere
@@ -210,13 +223,13 @@ For diagnostic commands, use the shared `DiagnosticTarget`/`SelectedTarget` mode
 cd desktop
 python -m pip install -c constraints-dev.txt -e ".[dev]"
 python -m pytest -v
-python -m ruff check src tests
-python -m ruff format --check src tests
+python -m ruff check src tests scripts
+python -m ruff format --check src tests scripts
 ```
 
 The shared pytest fixture isolates home/config/data paths and WoW discovery. Use temporary fixtures; never read or write a developer's installed addon or saved diagnostic history from a test. Install the MCP extra for transport coverage and set `MECHANIC_LUA` to a Lua 5.1 executable for the real bootstrap contract. Missing optional runtimes cause those cases to skip.
 
-From the repository root, run `lua5.1 tests/addon_regressions.lua`, `lua5.1 tests/overhead_regressions.lua`, `node tests/dashboard_regressions.cjs`, and `node tests/dashboard_schema_regressions.cjs` for addon/dashboard changes. CI also builds and smoke-tests the installed wheel, including packaged dashboard assets.
+From the repository root, run every `tests/*_regressions.lua` file with `lua5.1` and every `tests/*_regressions.cjs` file with `node` for addon/dashboard changes (CI does the same; `tests/dashboard_harness.cjs` is a shared helper, not a suite). CI also builds and smoke-tests the installed wheel, including packaged dashboard assets. Before sending a documentation change, check relative links and anchors and run any command example you changed.
 
 ### Test Philosophy
 
@@ -237,25 +250,7 @@ From the repository root, run `lua5.1 tests/addon_regressions.lua`, `lua5.1 test
 
 ### PR Template
 
-```markdown
-## What
-
-Brief description of the change.
-
-## Why
-
-What problem does this solve? How will it be used?
-
-## Testing
-
-How did you verify this works?
-
-## Checklist
-
-- [ ] Commands follow structured patterns
-- [ ] Tests added/updated
-- [ ] Documentation updated
-```
+GitHub fills in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) automatically. It asks for a summary, the motivation, the key changes, how you tested (in WoW, via `mech call`, with `pytest`, offline only), and a checklist covering command patterns, schema descriptions, documentation and the changelog.
 
 ---
 

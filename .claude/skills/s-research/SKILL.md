@@ -1,38 +1,34 @@
 ---
 name: s-research
 description: >
-  Research WoW addon development topics using CLI tools, Blizzard UI source,
-  and documentation. Covers API discovery, pattern research, and Ace3 usage.
-  Use when investigating unfamiliar APIs, finding Blizzard patterns, or learning.
-  Triggers: research, find, search, API, Blizzard UI, documentation, Ace3.
+  Research WoW APIs and patterns: offline API lookup with api.search/info/list,
+  atlas icon search, Blizzard UI source, Ace3 usage and web research. Use when
+  investigating unfamiliar APIs, deprecations, secret-value behaviour or how
+  Blizzard implements something. Triggers: research, find API, API signature,
+  Blizzard UI source, atlas, icon, Ace3, documentation.
 ---
 
 # Researching WoW APIs
 
-Expert guidance for discovering and understanding World of Warcraft APIs and patterns.
+Discover and understand WoW APIs before using them. Call MCP tools directly ([using-mechanic](../using-mechanic/SKILL.md)).
 
 ## Related Commands
 
 - [c-research](../../commands/c-research.md) - API research workflow
 
-## CLI Commands (Use These First)
+## MCP Tools
 
-> **MANDATORY**: Always use CLI commands before manual exploration.
+| Task | MCP Tool |
+|------|----------|
+| Search APIs (offline) | `api.search(query="*Spell*")` (`*` is a wildcard, not a regex; optional `namespace`, `category`, `limit`) |
+| API details | `api.info(api_name="C_Spell.GetSpellInfo")` |
+| List by namespace/category | `api.list(namespace="C_Spell")` |
+| Database size and coverage | `api.stats()` |
+| Icon / atlas names | `atlas.search(query="sword")` (needs a one-time `atlas.scan(source_path=<wow-ui-source>)`; `INDEX_NOT_FOUND` otherwise) |
+| Web research (network, Gemini) | `research.query(query="...")` (needs `GEMINI_API_KEY`; flagged mutating because it calls an external service, use only when asked) |
+| Try an API in game | `api.queue` / `lua.queue`, then the reload protocol |
 
-| Task | Command |
-|------|---------|
-| Search APIs (Offline) | `mech call api.search -i '{"query": "*Spell*"}'` |
-| API Info | `mech call api.info -i '{"api_name": "C_Spell.GetSpellInfo"}'` |
-| List by Namespace | `mech call api.list -i '{"namespace": "C_Spell"}'` |
-| Search Icons | `mech call atlas.search -i '{"query": "sword"}'` |
-| API Stats | `mech call api.stats` |
-
-## Capabilities
-
-1. **API Discovery** — Search 5000+ WoW APIs offline using static definitions
-2. **Blizzard UI Research** — Find patterns in Blizzard's own Lua source code
-3. **Ace3 Patterns** — Guidance on using common addon libraries (AceDB, AceEvent, etc.)
-4. **Icon/Atlas Search** — Find UI assets and textures by name
+The offline API database is the generated `Mechanic/UI/APIDefs` tree (built from Blizzard's API documentation, see [k-apidefs](../k-apidefs/SKILL.md)). It reflects the build it was generated from, so a missing API may simply be newer. `midnightImpact` / `protected` flags in results describe secret-argument behaviour; check them before relying on an API in combat.
 
 ## Routing Logic
 
@@ -41,26 +37,11 @@ Expert guidance for discovering and understanding World of Warcraft APIs and pat
 | Offline API lookup patterns | [references/api-research.md](references/api-research.md) |
 | Blizzard UI source patterns | [references/blizzard-ui.md](references/blizzard-ui.md) |
 | Ace3 library patterns | [references/ace3-patterns.md](references/ace3-patterns.md) |
-| CLI Reference | [../../docs/cli-reference.md](../../docs/cli-reference.md) |
+| Human CLI reference | [../../../docs/cli-reference.md](../../../docs/cli-reference.md) |
 
-## Quick Reference
+## Best practices
 
-### Search WoW APIs
-```bash
-mech call api.search -i '{"query": "GetItem*", "namespace": "C_Item"}'
-```
-
-### Get Detailed API Info
-```bash
-mech call api.info -i '{"api_name": "C_Spell.GetSpellInfo"}'
-```
-
-### Search Icons
-```bash
-mech call atlas.search -i '{"query": "sword", "limit": 10}'
-```
-
-### Best Practices
-- **Search First**: Use `api.search` before guessing API names.
-- **Audit Blizzard**: Use ripgrep on local wow-ui-source to see how Blizzard uses an API.
-- **Namespace Awareness**: Most modern APIs are in `C_` namespaces (e.g., `C_Timer`, `C_Spell`).
+- **Search first**: use `api.search` before guessing names; most modern APIs live in `C_` namespaces (`C_Timer`, `C_Spell`).
+- **Read Blizzard**: grep the local `wow-ui-source` (Live or Beta checkout) for how Blizzard calls an API; `Blizzard_Deprecated` explains renames.
+- **Check secret behaviour** for anything used in combat ([api-patterns](../s-develop/references/api-patterns.md)).
+- **Prove it in game** when an API's behaviour matters: queue a snippet and read the result after a confirmed reload.

@@ -1,185 +1,38 @@
 # In-Game Modules Reference
 
-!Mechanic provides a tabbed development hub accessible via `/mech` in-game.
+The **Mechanic** main addon (not the `!Mechanic` bootstrap) provides the tabbed hub, opened with `/mech` or `/mechanic`. The bootstrap only owns `MechanicDB`, `MechanicLib-1.0` and queue execution. The tab order is Inspect, Console, Errors, Tests, Performance, Tools, API (`Mechanic/UI/MainFrame.lua`).
 
-## Tab Overview
-
-| Tab | Purpose | Key Features |
-|-----|---------|--------------|
-| **Console** | Debug output aggregation | Log levels, addon filtering, copy |
-| **Errors** | BugGrabber integration | Pause/resume, clear, stack traces |
-| **Tests** | Unit test results | Pass/fail counts, details, re-run |
-| **Inspect** | Frame & table inspector | Pick mode, watch list, live edit |
-| **Performance** | Memory/CPU metrics | History, GC triggers, warnings |
-| **Tools** | Addon diagnostics | Per-addon debug panels |
-| **API** | API Test Bench | Midnight readiness, secret values |
-
-## Console Tab
-
-Aggregates debug output from all MechanicLib-registered addons.
-
-### Log Levels
-```lua
-MechanicLib:Log("MyAddon", "message", MechanicLib.Categories.DEBUG)
-MechanicLib:Log("MyAddon", "message", MechanicLib.Categories.INFO)
-MechanicLib:Log("MyAddon", "message", MechanicLib.Categories.WARNING)
-MechanicLib:Log("MyAddon", "message", MechanicLib.Categories.ERROR)
-MechanicLib:Log("MyAddon", "message", MechanicLib.Categories.TRIGGER)
-```
-
-### Features
-- Filter by addon name in left nav
-- Filter by log level
-- Search/filter messages
-- Copy with environment header
-- Clear console
-
-## Errors Tab
-
-Integrates with !BugGrabber to capture Lua errors.
-
-### Features
-- Real-time error capture
-- Pause/resume error collection
-- View full stack traces
-- Group errors by addon
-- Copy error details for bug reports
-- Clear error list
-
-### Requirements
-- Optional dependency on `!BugGrabber`
-- Gracefully degrades without it (shows warning)
-
-## Tests Tab
-
-Displays unit test results from registered addons.
-
-### Test Registration
-```lua
-MechanicLib:RegisterTests("MyAddon", {
-    {
-        name = "Test Name",
-        func = function()
-            assert(true, "Should pass")
-        end
-    }
-})
-```
-
-### Features
-- Run all tests
-- Run tests for specific addon
-- View pass/fail counts
-- Expand test details
-- Copy test results
-
-## Inspect Tab
-
-Frame and table inspector with Pick mode.
-
-### Pick Mode
-1. Click "Pick" button
-2. Hover over any frame in game
-3. Click to inspect
-
-### Features
-- **Tree View**: Ancestors and children hierarchy
-- **Properties**: GetPoint, GetSize, visibility, alpha
-- **Live Edit**: Modify geometry, visibility, scale
-- **Watch List**: Track values across reloads
-- **Export**: Generate Lua snippets for DevTools
-
-### Universal Inspection
-```lua
--- Inspect a frame
-/run Mechanic:InspectFrame(UIParent)
-
--- Inspect a global table
-/run Mechanic:InspectTable(_G.MyAddonDB)
-```
-
-### Property Sections
-Extensible via `InspectProperties:RegisterSection()`:
-- Geometry (position, size, scale)
-- Visual (alpha, visibility, layer)
-- Text (font, string, color)
-- Texture (atlas, texcoords)
-- Custom (addon-specific)
-
-## Performance Tab
-
-Memory and CPU monitoring with history.
-
-### Metrics Displayed
-- AddOn Memory (per-addon breakdown)
-- Total UI Memory
-- Garbage Collection stats
-- Frame rate impact
-- Event processing time
-
-### Features
-- Historical charts
-- Memory leak detection warnings
-- Force GC button (`/mech gc`)
-- Extended diagnostics sub-panel
-
-## Tools Tab
-
-Addon-specific diagnostic panels.
-
-### Registration
-```lua
-MechanicLib:RegisterToolPanel("MyAddon", {
-    name = "My Debug Panel",
-    create = function(parent)
-        -- Build UI, return frame
-        local frame = CreateFrame("Frame", nil, parent)
-        -- ...
-        return frame
-    end
-})
-```
-
-### Built-in Tools
-- Health Log viewer (self-monitoring)
-- Database inspector
-- UI state reset
-
-## API Tab (Test Bench)
-
-API discovery and Midnight readiness testing.
-
-### Features
-- Browse all C_ namespaces
-- Search APIs by name
-- Test API calls with parameters
-- Detect secret values
-- Export API documentation
-
-### Secret Value Detection
-APIs returning SecretValues are flagged:
-```lua
--- Shows [SECRET] indicator
-C_Item.GetItemGUID(...)  -- Returns SecretValue in 12.0
-```
-
-## Slash Commands
-
-| Command | Opens Tab |
-|---------|-----------|
-| `/mech` | Toggle panel |
-| `/mech console` | Console |
-| `/mech errors` | Errors |
-| `/mech tests` | Tests |
-| `/mech inspect` | Inspect |
-| `/mech perf` | Performance |
-| `/mech tools` | Tools |
-| `/mech api` | API Bench |
-
-## Utility Commands
+## Slash commands (`Mechanic/Core.lua`, `Mechanic:SlashCommand`)
 
 | Command | Action |
-|---------|--------|
-| `/mech reload` | ReloadUI() |
-| `/mech gc` | Force garbage collection |
-| `/mech reset` | Reset UI state |
+|---|---|
+| `/mech` | Toggle the main panel |
+| `/mech inspect` / `console` / `errors` / `tests` / `perf` / `tools` / `api` | Open that tab |
+| `/mech reload` | `ReloadUI()` |
+| `/mech gc` | Force garbage collection and report KB freed |
+| `/mech pause` | Pause/resume the active tab (Console, Errors) |
+| `/mech clear` | Clear the active tab |
+
+Anything else prints the command list. There is no `/mech reset` and no `/mech copy`. `Bindings.xml` declares `MECHANIC_DEV_RELOAD` and `MECHANIC_TOGGLE` but **no default keys**: bind them in the game's Key Bindings UI (CTRL-SHIFT-R / CTRL-SHIFT-M are only suggestions).
+
+## Tabs
+
+| Tab | Source file | What it does |
+|---|---|---|
+| **Inspect** | `UI/Inspect*.lua` | Frame/table inspector: Pick mode, tree, property sections, editable properties (refused for protected frames in combat), watch list, export |
+| **Console** | `UI/Console.lua` | Aggregated log buffers from registered addons plus Mechanic's own log; source filter, search, pause, wipe, export. `print` output is captured by a post-hook (`hooksecurefunc`), not by replacing `_G.print` |
+| **Errors** | `UI/Errors.lua` | BugGrabber-backed Lua errors with session selector (current/previous/all), per-source counts, export. Needs `!BugGrabber` (optional dependency); degrades gracefully without it |
+| **Tests** | `UI/Tests.lua` | Runs and shows tests registered by addons through MechanicLib (`tests` capability) |
+| **Performance** | `UI/Performance.lua` | Per-addon memory and CPU (ms/s over the refresh window), sub-metrics reported by addons, CPU profiling (asks for a reload) |
+| **Tools** | `UI/Tools.lua` | Panels addons register with the `tools` capability (`createPanel`); Mechanic's health log |
+| **API** | `UI/API.lua` | API test bench over `Mechanic/UI/APIDefs` (generated, see [k-apidefs](../../k-apidefs/SKILL.md)): search, run one API, "Run Namespace" (asks first; only read-only `Get*/Is*/Has*/Unit*` APIs, time-sliced), "Safe" filter, export |
+
+Secret values (12.0+) are detected with `issecretvalue`, shown as a secret marker and never concatenated or compared.
+
+## Data flow to the desktop
+
+Mechanic aggregates `getDebugBuffer`, tests and performance data from every registered addon into `MechanicDB.profiles[<profile>].addonData` (logs capped to the last 50 lines per addon) and stamps `lastSync`. `addon.output` reads that profile; it is only current after the game wrote SavedVariables (`/reload`). Hub sync failures are logged to the health log.
+
+## Files
+
+See `Mechanic/AGENTS.md` for the file map and agent guidelines for editing the addon.

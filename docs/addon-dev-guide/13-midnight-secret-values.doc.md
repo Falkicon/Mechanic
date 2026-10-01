@@ -1,6 +1,6 @@
 # Midnight Secret Values
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2026-01-16 (12.0.1 Beta refinements: C_Secrets namespace, testing CVars, table de-escalation)
 

@@ -31,10 +31,11 @@ For CLI errors, include the full error message.
 ```
 
 **Environment**
-- Mechanic version: [e.g. 0.2.1]
-- WoW version: [e.g. 11.2.7]
+- Mechanic desktop version (`mech --version`): [e.g. 0.5.0]
+- Mechanic addon versions (`!Mechanic` / `Mechanic` TOC): [e.g. 1.4.6 / 1.3.7]
+- WoW version: [e.g. 12.1.0]
 - OS: [e.g. Windows 11, macOS 14]
-- Python version (for desktop issues): [e.g. 3.11]
+- Python version (for desktop issues): [e.g. 3.12]
 
 **Screenshots**
 If applicable, add screenshots.

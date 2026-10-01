@@ -1,5 +1,13 @@
 # Security Audit Report
 
+> **Historical snapshot (2026-01-10).** This report describes the repository as it was on that date and is kept for context. It is not the current security posture; see [SECURITY.md](../../SECURITY.md) for the current policy and trust boundaries. Changes since:
+>
+> - The `system.pick_file` PowerShell finding is fixed: the title and filter are passed through environment variables (`MECHANIC_PICKER_TITLE`, `MECHANIC_PICKER_FILTER`) instead of being interpolated into the script.
+> - The `loadstring` calls in `!Mechanic/Bootstrap.lua` moved (now around lines 198 and 202; the security note is at line 132), and the main addon has its own queue evaluator (`Mechanic/Core.lua`). Queue execution of developer-supplied Lua is intentional; treat queue files as code.
+> - `sandbox.exec` and `sandbox.test` now run in a restricted Lua environment (whitelisted globals, time and output limits). The generated stubs still live in the git-ignored `sandbox/generated/`.
+> - `addon.security` was rebuilt on a Lua tokenizer; its findings are heuristic.
+> - Line numbers, file counts and the local `desktop/.env` remarks below are from January and were not re-verified.
+
 **Date**: 2026-01-10
 **Scope**: Mechanic WoW Addon Development Hub
 **Auditor**: Claude Code (Automated)

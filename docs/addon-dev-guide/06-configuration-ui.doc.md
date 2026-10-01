@@ -1,6 +1,6 @@
 # Configuration UI
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
 Last updated: 2026-01-02
 
@@ -237,7 +237,7 @@ LibStub("AceConfig-3.0"):RegisterOptionsTable("MyAddon", options)
 LibStub("AceConfigDialog-3.0"):AddToBlizOptions("MyAddon", "My Addon")
 ```
 
-See [Library Index](../AGENTS.md#library-index) for AceConfig documentation.
+See [Library Index](../integration/libraries.md#library-index) for AceConfig documentation.
 
 ---
 

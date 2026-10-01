@@ -1,8 +1,8 @@
 # WoW UX Style Guide
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-18
+Last updated: 2026-09-30
 
 ---
 
@@ -255,7 +255,7 @@ To maintain a consistent codebase, use the centralized code formatting system.
 
 ### Automated Formatting
 
-Lua code is formatted using **StyLua**. The configuration is centralized in `ADDON_DEV/Linting/.stylua.toml`.
+Lua code is formatted using **StyLua** (`mech call addon.format`). Keep a `stylua.toml` or `.stylua.toml` in your addon or repository root so every contributor gets the same settings.
 
 - **Indentation**: Tabs (WoW convention)
 - **Line Length**: 120 columns (Matches Luacheck)
@@ -266,18 +266,15 @@ Lua code is formatted using **StyLua**. The configuration is centralized in `ADD
 
 ```bash
 # Format a specific addon
-addon-dev format MyAddon
-
-# Format all addons
-addon-dev format --all
+mech call addon.format '{"addon": "MyAddon"}'
 
 # Check only (no changes)
-addon-dev format MyAddon --check
+mech call addon.format '{"addon": "MyAddon", "check": true}'
 ```
 
 ### Editor Integration
 
-The workspace includes a `.vscode/settings.json` that enables **Format on Save**. Ensure the **StyLua** extension is installed in Cursor/VS Code.
+Enable **Format on Save** with the **StyLua** extension in VS Code or Cursor.
 
 ---
 

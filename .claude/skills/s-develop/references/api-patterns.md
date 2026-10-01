@@ -1,200 +1,140 @@
 # WoW API Patterns
 
-Defensive programming and API resilience patterns.
+Defensive programming and API resilience patterns. Addon Lua is Lua 5.1.
 
 ## API Namespaces
 
-### C_ Namespaces (Modern)
+### C_ Namespaces (modern)
 
 Organized, versioned APIs:
 
 ```lua
--- Map API
 C_Map.GetBestMapForUnit("player")
 C_Map.GetMapInfo(mapID)
 
--- Timer API
 C_Timer.After(delay, callback)
 C_Timer.NewTicker(interval, callback, iterations)
 
--- Item API
 C_Item.GetItemInfo(itemID)
-C_Item.GetItemLink(itemLocation)
 
--- Spell API
-C_Spell.GetSpellInfo(spellID)
-C_Spell.GetSpellCooldown(spellID)
+C_Spell.GetSpellInfo(spellID)          -- returns a SpellInfo table (or nil)
+C_Spell.GetSpellCooldown(spellID)      -- returns a SpellCooldownInfo table
 ```
 
-### Global Functions (Legacy)
+### Legacy globals
 
-Still work but less organized:
+Pre-11.0 spell, item, container, add-on and spec globals (`GetSpellInfo`, `GetItemInfo`, `GetContainerItemInfo`, `GetAddOnInfo`, `GetSpecialization`, `UnitAura`, ...) moved into `C_` namespaces. Blizzard keeps compatibility wrappers for a while (see `Blizzard_Deprecated` in the UI source) and removes them over time: **do not write new code against them** and expect old code to break. Many of them also returned multiple values where the replacement returns a table.
 
-```lua
-GetSpellInfo(spellID)
-UnitName("player")
-UnitHealth("target")
-GetMoney()
-```
+`UnitName`, `UnitHealth`, `GetMoney` and similar unit/player globals are still current.
 
 ## Defensive API Calls
 
-### Nil Handling
+### Nil handling
 
 ```lua
--- ❌ WRONG - crashes if target doesn't exist
+-- WRONG - errors if there is no target
 local name = UnitName("target")
 print(name:upper())
 
--- ✅ CORRECT - check before use
+-- CORRECT
 local name = UnitName("target")
-if name then
-    print(name:upper())
-end
+if name then print(name:upper()) end
 
--- ✅ ALSO - provide fallback
+-- ALSO - fallback
 local name = UnitName("target") or "No Target"
 ```
 
-### pcall Protection
-
-For APIs that might error:
+### API existence check
 
 ```lua
--- Risky API call
-local ok, result = pcall(function()
-    return C_SomeNewAPI.GetData()
-end)
-
-if ok then
-    -- use result
-else
-    -- result contains error message
-    print("API failed:", result)
-end
-
--- Direct pcall (faster)
-local ok, data = pcall(C_Item.GetItemInfo, itemID)
-```
-
-### API Existence Check
-
-```lua
--- Check if API exists before calling
 if C_DateAndTime and C_DateAndTime.GetCurrentCalendarTime then
     local time = C_DateAndTime.GetCurrentCalendarTime()
 end
+```
 
--- For legacy functions
-if GetSpellInfo then
-    local name = GetSpellInfo(spellID)
+### pcall for uncertain APIs
+
+```lua
+local ok, result = pcall(C_SomeNewAPI.GetData)
+if ok then
+    -- use result
+else
+    MechanicLib:Log("MyAddon", "API failed: " .. tostring(result), MechanicLib.Categories.API)
 end
 ```
+
+Do not wrap every call in `pcall`; it hides real bugs. Feature-detect first, `pcall` only where an API can legitimately error.
 
 ## Secret Values (12.0+)
 
-Some values are now hidden from addons:
+In protected contexts (combat, some instances) certain APIs return **secret values**: opaque values that tainted code may store and pass to some APIs but cannot compare, do arithmetic on, concatenate or index. Violating that raises a Lua error.
 
 ```lua
--- May return restricted indicator
-local mapID = C_Map.GetBestMapForUnit("player")
-if mapID == nil then
-    -- Player in hidden area or API restricted
-end
-
--- Quest item counts may be secret
-local _, _, count = GetItemInfo(itemID)
--- count might be 0 or hidden
-```
-
-### Detection
-
-```lua
--- Check if value is a secret
 local value = SomeAPI()
-if type(value) == "userdata" then
-    -- It's a secret/restricted value
+if issecretvalue and issecretvalue(value) then
+    -- opaque: display through APIs that accept secrets, or skip
+else
+    -- normal value: safe to compare, add, concatenate
 end
 ```
+
+- `issecretvalue(value)` is the primary check and the one Mechanic itself uses. It does not exist before 12.0, so guard with `issecretvalue and ...` when you support older clients.
+- `InCombatLockdown()` is not a reliable proxy: check the value, not the situation.
+- Never log, concatenate, sort or compare a secret. Use the `MechanicLib.Categories.SECRET` tag for notes about secret handling.
+- `type(value) == "userdata"` is a rough fallback signal only; prefer `issecretvalue`.
+- Details and helper functions: `docs/addon-dev-guide/13-midnight-secret-values.doc.md` and `09-api-resilience.doc.md`. Mechanic's API tab flags APIs that can return secrets.
 
 ## Common API Patterns
 
-### Multi-Return Handling
+### Info-table returns
 
 ```lua
--- GetSpellInfo returns many values
-local name, rank, icon, castTime, minRange, maxRange, spellID = GetSpellInfo(12345)
-
--- Just get what you need
-local name = GetSpellInfo(12345)
-local _, _, icon = GetSpellInfo(12345)
-local name, _, icon, castTime = GetSpellInfo(12345)
-
--- Modern: select()
-local icon = select(3, GetSpellInfo(12345))
-```
-
-### Table Returns
-
-```lua
--- API returns table
-local info = C_Map.GetMapInfo(mapID)
+-- Modern spell APIs return tables, not multiple values
+local info = C_Spell.GetSpellInfo(12345)
 if info then
-    print(info.name, info.mapType)
+    print(info.name, info.iconID, info.castTime)
 end
 
--- Iterate returned table
-local quests = C_QuestLog.GetQuestsOnMap(mapID)
-if quests then
-    for _, quest in ipairs(quests) do
-        print(quest.questID, quest.x, quest.y)
-    end
-end
+local cd = C_Spell.GetSpellCooldown(12345)
+if cd then print(cd.startTime, cd.duration, cd.isEnabled) end
+
+local map = C_Map.GetMapInfo(mapID)
+if map then print(map.name, map.mapType) end
 ```
 
-### Callback APIs
+Check the exact field names in `Blizzard_APIDocumentationGenerated` or with `api.info(api_name="C_Spell.GetSpellInfo")`.
+
+### Multiple returns (where APIs still use them)
 
 ```lua
--- Some APIs require callback
-C_Item.GetItemInfo(itemID) -- Returns immediately, may be nil
+local name, realm = UnitName("player")
+local _, class = UnitClass("player")
+local icon = select(3, SomeMultiReturnAPI())
+```
 
--- Listen for data ready
+### Async data
+
+```lua
+-- C_Item.GetItemInfo may return nil until the client has the data
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 frame:SetScript("OnEvent", function(self, event, receivedItemID, success)
     if receivedItemID == itemID and success then
         local name = C_Item.GetItemInfo(itemID)
-        -- Now it's available
     end
 end)
 ```
 
 ## Version Compatibility
 
-### Interface Version Check
-
 ```lua
 local _, _, _, interface = GetBuildInfo()
-if interface >= 110200 then
-    -- 11.2.0+ code
-else
-    -- Legacy fallback
+if interface >= 120000 then
+    -- 12.0+ code (secret values exist)
 end
 ```
 
-### Feature Detection
-
-```lua
--- Prefer feature detection over version checks
-local function GetMapID()
-    if C_Map and C_Map.GetBestMapForUnit then
-        return C_Map.GetBestMapForUnit("player")
-    elseif GetCurrentMapAreaID then
-        return GetCurrentMapAreaID()
-    end
-    return nil
-end
-```
+Prefer feature detection (`if C_Spell and C_Spell.GetSpellInfo`) over version checks.
 
 ## Caching Expensive Calls
 
@@ -207,7 +147,6 @@ function MyAddon:GetCachedData(key)
     if cached and (GetTime() - cached.time) < CACHE_DURATION then
         return cached.data
     end
-    
     local data = ExpensiveAPICall(key)
     cache[key] = { data = data, time = GetTime() }
     return data
@@ -216,20 +155,23 @@ end
 
 ## Best Practices
 
-1. **Always check nil** - APIs return nil more than you expect
-2. **Use pcall for new APIs** - They might not exist on all clients
-3. **Feature detect** - Check if API exists before calling
-4. **Cache expensive calls** - Don't call heavy APIs in OnUpdate
-5. **Handle async data** - Some APIs need callbacks
-6. **Read Blizzard source** - Best documentation is their code
+1. **Check nil** - APIs return nil more than you expect.
+2. **Feature-detect** new APIs; `pcall` sparingly.
+3. **Check `issecretvalue`** before touching values from combat-sensitive APIs.
+4. **Cache** expensive calls; do not call heavy APIs in `OnUpdate`.
+5. **Handle async data** with the matching event.
+6. **Read Blizzard's source**: `Blizzard_APIDocumentationGenerated` and `Blizzard_Deprecated` are the reference ([s-research](../../s-research/SKILL.md)).
 
-## Deprecated API Reference
+## Deprecated API reference
 
 | Deprecated | Replacement |
 |------------|-------------|
-| GetSpellInfo() | C_Spell.GetSpellInfo() |
-| GetSpecialization() | C_SpecializationInfo.GetSpecialization() |
-| GetItemInfo() | C_Item.GetItemInfo() |
-| UnitAura() | C_UnitAuras.GetAuraDataByIndex() |
+| `GetSpellInfo()` | `C_Spell.GetSpellInfo()` (table return) |
+| `GetSpellCooldown()` | `C_Spell.GetSpellCooldown()` (table return) |
+| `GetItemInfo()` | `C_Item.GetItemInfo()` |
+| `GetContainerItemInfo()` | `C_Container.GetContainerItemInfo()` |
+| `GetAddOnInfo()`, `GetAddOnMetadata()`, `IsAddOnLoaded()`, `LoadAddOn()` | `C_AddOns.GetAddOnInfo()`, `C_AddOns.GetAddOnMetadata()`, `C_AddOns.IsAddOnLoaded()`, `C_AddOns.LoadAddOn()` |
+| `GetSpecialization()` | `C_SpecializationInfo.GetSpecialization()` |
+| `UnitAura()` / `UnitBuff()` / `UnitDebuff()` | `C_UnitAuras.GetAuraDataByIndex()` and related |
 
-Run `mech call addon.deprecations '{"addon": "MyAddon"}'` to scan for deprecated APIs.
+Use the `addon.deprecations` MCP tool to scan an addon, but note it ships only a **3-API seed database** today (it warns `DEPRECATION_DB_LIMITED`), so also grep for the names above ([s-audit](../../s-audit/SKILL.md)).

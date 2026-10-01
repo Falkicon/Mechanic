@@ -1,8 +1,8 @@
 # Debugging
 
-> Part of the [Addon Development Guide](../AGENTS.md#addon-development-guide)
+> Part of the [Addon Development Guide](./AGENTS.md)
 
-Last updated: 2025-12-22
+Last updated: 2026-09-30
 
 ---
 
@@ -48,7 +48,7 @@ function DebugDump()
     local IS_MIDNIGHT = interfaceVersion >= 120000
     
     print("=== MyAddon Debug ===")
-    print("Version:", GetAddOnMetadata("MyAddon", "Version"))
+    print("Version:", C_AddOns.GetAddOnMetadata("MyAddon", "Version"))
     print("Interface:", interfaceVersion)
     print("Is Midnight:", IS_MIDNIGHT and "Yes" or "No")
     print("---")
@@ -74,7 +74,7 @@ end
 
 ## !Mechanic Hub
 
-The **!Mechanic** addon is the primary development hub for the `ADDON_DEV` environment. Use `/mech inspect` to access advanced frame auditing tools.
+The **Mechanic** addon (installed with its `!Mechanic` bootstrap) is the in-game development hub. Use `/mech inspect` to access advanced frame auditing tools.
 
 ### Inspect Tab Features
 - **Pick Mode**: Click any frame in the game to inspect it immediately.
@@ -142,7 +142,7 @@ end
 
 ## !Mechanic (Development Hub)
 
-The `!Mechanic` addon serves as a centralized in-game console and monitoring hub for all addons in the `ADDON_DEV` environment.
+The Mechanic addon serves as a centralized in-game console and monitoring hub for all addons that register through MechanicLib.
 
 ### Key Features
 - **Console**: Unified log stream from all registered addons with source filtering.
@@ -233,42 +233,30 @@ Or in Interface Options → Display → Show Lua Errors.
 
 ## Common Debug Techniques
 
-### AI-Assisted SavedVariables Inspection
+### Reading Mechanic Hub Data
 
-When dealing with settings corruption or migration issues, use the **SavedVariablesInspector** tool. This tool can parse your `.lua` files in the WoW `WTF` folder directly.
+Mechanic Desktop does not diff or inspect arbitrary addon SavedVariables. It reads the Mechanic hub data (`!Mechanic.lua`) and BugGrabber's log.
 
-- **Action**: Run the Cursor command `@inspect-sv` or use the `inspect_saved_variables` tool.
-- **Benefits**: Detects syntax errors, missing keys, and unexpected global leaks without manual file searching.
+- **Action**: Run `mech call sv.parse` (or `mech addon.output`) after a `/reload`, passing a `target` from `diagnostic.targets` when several clients, accounts or profiles exist.
+- **For your own SavedVariables**: open the file under `WTF/Account/<ACCOUNT>/SavedVariables/` directly, or use `/dump MyAddonDB` in game. To track how your database changes, copy the file before and after a session and diff it with your editor or `git diff --no-index`.
 
-### Database Mutation Tracking (Snapshots & Diffing)
+### Monitoring Dashboard
 
-For complex addons where settings change frequently during a session, use **Snapshots** to track how your code mutations affect the persistent database.
+For a holistic view of the data, run the desktop dashboard.
 
-```bash
-# Take a snapshot before changes
-addon-dev inspect-sv MyAddon --snapshot "pre_patch"
-
-# Compare after changes
-addon-dev inspect-sv MyAddon --diff "pre_patch"
-```
-
-- **How it helps**: Quickly identify which code path added a specific key, changed a type, or removed a value by comparing the state before and after a session or reload.
-
-### Automated Workspace Monitoring
-
-For a holistic view of your development environment, use the Workspace Dashboard.
-
-- **Action**: Run `addon-dev dashboard`.
+- **Action**: Run `mech dashboard`.
 - **Features**:
-  - **Live Feedback**: Enable **Auto-Refresh** to keep health data current while you work.
-  - **Background Alerts**: Enable **System Toasts** to receive OS-level notifications if a background lint or test fails while the dashboard is off-screen.
-  - **Test Depth**: Monitor code coverage percentages across all addons.
+  - **Live Feedback**: Enable **Auto-Refresh** to keep the data current while you work.
+  - **Command forms**: Run any registered command from schema-generated forms.
+  - **Target selection**: Pick the client, account, character and profile to read.
+
+The dashboard shows data from the last `/reload` or logout; it is not a live stream from the game.
 
 ### Atlas Icon Discovery
 
 When you need to find the correct atlas name for a UI element:
 
-- **Action**: Run `addon-dev atlas search <keyword>`.
+- **Action**: Run `mech call atlas.search '{"query": "<keyword>"}'` (run `atlas.scan` once with a local `wow-ui-source` checkout first).
 - **Benefit**: Instantly finds Blizzard atlas names indexed from the beta source (e.g., `gear`, `eye`, `heart`).
 
 ### Inspect frame state
@@ -292,7 +280,7 @@ When you need to find the correct atlas name for a UI element:
 ### Check if addon loaded
 
 ```lua
-/run print(IsAddOnLoaded("MyAddon"))
+/run print(C_AddOns.IsAddOnLoaded("MyAddon"))
 ```
 
 ### Test secret value detection (Midnight)

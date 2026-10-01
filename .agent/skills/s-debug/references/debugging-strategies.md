@@ -14,17 +14,14 @@ Systematic approaches to addon investigation.
 
 ### Mechanic Output
 
-**Ask** user to `/reload` and wait for confirmation, then:
-
-```bash
-addon.output(agent_mode=true)
-```
+Follow the protocol in [using-mechanic](../../using-mechanic/SKILL.md): choose a `diagnostic.targets` entry, ask the user to `/reload`, **wait for their confirmation**, then call `addon.output` with `agent_mode=true` and the same `target`. Check the freshness timestamp before trusting the data.
 
 ### In-Game
 
 ```lua
-/mech errors    -- Error log
-/mech console   -- Console output
+/mech errors    -- Errors tab
+/mech console   -- Console tab
+/mech inspect   -- Frame inspector
 /dump MyAddon.db.profile
 ```
 
@@ -40,9 +37,9 @@ addon.output(agent_mode=true)
 
 ### Minimal Reproduction
 
-1. Create test addon: `mech call addon.create '{"name": "TestBug"}'`
+1. Create a throwaway addon with the `addon.create` MCP tool (`name="TestBug"`)
 2. Add minimal code to reproduce
-3. If can't reproduce, difference is the clue
+3. If you can't reproduce, the difference is the clue
 
 ### Disable Other Addons
 
@@ -54,9 +51,12 @@ Disable all except yours. Re-enable one by one.
 ## Console Debugging
 
 ```lua
+-- Readable by agents through addon.output
+MechanicLib:Log("MyAddon", "State: " .. tostring(self.db.profile.enabled), MechanicLib.Categories.CORE)
+
+-- Interactive only (chat output, invisible to agents)
 self:Print("State:", self.db.profile.enabled)
 DevTools_Dump(myTable)
-print(string.format("Health: %.1f%%", percent * 100))
 ```
 
 ## Stack Traces
@@ -79,6 +79,8 @@ debugFrame:SetScript("OnEvent", function(self, event, ...)
 end)
 ```
 
+Remove it afterwards: it is very noisy.
+
 ## Performance Debugging
 
 ```lua
@@ -87,19 +89,17 @@ ExpensiveFunction()
 print(string.format("Took %.2f ms", debugprofilestop() - start))
 ```
 
+The Performance tab (`/mech perf`) shows per-addon memory and CPU (ms/s over the refresh window).
+
 ## Lua Eval Queue
 
-Test code in-game via Mechanic:
+Run a snippet in game through Mechanic, using the same target for queue and read:
 
-```bash
-lua.queue(code=["return UnitName(\"player\")"])
+```
+lua.queue(code=["return UnitName(\"player\")"], labels=["name"], target=<from diagnostic.targets>)
 ```
 
-**Ask** user to `/reload` and wait for confirmation, then:
-
-```bash
-lua.results()
-```
+Ask the user to `/reload`, wait for confirmation, then call `lua.results(target=...)`. Results are also part of `addon.output`.
 
 ## Common Investigation Paths
 
