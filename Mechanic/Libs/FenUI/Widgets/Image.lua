@@ -332,11 +332,13 @@ end
 ---@param tokenOrColor string|table Token name or {r, g, b, a} table
 function ImageMixin:SetTint(tokenOrColor)
 	if type(tokenOrColor) == "string" then
-		-- Token name
+		-- Token name (kept so RefreshTheme can re-resolve it)
+		self.tintToken = tokenOrColor
 		local r, g, b, a = FenUI:GetColor(tokenOrColor)
 		self.texture:SetVertexColor(r, g, b, a)
 	elseif type(tokenOrColor) == "table" then
 		-- Direct color
+		self.tintToken = nil
 		self.texture:SetVertexColor(
 			tokenOrColor[1] or 1,
 			tokenOrColor[2] or 1,
@@ -348,7 +350,15 @@ end
 
 --- Clear tinting (reset to white)
 function ImageMixin:ClearTint()
+	self.tintToken = nil
 	self.texture:SetVertexColor(1, 1, 1, 1)
+end
+
+--- Re-resolve a token tint after a theme change
+function ImageMixin:RefreshTheme()
+	if self.tintToken then
+		self.texture:SetVertexColor(FenUI:GetColor(self.tintToken))
+	end
 end
 
 --- Apply a mask to the image
@@ -423,6 +433,7 @@ function FenUI:CreateImage(parent, config)
 	local image = CreateFrame("Frame", nil, parent)
 	FenUI.Mixin(image, ImageMixin)
 	image:Init(config or {})
+	FenUI:RegisterThemedFrame(image)
 	return image
 end
 

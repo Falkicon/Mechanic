@@ -184,5 +184,7 @@ function FenUI:CreateImageButton(parent, config)
 	FenUI.Mixin(button, ImageButtonMixin)
 
 	button:Init(config or {})
+	-- ImageMixin:RefreshTheme re-resolves the current state's tint token
+	FenUI:RegisterThemedFrame(button)
 	return button
 end

@@ -33,6 +33,8 @@ function PanelMixin:Init(config)
 
 	-- Mark as supporting layouts for theme system
 	self.fenUISupportsLayout = true
+	-- Only an explicit `layout` pins the border; otherwise it follows the theme
+	self.fenUIExplicitBorder = config.layout and true or false
 
 	-- Windows are toplevel: clicking raises them, and they raise when shown, so two
 	-- windows in the same strata stack as whole units instead of interleaving

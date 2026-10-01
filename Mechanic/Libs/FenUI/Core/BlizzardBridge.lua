@@ -258,6 +258,17 @@ function FenUI:ApplyBorder(frame, borderKey, colorToken, margin)
 	return true
 end
 
+--- Re-apply a frame's border from its stored pack, color token and margin,
+--- re-resolving token colors and pixel snapping
+---@param frame Frame A frame previously bordered with ApplyBorder
+---@return boolean success
+function FenUI:RefreshBorder(frame)
+	if frame and frame.borderApplied and frame.fenUIBorderKey then
+		return self:ApplyBorder(frame, frame.fenUIBorderKey, frame.fenUIBorderColorToken, frame.fenUIBorderMargin)
+	end
+	return false
+end
+
 -- Re-snap borders when the UI scale or resolution changes, otherwise edges
 -- sized for the old scale drift to 0px/2px.
 local scaleWatcher = CreateFrame("Frame")
@@ -265,8 +276,16 @@ scaleWatcher:RegisterEvent("UI_SCALE_CHANGED")
 scaleWatcher:RegisterEvent("DISPLAY_SIZE_CHANGED")
 scaleWatcher:SetScript("OnEvent", function()
 	for frame in pairs(borderedFrames) do
-		if frame.borderApplied and frame.fenUIBorderKey then
-			FenUI:ApplyBorder(frame, frame.fenUIBorderKey, frame.fenUIBorderColorToken, frame.fenUIBorderMargin)
+		FenUI:RefreshBorder(frame)
+	end
+end)
+
+-- Re-color borders on theme change. Themed frames (e.g. Layouts) refresh their
+-- own border from RefreshTheme, after their background, so skip them here.
+FenUI:OnThemeChanged(function()
+	for frame in pairs(borderedFrames) do
+		if not FenUI:IsThemedFrame(frame) then
+			FenUI:RefreshBorder(frame)
 		end
 	end
 end)

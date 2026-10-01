@@ -292,6 +292,9 @@ end
 --- Set the background
 ---@param bgConfig string|table Background configuration
 function LayoutMixin:SetBackground(bgConfig)
+	-- Kept so RefreshTheme can re-resolve token colors after a theme change
+	self.backgroundConfig = bgConfig or nil
+
 	if not bgConfig or bgConfig == false then
 		self.bgTexture:Hide()
 		self.lastBgColor = nil
@@ -463,7 +466,12 @@ local BORDER_INSETS = {
 
 --- Set the border
 ---@param borderKey string|false Border pack name or false to remove
-function LayoutMixin:SetBorder(borderKey)
+---@param fromTheme boolean|nil True when the theme picked the border (ThemeManager). Any
+---  other call makes the border explicit, and later theme changes leave it alone.
+function LayoutMixin:SetBorder(borderKey, fromTheme)
+	self.borderConfig = borderKey or nil
+	self.fenUIExplicitBorder = not fromTheme
+
 	if not borderKey or borderKey == false then
 		if self.borderApplied then
 			FenUI:HideCustomBorder(self)
@@ -496,6 +504,8 @@ function LayoutMixin:SetBorder(borderKey)
 
 	-- 2. Legacy Fallback: Blizzard NineSlice (if key is in FenUI.Layouts)
 	if FenUI.ApplyLayout and (FenUI.Layouts[borderKey] or NineSliceLayouts[borderKey]) then
+		-- Drop a previous custom-pack border so it doesn't draw over the NineSlice
+		FenUI:HideCustomBorder(self)
 		FenUI:ApplyLayout(self, borderKey, self.config.textureKit, margin)
 		self.borderApplied = true
 
@@ -529,6 +539,8 @@ end
 --- Set shadow
 ---@param shadowConfig string|table|boolean Shadow configuration
 function LayoutMixin:SetShadow(shadowConfig)
+	self.shadowConfig = shadowConfig or nil
+
 	if not shadowConfig or shadowConfig == false then
 		self:HideShadow()
 		return
@@ -865,27 +877,6 @@ function LayoutMixin:SetContent(frame)
 	frame:Show()
 end
 
-function LayoutMixin:SetupLifecycleAnimations()
-	local config = self.config
-
-	if config.showAnimation then
-		self:HookScript("OnShow", function()
-			FenUI.Animation:Play(self, config.showAnimation)
-		end)
-	end
-
-	if config.hideAnimation then
-		local originalHide = self.Hide
-		self.Hide = function(f)
-			FenUI.Animation:Play(f, config.hideAnimation, {
-				onComplete = function()
-					originalHide(f)
-				end,
-			})
-		end
-	end
-end
-
 --- Get margin values (from config or tokens)
 --- Supports: number (symmetric), string (token), table { top, bottom, left, right }
 --- Individual overrides: marginTop, marginBottom, marginLeft, marginRight
@@ -987,6 +978,16 @@ end
 -- Multi-Row Cell System
 --------------------------------------------------------------------------------
 
+--- Resolve a cell's stored background config onto its texture
+---@param cell Frame
+local function ApplyCellBackground(cell)
+	local bgType, values = ResolveBackgroundConfig(cell.bgConfig)
+	if bgType == "color" then
+		local r, g, b, a = FenUI:GetColor(values.token)
+		cell.bgTexture:SetColorTexture(r, g, b, values.alpha or a)
+	end
+end
+
 function LayoutMixin:CreateCells()
 	local rowDefs = self.config.rows
 	local colDefs = self.config.cols
@@ -1058,12 +1059,8 @@ function LayoutMixin:CreateCells()
 		if cellConfig and cellConfig.background then
 			cell.bgTexture = cell:CreateTexture(nil, "BACKGROUND")
 			cell.bgTexture:SetAllPoints()
-
-			local bgType, values = ResolveBackgroundConfig(cellConfig.background)
-			if bgType == "color" then
-				local r, g, b, a = FenUI:GetColor(values.token)
-				cell.bgTexture:SetColorTexture(r, g, b, values.alpha or a)
-			end
+			cell.bgConfig = cellConfig.background
+			ApplyCellBackground(cell)
 		end
 
 		self.cells[i] = cell
@@ -1193,6 +1190,40 @@ function LayoutMixin:ResolveGap()
 end
 
 --------------------------------------------------------------------------------
+-- Theme Refresh
+--------------------------------------------------------------------------------
+
+--- Re-resolve token colors (background, border, shadow, cell backgrounds) from
+--- the stored config. Runs on global theme changes; safe to call directly.
+function LayoutMixin:RefreshTheme()
+	-- Background first: a rounded border takes its fill from the background color
+	local bgType, values = ResolveBackgroundConfig(self.backgroundConfig)
+	if bgType == "color" then
+		self:ApplyColorBackground(values)
+	elseif bgType == "gradient" then
+		self:ApplyGradientBackground(values)
+	end
+	-- Image backgrounds are Image widgets and refresh themselves
+
+	-- Custom-pack borders only (NineSlice art isn't token-colored). RefreshBorder
+	-- keeps a state color set through FenUI:SetBorderColor.
+	if self.borderApplied and self.borderConfig and FenUI:GetBorderPack(self.borderConfig) then
+		FenUI:RefreshBorder(self)
+	end
+
+	-- Only a shadow that is showing (HideShadow clears shadowType)
+	if self.shadowConfig and self.shadowType then
+		self:SetShadow(self.shadowConfig)
+	end
+
+	for _, cell in ipairs(self.cells) do
+		if cell.bgTexture and cell.bgConfig then
+			ApplyCellBackground(cell)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Animation & Transitions
 --------------------------------------------------------------------------------
 
@@ -1205,7 +1236,7 @@ function LayoutMixin:SetupLifecycleAnimations()
 		local anim = type(showAnim) == "string" and FenUI.Animation.Presets[showAnim] or FenUI.Animation:Define(showAnim)
 		if anim then
 			self:HookScript("OnShow", function()
-				anim:Play(self)
+				anim:Play(self, { name = "lifecycle" })
 			end)
 		end
 	end
@@ -1213,13 +1244,62 @@ function LayoutMixin:SetupLifecycleAnimations()
 	if hideAnim then
 		local anim = type(hideAnim) == "string" and FenUI.Animation.Presets[hideAnim] or FenUI.Animation:Define(hideAnim)
 		if anim then
+			local originalShow = self.Show
 			local originalHide = self.Hide
+			local hideGroup, hiding
+
+			local function IsHiding()
+				return hiding and hideGroup and hideGroup:IsPlaying()
+			end
+
+			local function CancelHide(frame)
+				if IsHiding() then
+					FenUI.Animation:Cancel(frame, "lifecycle")
+				end
+				hiding = false
+			end
+
+			-- Show during a hide animation cancels it, so its onComplete can't hide the frame
+			self.Show = function(this)
+				CancelHide(this)
+				originalShow(this)
+			end
+
 			self.Hide = function(this)
-				anim:Play(this, {
+				-- Animations don't advance on a frame that isn't drawn, so OnFinished
+				-- (and the real Hide) could never come: hide directly
+				if not this:IsVisible() then
+					CancelHide(this)
+					originalHide(this)
+					return
+				end
+
+				-- Already fading out: let it finish rather than restart
+				if IsHiding() then
+					return
+				end
+
+				hiding = true
+				local alpha = this:GetAlpha()
+				hideGroup = anim:Play(this, {
+					name = "lifecycle",
 					onComplete = function()
+						hiding = false
 						originalHide(this)
+						-- A fade-out keeps its final alpha; undo that so the next Show is visible
+						-- (the frame is hidden now, so an alpha transition applies it directly)
+						this:SetAlpha(alpha)
 					end,
 				})
+			end
+
+			-- SetShown would bypass both wrappers
+			self.SetShown = function(this, shown)
+				if shown then
+					this:Show()
+				else
+					this:Hide()
+				end
 			end
 		end
 	end
@@ -1246,6 +1326,9 @@ function FenUI:CreateLayout(parent, config)
 
 	-- Initialize
 	layout:Init(config)
+
+	-- Re-resolve token colors on global theme changes
+	FenUI:RegisterThemedFrame(layout)
 
 	return layout
 end

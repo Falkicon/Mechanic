@@ -80,8 +80,10 @@ function TabButtonMixin:UpdateVisual(state)
 		end
 	end
 
-	-- Show/hide underline highlight
+	-- Show/hide underline highlight (color resolved here so theme changes apply)
 	if self.highlight then
+		local hr, hg, hb = FenUI:GetColorRGB("interactiveSelected")
+		self.highlight:SetColorTexture(hr, hg, hb, 1)
 		self.highlight:SetShown(showHighlight)
 	end
 
@@ -241,10 +243,8 @@ function TabGroupMixin:AddTab(key, text, icon)
 	tab.text:SetFontObject(FenUI:GetFont("fontButton"))
 	tab.text:SetPoint("CENTER", 0, 0)
 
-	-- Create underline highlight (for selected state)
+	-- Create underline highlight (for selected state; colored in UpdateVisual)
 	tab.highlight = tab:CreateTexture(nil, "ARTWORK")
-	local hr, hg, hb = FenUI:GetColorRGB("interactiveSelected")
-	tab.highlight:SetColorTexture(hr, hg, hb, 1)
 	tab.highlight:SetHeight(FenUI:GetPixelSize(tab, 2))
 
 	-- Position highlight based on group position
@@ -404,6 +404,16 @@ function TabGroupMixin:GetTabs()
 	return self.tabs
 end
 
+--- Re-resolve token colors (baseline, labels, underline, badges) after a theme change
+function TabGroupMixin:RefreshTheme()
+	if self.baseline then
+		self.baseline:SetColorTexture(FenUI:GetColor("borderSubtle"))
+	end
+	for _, tab in pairs(self.tabs) do
+		tab:UpdateVisual()
+	end
+end
+
 --------------------------------------------------------------------------------
 -- Factory
 --------------------------------------------------------------------------------
@@ -436,6 +446,7 @@ function FenUI:CreateTabGroup(parent, config)
 	end
 
 	tabGroup:Init(config)
+	FenUI:RegisterThemedFrame(tabGroup)
 
 	return tabGroup
 end

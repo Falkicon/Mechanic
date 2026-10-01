@@ -134,6 +134,12 @@ function GridRowMixin:UpdateBackground()
 	end
 end
 
+--- Re-resolve token colors after a theme change
+function GridRowMixin:RefreshTheme()
+	self.accent:SetColorTexture(FenUI:GetColor("accentBar"))
+	self:UpdateBackground()
+end
+
 function GridRowMixin:SetSelected(selected)
 	self.isSelected = selected
 	self:UpdateBackground()
@@ -279,6 +285,16 @@ function GridMixin:AddRow()
 	return row
 end
 
+--- Re-resolve token colors on every row, including pooled ones
+function GridMixin:RefreshTheme()
+	for _, row in ipairs(self.rows) do
+		row:RefreshTheme()
+	end
+	for _, row in ipairs(self.rowPool) do
+		row:RefreshTheme()
+	end
+end
+
 function GridMixin:Clear()
 	for _, row in ipairs(self.rows) do
 		row:Hide()
@@ -345,5 +361,6 @@ function FenUI:CreateGrid(parent, config)
 	local grid = CreateFrame("Frame", nil, parent)
 	FenUI.Mixin(grid, GridMixin)
 	grid:Init(config)
+	FenUI:RegisterThemedFrame(grid)
 	return grid
 end

@@ -164,6 +164,67 @@ function FenUI:RemoveThemeChangedCallback(callbackId)
 	self.themeChangeCallbacks[callbackId] = nil
 end
 
+--------------------------------------------------------------------------------
+-- Themed Frame Registry
+--
+-- Lightweight refresh path for widgets that resolve token colors once at
+-- creation. A widget registers itself and implements :RefreshTheme(); a global
+-- theme change calls it on every registered frame. Keys are weak so pooled or
+-- discarded frames are never pinned by the registry. Values must not reference
+-- the frame (Lua 5.1 has no ephemerons: a closure over the key keeps it alive).
+--------------------------------------------------------------------------------
+
+local themedFrames = setmetatable({}, { __mode = "k" })
+
+--- Register a frame whose :RefreshTheme() runs on global theme changes
+---@param frame Frame A frame implementing RefreshTheme()
+---@return Frame frame
+function FenUI:RegisterThemedFrame(frame)
+	if frame then
+		themedFrames[frame] = true
+	end
+	return frame
+end
+
+--- Stop refreshing a frame on global theme changes
+---@param frame Frame
+function FenUI:UnregisterThemedFrame(frame)
+	if frame then
+		themedFrames[frame] = nil
+	end
+end
+
+--- Whether a frame refreshes itself on global theme changes
+---@param frame Frame
+---@return boolean
+function FenUI:IsThemedFrame(frame)
+	return frame ~= nil and themedFrames[frame] ~= nil
+end
+
+--- Re-resolve token colors on every registered frame
+---@return number count Frames refreshed
+function FenUI:RefreshThemedFrames()
+	-- Snapshot first: a refresh may create (and register) frames, and adding
+	-- keys to a table during pairs() is undefined
+	local frames = {}
+	for frame in pairs(themedFrames) do
+		frames[#frames + 1] = frame
+	end
+	for _, frame in ipairs(frames) do
+		if frame.RefreshTheme then
+			local ok, err = pcall(frame.RefreshTheme, frame)
+			if not ok then
+				self:Debug("RefreshTheme error:", err)
+			end
+		end
+	end
+	return #frames
+end
+
+FenUI:OnThemeChanged(function()
+	FenUI:RefreshThemedFrames()
+end)
+
 --- Fire theme change callbacks
 ---@param themeName string
 local function FireThemeChangeCallbacks(themeName)

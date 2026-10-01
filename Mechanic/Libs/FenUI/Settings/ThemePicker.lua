@@ -178,7 +178,6 @@ function ThemePickerMixin:CreateThemeButton(themeName, theme, yOffset)
 	btn.selected = btn:CreateTexture(nil, "BORDER")
 	btn.selected:SetPoint("LEFT", 4, 0)
 	btn.selected:SetSize(4, 16)
-	btn.selected:SetColorTexture(FenUI:GetColor("interactiveSelected"))
 	btn.selected:Hide()
 
 	-- Text
@@ -186,8 +185,6 @@ function ThemePickerMixin:CreateThemeButton(themeName, theme, yOffset)
 	btn.text:SetFontObject(FenUI:GetFont("fontBody"))
 	btn.text:SetPoint("LEFT", 14, 0)
 	btn.text:SetText(theme and theme.name or themeName)
-	local r, g, b = FenUI:GetColor("textDefault")
-	btn.text:SetTextColor(r, g, b)
 
 	-- Description
 	if theme and theme.description then
@@ -195,38 +192,42 @@ function ThemePickerMixin:CreateThemeButton(themeName, theme, yOffset)
 		btn.desc:SetFontObject(FenUI:GetFont("fontSmall"))
 		btn.desc:SetPoint("LEFT", btn.text, "RIGHT", 8, 0)
 		btn.desc:SetText("- " .. theme.description)
-		local mr, mg, mb = FenUI:GetColor("textMuted")
-		btn.desc:SetTextColor(mr, mg, mb)
+	end
+
+	-- All colors resolve here, so a theme change only needs to call this again
+	function btn:UpdateVisual()
+		self.selected:SetColorTexture(FenUI:GetColor("interactiveSelected"))
+		self.selected:SetShown(self.isSelected and true or false)
+		if self.isHovered then
+			self.bg:SetColorTexture(FenUI:GetColor("surfaceElevated"))
+		else
+			self.bg:SetColorTexture(0, 0, 0, 0)
+		end
+		local textToken = self.isSelected and "interactiveSelected"
+			or (self.isHovered and "interactiveHover" or "textDefault")
+		self.text:SetTextColor(FenUI:GetColorRGB(textToken))
+		if self.desc then
+			self.desc:SetTextColor(FenUI:GetColorRGB("textMuted"))
+		end
 	end
 
 	function btn:SetSelected(selected)
 		self.isSelected = selected
-		self.selected:SetShown(selected)
-		if selected then
-			local sr, sg, sb = FenUI:GetColor("interactiveSelected")
-			self.text:SetTextColor(sr, sg, sb)
-		else
-			local tr, tg, tb = FenUI:GetColor("textDefault")
-			self.text:SetTextColor(tr, tg, tb)
-		end
+		self:UpdateVisual()
 	end
 
 	-- Hover
 	btn:SetScript("OnEnter", function(self)
-		self.bg:SetColorTexture(FenUI:GetColor("surfaceElevated"))
-		if not self.isSelected then
-			local hr, hg, hb = FenUI:GetColor("interactiveHover")
-			self.text:SetTextColor(hr, hg, hb)
-		end
+		self.isHovered = true
+		self:UpdateVisual()
 	end)
 
 	btn:SetScript("OnLeave", function(self)
-		self.bg:SetColorTexture(0, 0, 0, 0)
-		if not self.isSelected then
-			local tr, tg, tb = FenUI:GetColor("textDefault")
-			self.text:SetTextColor(tr, tg, tb)
-		end
+		self.isHovered = false
+		self:UpdateVisual()
 	end)
+
+	btn:UpdateVisual()
 
 	-- Click
 	btn:SetScript("OnClick", function(self)
@@ -234,6 +235,13 @@ function ThemePickerMixin:CreateThemeButton(themeName, theme, yOffset)
 	end)
 
 	return btn
+end
+
+--- Re-resolve token colors after a theme change
+function ThemePickerMixin:RefreshTheme()
+	for _, btn in pairs(self.buttons) do
+		btn:UpdateVisual()
+	end
 end
 
 function ThemePickerMixin:GetCurrentTheme()
@@ -280,6 +288,7 @@ function FenUI:CreateThemePicker(parent, savedVars, savedVarKey, onChange)
 		savedVarKey = savedVarKey,
 		onChange = onChange,
 	})
+	FenUI:RegisterThemedFrame(picker)
 
 	return picker
 end

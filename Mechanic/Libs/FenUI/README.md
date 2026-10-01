@@ -140,7 +140,8 @@ local icon = FenUI:CreateLayout(parent, {
 FenUI provides a declarative animation system that wraps WoW's native `AnimationGroup` API.
 
 ```lua
--- 1. Property Transitions (automatic animation on SetAlpha, SetScale, etc.)
+-- 1. Property Transitions (SetAlpha and SetScale animate; pass `true` as a second
+--    argument to apply instantly)
 local panel = FenUI:CreatePanel(parent, {
     transitions = {
         alpha = { duration = 0.2, easing = "ease-out" },
@@ -167,6 +168,9 @@ bounce:Play(myFrame)
 
 -- 4. Chaining
 FenUI.Animation.Presets.slideUp:Then(FenUI.Animation.Presets.fadeOut):Play(myFrame)
+
+-- A finished animation keeps its final alpha (fadeOut stays hidden); scale and
+-- offset return to rest. A missing alpha means the frame's alpha at play time.
 ```
 
 ### Create Tabs
@@ -314,6 +318,20 @@ windows (`ModernDark`) and cards (`Card` pack). Lists, rows, tabs and dividers s
 
 Semantic tokens may reference other semantic tokens (e.g. `textEmptyTitle` → `textMuted` → `gray400`);
 `GetColor`, `GetSpacing` and `GetFont` follow the chain, and a theme can override any link in it.
+
+### Theme switching
+
+`FenUI:SetGlobalTheme(name)` re-colors live widgets in place: Layouts (backgrounds, cells, borders,
+shadows), Panels, Tabs, Grid rows, Image tints and the ThemePicker. A Panel created with an explicit
+`layout`, or a Layout given a border, keeps that border when the theme changes; only its colors change.
+Custom widgets that resolve token colors once can opt in:
+
+```lua
+function MyWidgetMixin:RefreshTheme()
+    self.bg:SetColorTexture(FenUI:GetColor("surfaceElevated"))
+end
+FenUI:RegisterThemedFrame(widget) -- weak-keyed; RefreshTheme runs on every global theme change
+```
 
 For hand-drawn hairlines, `FenUI:GetPixelSize(frame[, size])` returns a size snapped to whole physical
 pixels at the frame's effective scale, so 1px borders stay crisp and even at any UI scale.
