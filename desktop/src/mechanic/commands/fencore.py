@@ -5,16 +5,28 @@ Provides MCP-discoverable catalog of FenCore logic domains:
 - fencore-catalog: Get full domain/function catalog
 - fencore-search: Search functions by name/description
 - fencore-info: Get detailed function info
+
+The catalog is read from the selected diagnostic target's saved MechanicDB
+(the same client/account/character/profile selection every other diagnostic
+command uses).
 """
 
+import asyncio
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
 from pydantic import BaseModel, Field
 
-from ..parsers import parse_savedvariables
-from ..config import get_config
+from ..sv_cache import parse_sv_file
+from ..targets import (
+    DiagnosticTarget,
+    TargetError,
+    read_db,
+    select_target,
+    validate_db,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -23,9 +35,7 @@ from ..config import get_config
 
 
 class CatalogInput(BaseModel):
-    """No input needed for catalog."""
-
-    pass
+    target: Optional[DiagnosticTarget] = None
 
 
 class FunctionSchema(BaseModel):
@@ -46,10 +56,11 @@ class CatalogOutput(BaseModel):
 
 
 class SearchInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     query: str = Field(
         ..., description="Search query (partial match on name or description)"
     )
-    limit: int = Field(20, description="Maximum results to return")
+    limit: int = Field(20, ge=1, description="Maximum results to return")
 
 
 class SearchResult(BaseModel):
@@ -66,6 +77,7 @@ class SearchOutput(BaseModel):
 
 
 class InfoInput(BaseModel):
+    target: Optional[DiagnosticTarget] = None
     domain: str = Field(..., description="Domain name (e.g., 'Math')")
     function: str = Field(..., description="Function name (e.g., 'Clamp')")
 
@@ -85,35 +97,56 @@ class InfoOutput(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def get_fencore_catalog() -> Optional[Dict]:
-    """
-    Get FenCore catalog from MechanicDB.
-
-    FenCore registers its catalog with MechanicLib, which syncs to MechanicDB.
-    """
-    config = get_config()
-    if not config.wtf_path:
+def _catalog_in(container: Any) -> Optional[Dict]:
+    """``container.<registered|addonData>.FenCore.catalog`` when it is a table."""
+    if not isinstance(container, dict):
         return None
+    for key in ("addonData", "registered"):
+        group = container.get(key)
+        fencore = group.get("FenCore") if isinstance(group, dict) else None
+        catalog = fencore.get("catalog") if isinstance(fencore, dict) else None
+        if isinstance(catalog, dict):
+            return catalog
+    return None
 
-    # Find MechanicDB SavedVariables
-    sv_path = config.wtf_path / "SavedVariables" / "!Mechanic.lua"
-    if not sv_path.exists():
-        return None
 
+def get_fencore_catalog(target: Optional[DiagnosticTarget] = None) -> Optional[Dict]:
+    """
+    Get the FenCore catalog FenCore registered with MechanicLib for ``target``.
+
+    The selected profile is searched first, then the database root. Raises
+    TargetError when the target cannot be selected or read.
+    """
+    selected = select_target(target)
+    path = Path(selected.sv_path)
     try:
-        content = sv_path.read_text(encoding="utf-8")
-        sv_data = parse_savedvariables(content)
-        mechanic_db = sv_data.get("MechanicDB", {})
-        registered = mechanic_db.get("registered", {})
-        fencore = registered.get("FenCore", {})
-
-        # FenCore stores catalog via MechanicLib:Register()
-        if "catalog" in fencore:
-            return fencore["catalog"]
-
-        return None
+        db = validate_db(parse_sv_file(path).get("MechanicDB"))
+    except TargetError:
+        raise
     except Exception:
-        return None
+        db = read_db(path)  # raises a TargetError that names the file
+    profile = db.get("profiles", {}).get(selected.profile) if selected.profile else db
+    return _catalog_in(profile) or _catalog_in(db)
+
+
+async def _load_catalog(target: Optional[DiagnosticTarget]):
+    """Return ``(catalog, None)`` or ``(None, error_result)``."""
+    try:
+        catalog = await asyncio.to_thread(get_fencore_catalog, target)
+    except TargetError as exc:
+        return None, exc.result()
+    if not catalog:
+        return None, error(
+            code="CATALOG_NOT_FOUND",
+            message="FenCore catalog not found in the selected MechanicDB",
+            suggestion="Ensure FenCore is loaded in WoW, /reload, then retry",
+        )
+    return catalog, None
+
+
+def _domains(catalog: Dict) -> Dict[str, Any]:
+    domains = catalog.get("domains", {})
+    return domains if isinstance(domains, dict) else {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -133,20 +166,12 @@ def register_commands(server):
     async def fencore_catalog(
         input: CatalogInput, context: Any = None
     ) -> CommandResult[CatalogOutput]:
-        catalog = get_fencore_catalog()
+        catalog, failure = await _load_catalog(input.target)
+        if failure:
+            return failure
 
-        if not catalog:
-            return error(
-                code="CATALOG_NOT_FOUND",
-                message="FenCore catalog not found in MechanicDB",
-                suggestion="Ensure FenCore is loaded in WoW and run /reload",
-            )
-
-        # Count total functions
-        total = 0
-        for domain in catalog.get("domains", {}).values():
-            if isinstance(domain, dict):
-                total += len(domain)
+        domains = _domains(catalog)
+        total = sum(len(d) for d in domains.values() if isinstance(d, dict))
 
         src = create_source(
             type="game",
@@ -156,11 +181,11 @@ def register_commands(server):
 
         return success(
             data=CatalogOutput(
-                version=catalog.get("version", "unknown"),
-                domains=catalog.get("domains", {}),
+                version=str(catalog.get("version", "unknown")),
+                domains={k: v for k, v in domains.items() if isinstance(v, dict)},
                 total_functions=total,
             ),
-            reasoning=f"Found {len(catalog.get('domains', {}))} domains with {total} functions",
+            reasoning=f"Found {len(domains)} domains with {total} functions",
             sources=[src],
             confidence=1.0,
         )
@@ -174,28 +199,22 @@ def register_commands(server):
     async def fencore_search(
         input: SearchInput, context: Any = None
     ) -> CommandResult[SearchOutput]:
-        catalog = get_fencore_catalog()
-
-        if not catalog:
-            return error(
-                code="CATALOG_NOT_FOUND",
-                message="FenCore catalog not found",
-                suggestion="Ensure FenCore is loaded and run /reload",
-            )
+        catalog, failure = await _load_catalog(input.target)
+        if failure:
+            return failure
 
         query_lower = input.query.lower()
         results = []
 
-        for domain_name, domain in catalog.get("domains", {}).items():
+        for domain_name, domain in _domains(catalog).items():
             if not isinstance(domain, dict):
                 continue
             for func_name, func_info in domain.items():
                 if not isinstance(func_info, dict):
                     continue
                 full_name = f"{domain_name}.{func_name}"
-                description = func_info.get("description", "")
+                description = str(func_info.get("description", ""))
 
-                # Match on name or description
                 if (
                     query_lower in full_name.lower()
                     or query_lower in description.lower()
@@ -209,7 +228,7 @@ def register_commands(server):
                         )
                     )
 
-        # Sort by relevance (name match first)
+        # Name matches first
         results.sort(
             key=lambda r: (
                 0 if query_lower in r.name.lower() else 1,
@@ -217,13 +236,10 @@ def register_commands(server):
             )
         )
 
-        # Apply limit
-        limited = results[: input.limit]
-
         return success(
             data=SearchOutput(
                 query=input.query,
-                results=limited,
+                results=results[: input.limit],
                 total=len(results),
             ),
             reasoning=f"Found {len(results)} functions matching '{input.query}'",
@@ -238,44 +254,41 @@ def register_commands(server):
     async def fencore_info(
         input: InfoInput, context: Any = None
     ) -> CommandResult[InfoOutput]:
-        catalog = get_fencore_catalog()
+        catalog, failure = await _load_catalog(input.target)
+        if failure:
+            return failure
 
-        if not catalog:
-            return error(
-                code="CATALOG_NOT_FOUND",
-                message="FenCore catalog not found",
-                suggestion="Ensure FenCore is loaded and run /reload",
-            )
-
-        domains = catalog.get("domains", {})
+        domains = _domains(catalog)
         domain = domains.get(input.domain)
 
         if not domain or not isinstance(domain, dict):
-            available = ", ".join(domains.keys())
             return error(
                 code="DOMAIN_NOT_FOUND",
                 message=f"Domain '{input.domain}' not found",
-                suggestion=f"Available domains: {available}",
+                suggestion=f"Available domains: {', '.join(domains)}",
             )
 
         func_info = domain.get(input.function)
 
         if not func_info or not isinstance(func_info, dict):
-            available = ", ".join(domain.keys())
             return error(
                 code="FUNCTION_NOT_FOUND",
                 message=f"Function '{input.function}' not found in {input.domain}",
-                suggestion=f"Available functions: {available}",
+                suggestion=f"Available functions: {', '.join(domain)}",
             )
 
+        params = func_info.get("params", [])
+        returns = func_info.get("returns", {})
         return success(
             data=InfoOutput(
                 domain=input.domain,
                 name=input.function,
                 full_name=f"{input.domain}.{input.function}",
-                description=func_info.get("description", ""),
-                params=func_info.get("params", []),
-                returns=func_info.get("returns", {}),
+                description=str(func_info.get("description", "")),
+                params=[p for p in params if isinstance(p, dict)]
+                if isinstance(params, list)
+                else [],
+                returns=returns if isinstance(returns, dict) else {},
                 example=func_info.get("example"),
             ),
             reasoning=f"Retrieved info for FenCore.{input.domain}.{input.function}",

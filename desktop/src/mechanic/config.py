@@ -26,8 +26,19 @@ def load_environment(desktop_env: Path, user_env: Path) -> None:
             load_dotenv(path, override=False)
 
 
+def _checkout_root() -> Optional[Path]:
+    """The ``desktop/`` directory when running from a source checkout, else None.
+
+    An installed wheel has no such directory; walking up from ``__file__`` there
+    would land in site-packages' parent and pick up unrelated files.
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    return root if (root / "pyproject.toml").is_file() else None
+
+
+_checkout = _checkout_root()
 load_environment(
-    Path(__file__).parent.parent.parent / ".env",
+    (_checkout / ".env") if _checkout else Path.home() / ".mechanic" / ".env",
     Path.home() / ".mechanic" / ".env",
 )
 
@@ -159,6 +170,13 @@ class MechanicConfig:
 
         self._loaded = True
 
+    def _path_setting(self, key: str) -> Optional[Path]:
+        """A configured path, or None when unset/null/not a non-empty string."""
+        value = self._config.get(key)
+        if isinstance(value, str) and value.strip():
+            return Path(value)
+        return None
+
     @property
     def wow_root(self) -> Optional[Path]:
         """
@@ -172,11 +190,10 @@ class MechanicConfig:
             return self._wow_root
 
         # Check config
-        if "wow_root" in self._config:
-            path = Path(self._config["wow_root"])
-            if path.exists():
-                self._wow_root = path
-                return self._wow_root
+        path = self._path_setting("wow_root")
+        if path is not None and path.exists():
+            self._wow_root = path
+            return self._wow_root
 
         # Auto-discover
         for root in get_common_wow_roots():
@@ -199,11 +216,10 @@ class MechanicConfig:
             return self._dev_path
 
         # Check config
-        if "dev_path" in self._config:
-            path = Path(self._config["dev_path"])
-            if path.exists():
-                self._dev_path = path
-                return self._dev_path
+        path = self._path_setting("dev_path")
+        if path is not None and path.exists():
+            self._dev_path = path
+            return self._dev_path
 
         # Default: wow_root/_dev_
         if self.wow_root:
@@ -222,10 +238,9 @@ class MechanicConfig:
     @property
     def template_path(self) -> Optional[Path]:
         """Get the path to the addon template."""
-        if "template_path" in self._config:
-            path = Path(self._config["template_path"])
-            if path.exists():
-                return path
+        path = self._path_setting("template_path")
+        if path is not None and path.exists():
+            return path
 
         # Default: Look for _TemplateAddon in dev_path or common locations
         if self.dev_path:
@@ -281,10 +296,24 @@ class MechanicConfig:
         }
 
     def save_user_config(self, config: Dict[str, Any]):
-        """Save configuration to user config file."""
+        """Merge ``config`` into the user config file.
+
+        Existing keys that are not mentioned are kept, and ``None`` values are
+        dropped (they mean "not detected"; persisting them would later make
+        path properties fail and would freeze auto-discovery).
+        """
         config_path = Path.home() / ".mechanic" / "config.json"
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        merged: Dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                existing = json.loads(config_path.read_text(encoding="utf-8"))
+                if isinstance(existing, dict):
+                    merged.update(existing)
+            except (ValueError, OSError):
+                pass
+        merged.update({k: v for k, v in config.items() if v is not None})
+        config_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
 
         # Reload
         self._loaded = False

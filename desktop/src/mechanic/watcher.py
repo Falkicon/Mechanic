@@ -1,8 +1,38 @@
 import asyncio
-from watchfiles import awatch
-from pathlib import Path
-from .server import notify_reload
+import sys
 import time
+from pathlib import Path
+
+from watchfiles import awatch
+
+from .parsers import is_parse_error
+from .server import notify_reload
+
+# Addon SavedVariables other than !Mechanic are only worth parsing when they can
+# carry diagnostics; a byte search is far cheaper than parsing every file WoW
+# rewrites on /reload.
+_DIAGNOSTIC_MARKERS = (b"tests", b"testResults", b"healthLog", b"consoleBuffer")
+_PRIMARY_STEM = "!Mechanic"
+
+
+def _log(message: str) -> None:
+    """Print without ever raising on consoles that cannot encode the text."""
+    try:
+        print(message, flush=True)
+    except UnicodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        print(message.encode(encoding, "replace").decode(encoding), flush=True)
+
+
+def _may_carry_diagnostics(path: Path) -> bool:
+    """Cheap pre-filter run off the event loop; errors mean "look anyway"."""
+    if path.stem == _PRIMARY_STEM:
+        return True
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
+    return any(marker in data for marker in _DIAGNOSTIC_MARKERS)
 
 
 class SVWatcher:
@@ -36,37 +66,39 @@ class SVWatcher:
         # Diagnostics for the user
         invalid = [str(p) for p in self.raw_watch + self.raw_src if not p.exists()]
         if invalid:
-            print("⚠️ Warning: The following paths do not exist and will be ignored:")
+            _log("Warning: The following paths do not exist and will be ignored:")
             for p in invalid:
-                print(f"  - {p}")
+                _log(f"  - {p}")
             if any("..." in p for p in invalid):
-                print(
-                    "  💡 Tip: It looks like you used '...' placeholders. Please use your REAL absolute paths!"
+                _log(
+                    "  Tip: It looks like you used '...' placeholders. Please use your REAL absolute paths!"
                 )
 
         # Combine all paths to watch
         all_watch_paths = self.watch_paths + self.src_paths
         if not all_watch_paths:
-            print("❌ Error: No valid paths to watch. The watcher cannot start.")
+            _log("Error: No valid paths to watch. The watcher cannot start.")
             self.running = False
             return
 
-        print(
+        _log(
             f"Watcher started on {len(self.watch_paths)} SV paths and {len(self.src_paths)} src paths..."
         )
         for p in self.watch_paths:
-            print(f"   📂 Watching SV: {p}")
+            _log(f"   Watching SV: {p}")
 
         try:
             async for changes in awatch(*all_watch_paths, stop_event=self._stop_event):
                 if not self.running:
                     break
 
-                # Debug: Log all detected changes
-                print(f"🔍 Watcher detected {len(changes)} file change(s)")
+                _log(f"Watcher detected {len(changes)} file change(s)")
+
+                # WoW finishes writing SavedVariables shortly after the change fires
+                delay_done = False
 
                 for change, file_path in changes:
-                    print(f"   -> {change}: {file_path}")
+                    _log(f"   -> {change}: {file_path}")
                     file_path_obj = Path(file_path)
 
                     # Case 1: Source code change (Hot Reload)
@@ -77,10 +109,11 @@ class SVWatcher:
                         if self.auto_reload:
                             from .utils import trigger_wow_reload
 
-                            print(
+                            _log(
                                 f"Source change detected: {file_path_obj.name}. Triggering reload..."
                             )
-                            trigger_wow_reload(self.reload_key)
+                            # Window focus + SendKeys blocks; keep the loop responsive.
+                            await asyncio.to_thread(trigger_wow_reload, self.reload_key)
                         continue
 
                     # Case 2: SavedVariables change (Broadcast to UI)
@@ -89,10 +122,16 @@ class SVWatcher:
                         if file_path_obj.stem.startswith("Blizzard_"):
                             continue
 
-                        # Small delay to ensure file is finished writing
-                        await asyncio.sleep(0.1)
+                        if not delay_done:
+                            await asyncio.sleep(0.1)
+                            delay_done = True
 
                         try:
+                            if not await asyncio.to_thread(
+                                _may_carry_diagnostics, file_path_obj
+                            ):
+                                continue
+
                             from .commands.core import get_server
 
                             server = get_server()
@@ -109,13 +148,13 @@ class SVWatcher:
                                 not result.success
                                 and result.error
                                 and result.error.code == "TARGET_AMBIGUOUS"
-                                and file_path_obj.stem == "!Mechanic"
+                                and file_path_obj.stem == _PRIMARY_STEM
                             ):
                                 # The browser owns its target selection. Invalidate
                                 # without publishing one arbitrary profile's data.
                                 await notify_reload(
                                     {
-                                        "addon": "!Mechanic",
+                                        "addon": _PRIMARY_STEM,
                                         "timestamp": time.time(),
                                         "target": None,
                                         "candidates": result.error.details.get(
@@ -124,25 +163,32 @@ class SVWatcher:
                                     }
                                 )
 
+                            if (
+                                not result.success
+                                and result.error
+                                and result.error.code == "PARSE_ERROR"
+                            ):
+                                _log(
+                                    f"Skipped {file_path_obj.name}: {result.error.message}"
+                                )
+
                             if result.success and result.data:
                                 var_name = file_path_obj.stem
                                 addon_data = result.data.addons.get(var_name)
 
-                                if addon_data:
+                                if is_parse_error(addon_data) or not isinstance(
+                                    addon_data, dict
+                                ):
+                                    _log(
+                                        f"Skipped {file_path_obj.name}: no addon_data found for {var_name}"
+                                    )
+                                elif addon_data:
                                     # Check for actionable data (Tests, Health Log, Console Buffer)
                                     # or if it's explicitly the !Mechanic addon
-                                    has_tests = (
-                                        "tests" in addon_data and addon_data["tests"]
-                                    )
-                                    has_logs = (
-                                        "healthLog" in addon_data
-                                        and addon_data["healthLog"]
-                                    )
-                                    has_console = (
-                                        "consoleBuffer" in addon_data
-                                        and addon_data["consoleBuffer"]
-                                    )
-                                    is_mechanic = var_name == "!Mechanic"
+                                    has_tests = bool(addon_data.get("tests"))
+                                    has_logs = bool(addon_data.get("healthLog"))
+                                    has_console = bool(addon_data.get("consoleBuffer"))
+                                    is_mechanic = var_name == _PRIMARY_STEM
 
                                     if (
                                         has_tests
@@ -150,8 +196,8 @@ class SVWatcher:
                                         or has_console
                                         or is_mechanic
                                     ):
-                                        print(
-                                            f"📡 Actionable update in {var_name} (tests={bool(has_tests)}, logs={bool(has_logs)}, console={bool(has_console)})"
+                                        _log(
+                                            f"Actionable update in {var_name} (tests={has_tests}, logs={has_logs}, console={has_console})"
                                         )
                                         await notify_reload(
                                             {
@@ -164,18 +210,16 @@ class SVWatcher:
                                             }
                                         )
                                     else:
-                                        print(
-                                            f"⏭️ Skipped {var_name}: no actionable data"
-                                        )
+                                        _log(f"Skipped {var_name}: no actionable data")
                                 else:
-                                    print(
-                                        f"⏭️ Skipped {file_path_obj.name}: no addon_data found for {var_name}"
+                                    _log(
+                                        f"Skipped {file_path_obj.name}: no addon_data found for {var_name}"
                                     )
                         except Exception as e:
-                            print(f"Error triggering AFD parse for {file_path}: {e}")
+                            _log(f"Error triggering AFD parse for {file_path}: {e}")
         except Exception as e:
             if self.running:  # Only print if we didn't expect to stop
-                print(f"Watcher loop error: {e}")
+                _log(f"Watcher loop error: {e}")
         finally:
             self.running = False
 

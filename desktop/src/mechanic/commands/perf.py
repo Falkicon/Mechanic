@@ -6,6 +6,8 @@ Migrated from ADDON_DEV/Tools/PerformanceProfiler to AFD commands.
 """
 
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -13,7 +15,8 @@ from typing import Any, Dict, List, Optional
 from afd import CommandResult, error, success
 from pydantic import BaseModel, Field
 
-from ..config import get_config
+from ..config import get_data_dir
+from ._common import is_safe_component
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -71,7 +74,7 @@ class PerfReportInput(BaseModel):
 class PerfReportOutput(BaseModel):
     addon: str
     history: List[Dict[str, Any]]
-    trend: Optional[Dict[str, float]] = None
+    trend: Optional[Dict[str, Any]] = None
     report: str
 
 
@@ -89,12 +92,13 @@ class PerfListOutput(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class BaselineError(ValueError):
+    """A baseline file exists but cannot be used."""
+
+
 def _get_baselines_dir() -> Path:
-    """Get the directory for storing performance baselines."""
-    config = get_config()
-    baselines_dir = config.data_dir / "perf_baselines"
-    baselines_dir.mkdir(parents=True, exist_ok=True)
-    return baselines_dir
+    """Where baselines live; only writers create it."""
+    return get_data_dir(create=False) / "perf_baselines"
 
 
 def _get_baseline_path(addon_name: str) -> Path:
@@ -108,12 +112,7 @@ def _get_baseline_path(addon_name: str) -> Path:
 
 def _is_safe_addon_name(addon_name: str) -> bool:
     """Return whether an addon name is safe to use as a local baseline filename."""
-    reserved = '<>:"/\\|?*'
-    return (
-        bool(addon_name.strip())
-        and addon_name not in {".", ".."}
-        and not any(char in reserved or ord(char) < 32 for char in addon_name)
-    )
+    return is_safe_component(addon_name)
 
 
 def _invalid_addon_error(addon_name: str):
@@ -126,21 +125,53 @@ def _invalid_addon_error(addon_name: str):
     )
 
 
+def _baseline_error(exc: BaselineError):
+    return error(
+        code="BASELINE_CORRUPT",
+        message=str(exc),
+        suggestion="Fix or delete the baseline file named above; it was not modified",
+    )
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _load_baseline(addon_name: str) -> Dict[str, Any]:
-    """Load existing baseline for an addon."""
+    """Load an addon's baseline (empty when none). Raises BaselineError if unusable."""
     path = _get_baseline_path(addon_name)
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, IOError):
-            return {"history": [], "thresholds": {}}
-    return {"history": [], "thresholds": {}}
+    if not path.exists():
+        return {"history": [], "thresholds": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BaselineError(f"Baseline file {path} is unreadable: {exc}") from exc
+    history = data.get("history") if isinstance(data, dict) else None
+    if not isinstance(history, list) or not all(
+        isinstance(m, dict)
+        and _number(m.get("memory_kb"))
+        and _number(m.get("cpu_ms"))
+        and isinstance(m.get("version"), str)
+        and isinstance(m.get("timestamp"), str)
+        for m in history
+    ):
+        raise BaselineError(f"Baseline file {path} does not have a valid history list")
+    data.setdefault("thresholds", {})
+    return data
 
 
 def _save_baseline(addon_name: str, data: Dict[str, Any]):
-    """Save baseline data."""
+    """Save baseline data via a temporary file so an interrupted write keeps the old one."""
     path = _get_baseline_path(addon_name)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2))
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -157,7 +188,10 @@ async def _perf_baseline(
     if not _is_safe_addon_name(input.addon):
         return _invalid_addon_error(input.addon)
 
-    baseline = _load_baseline(input.addon)
+    try:
+        baseline = _load_baseline(input.addon)
+    except BaselineError as exc:
+        return _baseline_error(exc)
 
     measurement = {
         "version": input.version,
@@ -196,7 +230,10 @@ async def _perf_compare(
     if not _is_safe_addon_name(input.addon):
         return _invalid_addon_error(input.addon)
 
-    baseline = _load_baseline(input.addon)
+    try:
+        baseline = _load_baseline(input.addon)
+    except BaselineError as exc:
+        return _baseline_error(exc)
 
     if not baseline["history"]:
         return success(
@@ -217,21 +254,16 @@ async def _perf_compare(
     memory_regression = False
     cpu_regression = False
 
-    # Check memory
     if latest["memory_kb"] > 0:
         memory_ratio = round(input.memory_kb / latest["memory_kb"], 2)
-        if memory_ratio > input.memory_threshold:
-            memory_regression = True
+        memory_regression = memory_ratio > input.memory_threshold
 
-    # Check CPU
     if latest["cpu_ms"] > 0:
         cpu_ratio = round(input.cpu_ms / latest["cpu_ms"], 2)
-        if cpu_ratio > input.cpu_threshold:
-            cpu_regression = True
+        cpu_regression = cpu_ratio > input.cpu_threshold
 
     has_regression = memory_regression or cpu_regression
 
-    # Build message
     if has_regression:
         parts = []
         if memory_regression:
@@ -267,7 +299,10 @@ async def _perf_report(
     if not _is_safe_addon_name(input.addon):
         return _invalid_addon_error(input.addon)
 
-    baseline = _load_baseline(input.addon)
+    try:
+        baseline = _load_baseline(input.addon)
+    except BaselineError as exc:
+        return _baseline_error(exc)
 
     if not baseline["history"]:
         return success(
@@ -282,7 +317,6 @@ async def _perf_report(
 
     history = baseline["history"][-input.limit :]
 
-    # Calculate trends
     trend = None
     if len(baseline["history"]) >= 2:
         first = baseline["history"][0]
@@ -307,7 +341,6 @@ async def _perf_report(
             "latest_version": last["version"],
         }
 
-    # Build text report
     report_lines = [f"=== Performance History: {input.addon} ===\n"]
     for m in history:
         report_lines.append(
@@ -341,9 +374,9 @@ async def _perf_list(
     baselines_dir = _get_baselines_dir()
     addons = []
 
-    for path in baselines_dir.glob("*_baseline.json"):
-        addon_name = path.name.removesuffix("_baseline.json")
-        addons.append(addon_name)
+    if baselines_dir.is_dir():
+        for path in baselines_dir.glob("*_baseline.json"):
+            addons.append(path.name.removesuffix("_baseline.json"))
 
     addons.sort()
 

@@ -5,8 +5,10 @@ Provides web search capabilities via Gemini API.
 Migrated from ADDON_DEV/Tools/GeminiResearch to AFD commands.
 """
 
+import asyncio
+import os
 import re
-from typing import Any, List
+from typing import Any, List, Literal
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
@@ -22,7 +24,7 @@ from ..config import get_gemini_api_key
 
 class ResearchQueryInput(BaseModel):
     query: str = Field(..., description="Search query or question")
-    mode: str = Field(
+    mode: Literal["fast", "thinking"] = Field(
         default="fast",
         description="Search mode: 'fast' (Gemini Flash, ~15-30s) or 'thinking' (Gemini Pro, ~30-90s)",
     )
@@ -43,11 +45,20 @@ class ResearchQueryOutput(BaseModel):
 # MODEL CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Gemini 3 series models (December 2025)
-SEARCH_MODELS = {
+# Model IDs are Gemini preview names and change without notice: override them
+# with MECHANIC_GEMINI_FAST_MODEL / MECHANIC_GEMINI_THINKING_MODEL instead of
+# editing this file when Google retires a preview.
+DEFAULT_MODELS = {
     "fast": "gemini-3-flash-preview",
     "thinking": "gemini-3-pro-preview",
 }
+SEARCH_MODELS = {
+    mode: os.environ.get(f"MECHANIC_GEMINI_{mode.upper()}_MODEL", default)
+    for mode, default in DEFAULT_MODELS.items()
+}
+
+# Grounded search takes 15-90 s; give up instead of hanging the command.
+REQUEST_TIMEOUT_SECONDS = 120
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -73,6 +84,32 @@ def _extract_json_from_response(text: str) -> str:
         if match:
             return match.group(1)
     return text
+
+
+def _generate_grounded(
+    api_key: str, model_name: str, prompt: str, mode: str
+) -> "tuple[str, List[str]]":
+    """Blocking Gemini call with Google Search grounding (run in a worker thread)."""
+    from google import genai
+    from google.genai.types import Tool, GoogleSearch, GenerateContentConfig
+
+    client = genai.Client(api_key=api_key)
+    config = GenerateContentConfig(
+        tools=[Tool(google_search=GoogleSearch())],
+        temperature=0.7 if mode == "fast" else 0.5,
+    )
+    response = client.models.generate_content(
+        model=model_name, contents=prompt, config=config
+    )
+
+    sources: List[str] = []
+    if getattr(response, "candidates", None):
+        metadata = getattr(response.candidates[0], "grounding_metadata", None)
+        for chunk in getattr(metadata, "grounding_chunks", None) or []:
+            web = getattr(chunk, "web", None)
+            if web is not None and getattr(web, "uri", None):
+                sources.append(web.uri)
+    return response.text, sources
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -103,9 +140,6 @@ async def _research_query(
             suggestion="Install with: pip install google-genai  OR  pip install mechanic-desktop[research]",
         )
 
-    from google import genai
-    from google.genai.types import Tool, GoogleSearch, GenerateContentConfig
-
     model_name = SEARCH_MODELS.get(input.mode, SEARCH_MODELS["fast"])
 
     # Build the prompt
@@ -127,36 +161,15 @@ IMPORTANT: Your response MUST be valid JSON matching this schema:
 Do not include any text outside the JSON block."""
 
     try:
-        client = genai.Client(api_key=api_key)
-
-        # Configure with Google Search grounding
-        config = GenerateContentConfig(
-            tools=[Tool(google_search=GoogleSearch())],
-            temperature=0.7 if input.mode == "fast" else 0.5,
+        result_text, sources = await asyncio.wait_for(
+            asyncio.to_thread(
+                _generate_grounded, api_key, model_name, full_prompt, input.mode
+            ),
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=full_prompt,
-            config=config,
-        )
-
-        result_text = response.text
-
-        # Extract JSON if requested
         if input.json_output:
             result_text = _extract_json_from_response(result_text)
-
-        # Try to extract sources from grounding metadata if available
-        sources = []
-        if hasattr(response, "candidates") and response.candidates:
-            candidate = response.candidates[0]
-            if hasattr(candidate, "grounding_metadata"):
-                metadata = candidate.grounding_metadata
-                if hasattr(metadata, "grounding_chunks"):
-                    for chunk in metadata.grounding_chunks:
-                        if hasattr(chunk, "web") and hasattr(chunk.web, "uri"):
-                            sources.append(chunk.web.uri)
 
         return success(
             data=ResearchQueryOutput(
@@ -173,6 +186,12 @@ Do not include any text outside the JSON block."""
             confidence=0.85,
         )
 
+    except asyncio.TimeoutError:
+        return error(
+            code="SEARCH_TIMEOUT",
+            message=f"Grounded search did not finish within {REQUEST_TIMEOUT_SECONDS} seconds",
+            suggestion="Try the 'fast' mode or a narrower query.",
+        )
     except Exception as e:
         return error(
             code="SEARCH_FAILED",

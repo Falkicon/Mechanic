@@ -14,10 +14,42 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from . import __version__
 from .config import get_config
 from .storage import Storage
 
 http_runtime_running = False
+# Set by the supervisor that hosts uvicorn; None when no HTTP server runs here.
+http_runtime_port: Optional[int] = None
+_shutdown_handler = None
+
+# Command results larger than this are not inlined in /api/history listings.
+HISTORY_RESULT_LIMIT = 100_000
+
+
+def set_http_port(port: Optional[int]) -> None:
+    """Record the port uvicorn serves on (reported by /health)."""
+    global http_runtime_port
+    http_runtime_port = port if port else None
+
+
+def set_shutdown_handler(handler) -> None:
+    """Register the callable that stops the hosting supervisor (None clears it)."""
+    global _shutdown_handler
+    _shutdown_handler = handler
+
+
+def request_shutdown(delay: float = 0.5) -> bool:
+    """Ask the supervisor to stop after ``delay`` seconds.
+
+    Returns False when no supervisor is registered in this process.  The delay
+    lets the HTTP response that requested the shutdown reach the client.
+    """
+    handler = _shutdown_handler
+    if handler is None:
+        return False
+    asyncio.get_running_loop().call_later(delay, handler)
+    return True
 
 
 @asynccontextmanager
@@ -72,9 +104,25 @@ class ExecuteRequest(BaseModel):
     input: dict = Field(default_factory=dict)
 
 
-# Initialize storage using centralized config
-config = get_config()
-storage = Storage(config.data_dir / "mechanic.db")
+def get_storage() -> Storage:
+    """Return the history database, creating it on first use.
+
+    Importing this module must not touch the filesystem (``mech --help`` and
+    read-only diagnostics import it), so the database is opened lazily.  Tests
+    and embedders may replace the module attribute ``storage``.
+    """
+    store = globals().get("storage")
+    if store is None:
+        store = Storage(get_config().data_dir / "mechanic.db")
+        globals()["storage"] = store
+    return store
+
+
+def __getattr__(name):
+    if name == "storage":
+        return get_storage()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Mount dashboard folder
 dashboard_path = Path(files("mechanic.dashboard"))
@@ -118,7 +166,7 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check endpoint for monitoring."""
-    return {"status": "healthy"}
+    return {"status": "healthy", "version": __version__, "port": http_runtime_port}
 
 
 @app.post("/api/execute")
@@ -152,8 +200,11 @@ async def execute_command(req: ExecuteRequest):
     if name and name not in skip_commands:
         addon = input_data.get("addon")
         try:
-            storage.save_command_result(
-                name, result_dict, addon if isinstance(addon, str) else None
+            await asyncio.to_thread(
+                get_storage().save_command_result,
+                name,
+                result_dict,
+                addon if isinstance(addon, str) else None,
             )
         except sqlite3.Error:
             # A history failure must not imply that an already executed mutation failed.
@@ -164,18 +215,45 @@ async def execute_command(req: ExecuteRequest):
 
 @app.get("/api/history")
 async def get_history(
-    command: Optional[str] = None, limit: int = Query(default=50, ge=1, le=1000)
+    command: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=1000),
+    max_result_bytes: int = Query(default=HISTORY_RESULT_LIMIT, ge=0),
 ):
-    """Get command execution history."""
-    history = storage.get_command_history(command, limit)
+    """Get command execution history.
+
+    Results larger than ``max_result_bytes`` are replaced by a stub with
+    ``truncated: true``; fetch the full result from ``/api/history/{id}``.
+    """
+    history = await asyncio.to_thread(
+        get_storage().get_command_history, command, limit, max_result_bytes
+    )
+    for entry in history:
+        if entry.get("result_truncated"):
+            entry["result"] = {
+                "success": bool(entry.get("success")),
+                "data": None,
+                "error": None,
+                "truncated": True,
+                "history_id": entry["id"],
+                "result_bytes": entry["result_bytes"],
+            }
     return {"history": history}
+
+
+@app.get("/api/history/{result_id}")
+async def get_history_result(result_id: int):
+    """Get one stored command result in full."""
+    entry = await asyncio.to_thread(get_storage().get_command_result, result_id)
+    if entry is None:
+        return JSONResponse({"detail": "History entry not found"}, status_code=404)
+    return entry
 
 
 @app.post("/api/history/clear")
 async def clear_history(req: dict = None):
     """Clear command execution history."""
     command = req.get("command") if req else None
-    count = storage.clear_command_history(command)
+    count = await asyncio.to_thread(get_storage().clear_command_history, command)
     return {"cleared": count, "command": command}
 
 
@@ -199,14 +277,17 @@ async def notify_reload(update_info: dict):
     Broadcaster for file watcher to call.
     Updates may carry only target candidates when a profile selection is required.
     """
-    # Save to SQLite
     addon = update_info.get("addon")
     data = update_info.get("data")
     timestamp = update_info.get("timestamp")
 
-    # Storage expects dict of addon_name -> data
+    # Storage expects dict of addon_name -> data. History is best effort: a
+    # locked or full database must not stop the dashboard from being told.
     if isinstance(data, dict):
-        storage.save_reload(timestamp, {addon: data})
+        try:
+            await asyncio.to_thread(get_storage().save_reload, timestamp, {addon: data})
+        except (sqlite3.Error, TypeError, ValueError):
+            logger.exception("Unable to persist reload history for %s", addon)
 
     # Broadcast to UI
     payload = json.dumps(

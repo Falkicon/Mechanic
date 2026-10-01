@@ -1,15 +1,19 @@
 """
 Lua static analysis utilities for WoW addon development.
 
-This module provides lightweight Lua parsing without external dependencies.
-It uses regex-based tokenization optimized for WoW addon patterns.
+Built on the Lua 5.1 tokenizer and structure walker (``lua_tokenizer`` and
+``lua_structure``), so strings and comments never produce false matches and
+usage is decided by identifier references instead of call-site regexes.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, Set, List, Optional, Tuple
-from pathlib import Path
 from enum import Enum
-import re
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
+
+from .lua_structure import LuaFile, parse_lua
+from .lua_tokenizer import strip_comments as _strip_comments
 
 
 class Confidence(str, Enum):
@@ -30,7 +34,7 @@ class FunctionDef:
     is_local: bool
     is_method: bool = False
     namespace: Optional[str] = None  # e.g., "MyAddon" for MyAddon:Func()
-    end_line: Optional[int] = None
+    reads: int = 0  # references inside the file for local functions
 
 
 @dataclass
@@ -41,17 +45,7 @@ class VariableDef:
     file: str
     line: int
     is_local: bool
-    scope_end: Optional[int] = None
-
-
-@dataclass
-class ExportDef:
-    """Represents an export to addon namespace."""
-
-    name: str  # Full path like "Addon.Module.Func"
-    member: str  # Just the member name
-    file: str
-    line: int
+    reads: int = 0  # reads within the variable's scope
 
 
 @dataclass
@@ -71,23 +65,17 @@ class SymbolTable:
     # Definitions
     functions: Dict[str, FunctionDef] = field(default_factory=dict)
     variables: Dict[str, VariableDef] = field(default_factory=dict)
-    exports: Dict[str, ExportDef] = field(default_factory=dict)
 
     # Usages
     function_calls: Set[str] = field(default_factory=set)
-    variable_reads: Set[str] = field(default_factory=set)
     member_accesses: Set[str] = field(default_factory=set)
-    method_calls: Set[str] = field(default_factory=set)
 
     # WoW-specific
     registered_events: List[EventRegistration] = field(default_factory=list)
-    locale_definitions: Set[str] = field(default_factory=set)
     locale_usages: Set[str] = field(default_factory=set)
+    locale_prefixes: Set[str] = field(default_factory=set)
+    locale_dynamic: bool = False
     library_usages: Set[str] = field(default_factory=set)
-
-    # File tracking
-    loaded_files: Set[str] = field(default_factory=set)
-    all_lua_files: Set[str] = field(default_factory=set)
 
 
 # WoW patterns that should NOT be flagged as dead code
@@ -151,371 +139,115 @@ WOW_SAFE_PATTERNS = {
     # Common callback patterns
     "OnTooltipShow",
     "OnTooltipHide",
-    # LibDataBroker patterns
-    "OnClick",
-    "OnTooltipShow",
+    # AceComm
+    "OnCommReceived",
 }
-
-# Patterns that indicate dynamic code (lower confidence)
-DYNAMIC_PATTERNS = [
-    r"_G\[",  # Dynamic global access
-    r"getfenv|setfenv",  # Environment manipulation
-    r"loadstring",  # Runtime code execution
-    r"rawget|rawset",  # Raw table operations
-    r"\[.*\.\.",  # String concatenation in index
-]
 
 
 class TokenScanner:
-    """Extract meaningful tokens from Lua source without full AST parsing."""
-
-    # Regex patterns for extraction
-    PATTERNS = {
-        # Function definitions
-        "function_def_local": re.compile(r"local\s+function\s+(\w+)\s*\("),
-        "function_def_global": re.compile(r"^function\s+(\w+)\s*\(", re.MULTILINE),
-        "function_def_namespaced": re.compile(r"function\s+([\w\.]+)\.(\w+)\s*\("),
-        "method_def": re.compile(r"function\s+(\w+):(\w+)\s*\("),
-        "function_assign_local": re.compile(r"local\s+(\w+)\s*=\s*function\s*\("),
-        "function_assign_table": re.compile(r"(\w+)\.(\w+)\s*=\s*function\s*\("),
-        "function_assign_method": re.compile(r"(\w+):(\w+)\s*=\s*function\s*\("),
-        # Variable definitions
-        "local_var": re.compile(r"local\s+(\w+)\s*="),
-        "local_var_multi": re.compile(r"local\s+([\w,\s]+)\s*="),
-        # Function calls
-        "function_call": re.compile(r"(\w+)\s*\("),
-        "namespaced_call": re.compile(r"(\w+)\.(\w+)\s*\("),
-        "method_call": re.compile(r":(\w+)\s*\("),
-        "deep_namespaced_call": re.compile(r"(\w+(?:\.\w+)+)\s*\("),
-        # Pattern to detect function definition lines (to filter out)
-        "function_def_line": re.compile(r"\bfunction\s+\w"),
-        # Member access
-        "member_access": re.compile(r"\.(\w+)"),
-        # WoW-specific
-        # Ace3 RegisterEvent patterns:
-        #   self:RegisterEvent("EVENT") -> handler is EVENT
-        #   self:RegisterEvent("EVENT", "Handler") -> handler is Handler
-        "event_register": re.compile(
-            r':RegisterEvent\s*\(\s*["\'](\w+)["\'](?:\s*,\s*["\'](\w+)["\'])?'
-        ),
-        "event_unregister": re.compile(r':UnregisterEvent\s*\(\s*["\'](\w+)["\']'),
-        "locale_access": re.compile(r'L\[(["\'])([^"\']+)\1\]'),
-        "locale_def": re.compile(r'L\[(["\'])([^"\']+)\1\]\s*='),
-        "libstub": re.compile(r'LibStub\s*[\(:\.].*?["\']([^"\']+)["\']'),
-        # SetScript callback detection: frame:SetScript("OnEvent", handlerFunc)
-        "setscript_callback": re.compile(
-            r':SetScript\s*\(\s*["\'][^"\']+["\']\s*,\s*(\w+)\s*\)'
-        ),
-        # Hook callback detection: hooksecurefunc(obj, "Method", handlerFunc)
-        "hook_callback": re.compile(
-            r'hooksecurefunc\s*\([^,]+,\s*["\'][^"\']+["\']\s*,\s*(\w+)\s*\)'
-        ),
-        # RegisterCallback: obj:RegisterCallback("Event", handlerFunc) or obj.RegisterCallback(obj, "Event", handlerFunc)
-        "register_callback": re.compile(
-            r':?RegisterCallback\s*\([^,]*,\s*["\'][^"\']+["\']\s*,\s*["\']?(\w+)["\']?\s*\)'
-        ),
-        # C_Timer callbacks: C_Timer.After(delay, handlerFunc)
-        "timer_callback": re.compile(r"C_Timer\.\w+\s*\([^,]+,\s*(\w+)\s*\)"),
-        # Code structure
-        "return_statement": re.compile(r"\breturn\b"),
-        "comment_block": re.compile(r"--\[\[[\s\S]*?\]\]"),
-        "comment_line": re.compile(r"--[^\n]*"),
-    }
-
-    def __init__(self):
-        self.current_file = ""
+    """Extract meaningful tokens from Lua source using the real tokenizer."""
 
     def strip_comments(self, content: str) -> str:
-        """Remove comments from Lua code for accurate parsing."""
-        # Remove block comments first
-        content = self.PATTERNS["comment_block"].sub("", content)
-        # Remove line comments
-        content = self.PATTERNS["comment_line"].sub("", content)
-        return content
+        """Blank out comments (string contents containing ``--`` are preserved)."""
+        return _strip_comments(content)
 
     def scan_functions(self, content: str, file_path: str) -> List[FunctionDef]:
-        """Extract all function definitions from Lua code."""
-        functions = []
-        lines = content.splitlines()
-        # Track line numbers by scanning original content
-        for line_num, line in enumerate(lines, 1):
-            line_stripped = line.strip()
-
-            # Skip comment lines
-            if line_stripped.startswith("--"):
-                continue
-
-            # local function name()
-            match = self.PATTERNS["function_def_local"].search(line)
-            if match:
-                functions.append(
-                    FunctionDef(
-                        name=match.group(1),
-                        file=file_path,
-                        line=line_num,
-                        is_local=True,
-                        is_method=False,
-                    )
-                )
-                continue
-
-            # function Namespace.name()
-            match = self.PATTERNS["function_def_namespaced"].search(line)
-            if match:
-                namespace, name = match.groups()
-                functions.append(
-                    FunctionDef(
-                        name=f"{namespace}.{name}",
-                        file=file_path,
-                        line=line_num,
-                        is_local=False,
-                        is_method=False,
-                        namespace=namespace,
-                    )
-                )
-                continue
-
-            # function Namespace:method()
-            match = self.PATTERNS["method_def"].search(line)
-            if match:
-                namespace, name = match.groups()
-                functions.append(
-                    FunctionDef(
-                        name=f"{namespace}:{name}",
-                        file=file_path,
-                        line=line_num,
-                        is_local=False,
-                        is_method=True,
-                        namespace=namespace,
-                    )
-                )
-                continue
-
-            # function globalName()
-            match = self.PATTERNS["function_def_global"].search(line)
-            if match:
-                name = match.group(1)
-                # Skip if it's actually a namespaced function
-                if "." not in line.split("(")[0] and ":" not in line.split("(")[0]:
-                    functions.append(
-                        FunctionDef(
-                            name=name,
-                            file=file_path,
-                            line=line_num,
-                            is_local=False,
-                            is_method=False,
-                        )
-                    )
-                continue
-
-            # local name = function()
-            match = self.PATTERNS["function_assign_local"].search(line)
-            if match:
-                functions.append(
-                    FunctionDef(
-                        name=match.group(1),
-                        file=file_path,
-                        line=line_num,
-                        is_local=True,
-                        is_method=False,
-                    )
-                )
-                continue
-
-            # Namespace.name = function()
-            match = self.PATTERNS["function_assign_table"].search(line)
-            if match:
-                namespace, name = match.groups()
-                functions.append(
-                    FunctionDef(
-                        name=f"{namespace}.{name}",
-                        file=file_path,
-                        line=line_num,
-                        is_local=False,
-                        is_method=False,
-                        namespace=namespace,
-                    )
-                )
-                continue
-
-        return functions
+        """Extract named function definitions from Lua code."""
+        return _function_defs(parse_lua(content), file_path)
 
     def scan_variables(self, content: str, file_path: str) -> List[VariableDef]:
-        """Extract local variable definitions from Lua code."""
-        variables = []
-        lines = content.splitlines()
-
-        for line_num, line in enumerate(lines, 1):
-            line_stripped = line.strip()
-
-            # Skip comments
-            if line_stripped.startswith("--"):
-                continue
-
-            # Skip function definitions (handled separately)
-            if "function" in line:
-                continue
-
-            # local var = value
-            match = self.PATTERNS["local_var"].search(line)
-            if match:
-                var_name = match.group(1)
-                variables.append(
-                    VariableDef(
-                        name=var_name, file=file_path, line=line_num, is_local=True
-                    )
-                )
-
-        return variables
+        """Extract local variable definitions (functions are reported separately)."""
+        return _variable_defs(parse_lua(content), file_path)
 
     def scan_calls(self, content: str) -> Set[str]:
-        """Extract all function/method calls from Lua code."""
-        calls = set()
-        stripped = self.strip_comments(content)
-
-        # Process line by line to skip function definitions
-        for line in stripped.splitlines():
-            # Skip function definition lines
-            if self.PATTERNS["function_def_line"].search(line):
-                continue
-            # Skip local function assignments
-            if re.search(r"local\s+\w+\s*=\s*function", line):
-                continue
-
-            # Simple function calls: func()
-            for match in self.PATTERNS["function_call"].finditer(line):
-                name = match.group(1)
-                # Skip common keywords
-                if name not in (
-                    "function",
-                    "if",
-                    "for",
-                    "while",
-                    "local",
-                    "return",
-                    "end",
-                    "then",
-                    "do",
-                ):
-                    calls.add(name)
-
-            # Namespaced calls: Namespace.func()
-            for match in self.PATTERNS["namespaced_call"].finditer(line):
-                namespace, name = match.groups()
-                calls.add(f"{namespace}.{name}")
-                calls.add(name)  # Also add just the name for flexibility
-
-            # Method calls: obj:method()
-            for match in self.PATTERNS["method_call"].finditer(line):
-                calls.add(match.group(1))
-
-        return calls
+        """Names of every called function, method and qualified member."""
+        return set(parse_lua(content).calls)
 
     def scan_member_accesses(self, content: str) -> Set[str]:
-        """Extract all member accesses from Lua code."""
-        accesses = set()
-        stripped = self.strip_comments(content)
-
-        for match in self.PATTERNS["member_access"].finditer(stripped):
-            accesses.add(match.group(1))
-
-        return accesses
+        """Names used as ``obj.member`` or ``obj:member`` (definition sites excluded)."""
+        return set(parse_lua(content).member_refs)
 
     def scan_events(
         self, content: str, file_path: str
     ) -> Tuple[List[EventRegistration], Set[str]]:
-        """Extract event registrations from Lua code.
-
-        Returns:
-            Tuple of (event registrations, handler method names)
-            Handler names are the methods that will be called by Ace3.
-        """
-        events = []
-        handlers = set()
-        lines = content.splitlines()
-
-        for line_num, line in enumerate(lines, 1):
-            for match in self.PATTERNS["event_register"].finditer(line):
-                event_name = match.group(1)
-                # group(2) is the explicit handler, or None if implicit
-                handler = (
-                    match.group(2)
-                    if match.lastindex >= 2 and match.group(2)
-                    else event_name
-                )
-                events.append(
-                    EventRegistration(
-                        event=event_name, file=file_path, line=line_num, handler=handler
-                    )
-                )
-                handlers.add(handler)
-
-        return events, handlers
+        """Event registrations and the handler method names Ace3 will call."""
+        parsed = parse_lua(content)
+        return _events(parsed, file_path)
 
     def scan_locales(self, content: str) -> Tuple[Set[str], Set[str]]:
         """Extract locale key definitions and usages."""
-        definitions = set()
-        usages = set()
-        stripped = self.strip_comments(content)
-
-        # Find definitions: L["key"] = value
-        for match in self.PATTERNS["locale_def"].finditer(stripped):
-            definitions.add(match.group(2))
-
-        # Find usages: L["key"] (not followed by =)
-        for match in self.PATTERNS["locale_access"].finditer(stripped):
-            key = match.group(2)
-            # Check if this is not a definition
-            end_pos = match.end()
-            remaining = stripped[end_pos : end_pos + 10].strip()
-            if not remaining.startswith("="):
-                usages.add(key)
-
-        return definitions, usages
+        parsed = parse_lua(content)
+        return set(parsed.locale_defs), set(parsed.locale_uses)
 
     def scan_libraries(self, content: str) -> Set[str]:
-        """Extract LibStub library usages."""
-        libs = set()
-        stripped = self.strip_comments(content)
-
-        for match in self.PATTERNS["libstub"].finditer(stripped):
-            libs.add(match.group(1))
-
-        return libs
+        """Extract library names from LibStub calls and library-shaped strings."""
+        return set(parse_lua(content).libs)
 
     def scan_callback_references(self, content: str) -> Set[str]:
-        """Extract function names passed as callbacks to SetScript, hooks, timers, etc.
-
-        These are functions passed by reference (not called directly) but are definitely used.
-        Example: frame:SetScript("OnEvent", onEvent) -- onEvent is used via callback
-        """
-        callbacks = set()
-        stripped = self.strip_comments(content)
-
-        # SetScript callbacks: frame:SetScript("OnEvent", handlerFunc)
-        for match in self.PATTERNS["setscript_callback"].finditer(stripped):
-            callbacks.add(match.group(1))
-
-        # Hook callbacks: hooksecurefunc(obj, "Method", handlerFunc)
-        for match in self.PATTERNS["hook_callback"].finditer(stripped):
-            callbacks.add(match.group(1))
-
-        # RegisterCallback: obj:RegisterCallback("Event", handlerFunc)
-        for match in self.PATTERNS["register_callback"].finditer(stripped):
-            callbacks.add(match.group(1))
-
-        # C_Timer callbacks: C_Timer.After(delay, handlerFunc)
-        for match in self.PATTERNS["timer_callback"].finditer(stripped):
-            callbacks.add(match.group(1))
-
-        return callbacks
+        """Function names passed by reference to SetScript, hooks, timers, etc."""
+        return set(parse_lua(content).callback_refs)
 
     def has_dynamic_patterns(self, content: str) -> bool:
-        """Check if the file uses dynamic code patterns."""
-        for pattern in DYNAMIC_PATTERNS:
-            if re.search(pattern, content):
-                return True
-        return False
+        """True if the file uses ``_G[expr]``, getfenv/loadstring or dynamic dispatch."""
+        return parse_lua(content).dynamic
+
+
+def _function_defs(parsed: LuaFile, file_path: str) -> List[FunctionDef]:
+    defs = []
+    for func in parsed.functions:
+        if not func.named:
+            continue
+        defs.append(
+            FunctionDef(
+                name=func.name,
+                file=file_path,
+                line=func.line,
+                is_local=func.is_local,
+                is_method=func.is_method,
+                namespace=func.namespace,
+                reads=_local_function_reads(parsed, func),
+            )
+        )
+    return defs
+
+
+def _local_function_reads(parsed: LuaFile, func) -> int:
+    """References to a local function, excluding its own body (recursion)."""
+    decl = func.decl
+    if decl is None:
+        return 0
+    total = parsed.reads_between(decl.name, decl.tok + 1, decl.scope_end)
+    inner = parsed.reads_between(decl.name, func.start_tok, func.end_tok)
+    return max(total - inner, 0)
+
+
+def _variable_defs(parsed: LuaFile, file_path: str) -> List[VariableDef]:
+    variables = []
+    for decl in parsed.locals:
+        if decl.is_function:
+            continue
+        variables.append(
+            VariableDef(
+                name=decl.name,
+                file=file_path,
+                line=decl.line,
+                is_local=True,
+                reads=parsed.reads_between(decl.name, decl.tok + 1, decl.scope_end),
+            )
+        )
+    return variables
+
+
+def _events(
+    parsed: LuaFile, file_path: str
+) -> Tuple[List[EventRegistration], Set[str]]:
+    events = []
+    handlers: Set[str] = set()
+    for event, handler, line in parsed.events:
+        handler = handler or event
+        events.append(EventRegistration(event, file_path, line, handler))
+        handlers.add(handler)
+    return events, handlers
 
 
 class LuaAnalyzer:
@@ -523,118 +255,129 @@ class LuaAnalyzer:
 
     def __init__(self, addon_name: str):
         self.addon_name = addon_name
-        self.scanner = TokenScanner()
         self.symbols = SymbolTable()
         self.files_with_dynamic_code: Set[str] = set()
+        # Aggregates across files, used for globals, methods and exports
+        self._global_reads: Counter = Counter()
+        self._member_files: Dict[str, Counter] = {}
+        self._dispatch: Set[str] = set()
+        self._string_files: Dict[str, Set[str]] = {}
 
-    def analyze_file(self, path: Path, content: str):
-        """Analyze a single Lua file and update symbol table."""
+    def analyze_file(self, path: Path, content: str, parsed: Optional[LuaFile] = None):
+        """Analyze a single Lua file and update the symbol table."""
         file_str = str(path)
+        parsed = parsed if parsed is not None else parse_lua(content)
+        symbols = self.symbols
 
-        # Track dynamic code usage
-        if self.scanner.has_dynamic_patterns(content):
+        if parsed.dynamic:
             self.files_with_dynamic_code.add(file_str)
 
-        # Scan function definitions
-        for func in self.scanner.scan_functions(content, file_str):
-            key = f"{file_str}:{func.name}"
-            self.symbols.functions[key] = func
+        for func in _function_defs(parsed, file_str):
+            symbols.functions[f"{file_str}:{func.name}:{func.line}"] = func
 
-        # Scan variable definitions
-        for var in self.scanner.scan_variables(content, file_str):
-            key = f"{file_str}:{var.name}:{var.line}"
-            self.symbols.variables[key] = var
+        for var in _variable_defs(parsed, file_str):
+            symbols.variables[f"{file_str}:{var.name}:{var.line}"] = var
 
-        # Scan function calls
-        calls = self.scanner.scan_calls(content)
-        self.symbols.function_calls.update(calls)
+        symbols.function_calls.update(parsed.calls)
+        symbols.function_calls.update(parsed.callback_refs)
+        symbols.member_accesses.update(parsed.member_refs)
 
-        # Scan callback references (functions passed to SetScript, hooks, timers)
-        callbacks = self.scanner.scan_callback_references(content)
-        self.symbols.function_calls.update(callbacks)
+        events, handlers = _events(parsed, file_str)
+        symbols.registered_events.extend(events)
+        symbols.function_calls.update(handlers)
 
-        # Scan member accesses
-        accesses = self.scanner.scan_member_accesses(content)
-        self.symbols.member_accesses.update(accesses)
+        symbols.locale_usages.update(parsed.locale_uses)
+        symbols.locale_prefixes.update(parsed.locale_prefixes)
+        symbols.locale_dynamic = symbols.locale_dynamic or parsed.locale_dynamic
+        symbols.library_usages.update(parsed.libs)
 
-        # Scan events and their handlers
-        events, event_handlers = self.scanner.scan_events(content, file_str)
-        self.symbols.registered_events.extend(events)
-        # Add event handlers to function_calls so they're treated as "used"
-        self.symbols.function_calls.update(event_handlers)
+        for name, positions in parsed.reads.items():
+            self._global_reads[name] += len(positions)
+        for name, count in parsed.member_refs.items():
+            self._member_files.setdefault(name, Counter())[file_str] += count
+        self._dispatch.update(parsed.dispatch_strings)
+        self._dispatch.update(parsed.callback_refs)
+        for text in parsed.strings:
+            self._string_files.setdefault(text, set()).add(file_str)
 
-        # Scan locales
-        defs, usages = self.scanner.scan_locales(content)
-        self.symbols.locale_definitions.update(defs)
-        self.symbols.locale_usages.update(usages)
+    def add_external_references(self, names) -> None:
+        """Register names referenced outside Lua files (for example XML handlers)."""
+        self._dispatch.update(names)
 
-        # Scan library usages
-        libs = self.scanner.scan_libraries(content)
-        self.symbols.library_usages.update(libs)
+    # -- queries --------------------------------------------------------------
+
+    def member_reference_files(self, member: str) -> Set[str]:
+        """Files that reference ``member`` via ``obj.member`` or ``obj:member``."""
+        return set(self._member_files.get(member, ()))
+
+    def is_name_read(self, name: str) -> bool:
+        """True if ``name`` is read as a bare identifier anywhere (for example a library global)."""
+        return self._global_reads.get(name, 0) > 0
+
+    def is_dispatched(self, name: str) -> bool:
+        """True if ``name`` is passed as a dispatch string or callback value."""
+        return name in self._dispatch
 
     def get_unused_functions(self) -> List[Tuple[FunctionDef, Confidence]]:
-        """Find functions that are never called."""
+        """Find functions that are never referenced."""
         unused = []
 
-        for key, func in self.symbols.functions.items():
-            # Extract just the function name for matching
+        for func in self.symbols.functions.values():
             func_name = func.name
             if ":" in func_name:
-                _, method_name = func_name.split(":", 1)
+                method_name = func_name.split(":", 1)[1]
             elif "." in func_name:
-                _, method_name = func_name.rsplit(".", 1)
+                method_name = func_name.rsplit(".", 1)[1]
             else:
                 method_name = func_name
 
-            # Check if it's a safe WoW pattern
             if method_name in WOW_SAFE_PATTERNS:
                 continue
-
-            # Check if the function name ends with common callback patterns
-            if any(
-                method_name.endswith(pat) for pat in ["Callback", "Handler", "Hook"]
-            ):
+            if any(method_name.endswith(p) for p in ("Callback", "Handler", "Hook")):
                 continue
 
-            # Check if function is called
-            is_called = (
-                func_name in self.symbols.function_calls
-                or method_name in self.symbols.function_calls
-                or method_name in self.symbols.member_accesses
-            )
+            dynamic = func.file in self.files_with_dynamic_code
+            string_hit = func.file in self._string_files.get(method_name, ())
 
-            if not is_called:
-                # Determine confidence
-                # First check if file has dynamic patterns (lowers confidence)
-                if func.file in self.files_with_dynamic_code:
+            if func.is_local:
+                if func.reads > 0 or method_name in self._dispatch:
+                    continue
+                if dynamic and string_hit:
                     confidence = Confidence.SUSPICIOUS
-                elif func.is_local:
-                    # Local functions are definitely unused if not called
+                else:
                     confidence = Confidence.DEFINITE
+            else:
+                if func.namespace is None:
+                    refs = self._global_reads.get(method_name, 0)
+                else:
+                    refs = sum(self._member_files.get(method_name, {}).values())
+                if refs > 0 or method_name in self._dispatch:
+                    continue
+                if func_name in self._dispatch:
+                    continue
+                if dynamic or method_name in self._string_files:
+                    confidence = Confidence.SUSPICIOUS
                 else:
                     confidence = Confidence.LIKELY
-
-                unused.append((func, confidence))
+            unused.append((func, confidence))
 
         return unused
 
     def get_unused_variables(self) -> List[Tuple[VariableDef, Confidence]]:
-        """Find local variables that are never read."""
+        """Find local variables that are never read in their scope."""
         unused = []
 
-        for key, var in self.symbols.variables.items():
-            # Check if variable is accessed
-            is_used = (
-                var.name in self.symbols.function_calls
-                or var.name in self.symbols.member_accesses
-            )
+        by_statement: Dict[Tuple[str, int], List[VariableDef]] = {}
+        for var in self.symbols.variables.values():
+            by_statement.setdefault((var.file, var.line), []).append(var)
 
-            if not is_used and var.is_local:
-                if var.file in self.files_with_dynamic_code:
-                    confidence = Confidence.SUSPICIOUS
-                else:
-                    confidence = Confidence.DEFINITE
-
-                unused.append((var, confidence))
+        for group in by_statement.values():
+            # ``local ok, err = pcall(f)``: only report when nothing is read
+            if any(v.reads > 0 for v in group):
+                continue
+            for var in group:
+                if var.name.startswith("_"):
+                    continue
+                unused.append((var, Confidence.DEFINITE))
 
         return unused

@@ -11,10 +11,12 @@ Provides static API lookup and test queue management:
 These commands work WITHOUT the game running - they read the APIDefs files directly.
 """
 
+import asyncio
 import math
 import re
+import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from afd import CommandResult, success, error
 from afd.core.metadata import create_source
@@ -29,6 +31,8 @@ from ..targets import (
 )
 
 from ..lua_strings import quote_lua_string as _lua_string
+from ..pipeline_paths import get_apidefs_dir
+from .apidefs import LuaParseError, _unescape_lua_string, parse_lua_table_literal
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -102,146 +106,105 @@ class APIStatsResult(BaseModel):
 
 
 def get_apidefs_path() -> Optional[Path]:
-    """Find the APIDefs folder."""
-    from ..config import get_config
+    """Find the repository's Mechanic/UI/APIDefs folder (the one the TOC loads)."""
+    path = get_apidefs_dir()
+    return path if path is not None and path.is_dir() else None
 
-    config = get_config()
 
-    # Check dev_path first - Mechanic repo structure
-    if config.dev_path:
-        path = config.dev_path / "Mechanic" / "UI" / "APIDefs"
-        if path.exists():
-            return path
+_ENTRY_START = re.compile(r'^APIDefs\[("(?:\\.|[^"\\\n])*")\]\s*=\s*\{', re.MULTILINE)
+_STRING_OR_BRACE = re.compile(r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|[{}]")
 
-    # Fallback: relative to this file (for running from repo)
-    this_dir = Path(__file__).parent
-    fallback = this_dir.parent.parent.parent.parent.parent / "UI" / "APIDefs"
-    if fallback.exists():
-        return fallback
 
-    return None
+def _match_table_end(content: str, open_brace: int) -> int:
+    """Index just past the brace matching ``content[open_brace]`` (string-aware)."""
+    depth = 0
+    for token in _STRING_OR_BRACE.finditer(content, open_brace):
+        text = token.group(0)
+        if text == "{":
+            depth += 1
+        elif text == "}":
+            depth -= 1
+            if depth == 0:
+                return token.end()
+    return len(content)
 
 
 def parse_lua_table_simple(content: str) -> Dict[str, Any]:
     """
-    Simple Lua table parser for APIDefs format.
-    Returns dict with API definitions.
+    Parse the APIDefs format: ``APIDefs["key"] = { ... }`` blocks.
+
+    Only the entry's own top-level fields are read, so the ``name`` of a
+    parameter or return value can never replace the API's ``name``.
     """
-    apis = {}
+    apis: Dict[str, Any] = {}
 
-    # Pattern to match APIDefs["key"] = { ... } with nested tables
-    # We need to match balanced braces
-    pattern = re.compile(r'APIDefs\["([^"]+)"\]\s*=\s*\{', re.MULTILINE)
+    for match in _ENTRY_START.finditer(content):
+        start = match.end() - 1
+        end = _match_table_end(content, start)
+        try:
+            table = parse_lua_table_literal(content[start:end])
+        except LuaParseError:
+            continue
+        if not isinstance(table, dict):
+            continue
 
-    for match in pattern.finditer(content):
-        api_key = match.group(1)
-        start = match.end() - 1  # Include the opening brace
+        api_key = table.get("key")
+        if not isinstance(api_key, str):
+            api_key = _unescape_lua_string(match.group(1)[1:-1])
 
-        # Find the matching closing brace
-        depth = 0
-        end = start
-        for i in range(start, len(content)):
-            if content[i] == "{":
-                depth += 1
-            elif content[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    end = i + 1
-                    break
-
-        table_content = content[start:end]
-        api_def = {"key": api_key}
-
-        # Parse simple key = "value" pairs
-        for field_match in re.finditer(r'(\w+)\s*=\s*"([^"]*)"', table_content):
-            api_def[field_match.group(1)] = field_match.group(2)
-
-        # Parse boolean fields
-        for field_match in re.finditer(r"(\w+)\s*=\s*(true|false)", table_content):
-            api_def[field_match.group(1)] = field_match.group(2) == "true"
-
-        # Parse nil fields
-        for field_match in re.finditer(r"(\w+)\s*=\s*nil(?=\s*[,}])", table_content):
-            api_def[field_match.group(1)] = None
-
-        # Parse params = { ... } - find the params table specifically
-        params_match = re.search(
-            r"params\s*=\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})", table_content
-        )
-        if params_match:
-            api_def["params"] = parse_nested_table(params_match.group(1))
-
-        # Parse returns = { ... } - find the returns table specifically
-        returns_match = re.search(
-            r"returns\s*=\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})", table_content
-        )
-        if returns_match:
-            api_def["returns"] = parse_nested_table(returns_match.group(1))
-
+        api_def: Dict[str, Any] = {"key": api_key}
+        for field, value in table.items():
+            if isinstance(value, str) and value.startswith("expr:"):
+                continue  # unevaluated expression such as the legacy func = _G[...]
+            if field in ("params", "returns"):
+                items = value if isinstance(value, list) else []
+                api_def[field] = [item for item in items if isinstance(item, dict)]
+            elif isinstance(field, str):
+                api_def[field] = value
         apis[api_key] = api_def
 
     return apis
 
 
-def parse_nested_table(table_str: str) -> List[Dict[str, Any]]:
-    """Parse nested Lua tables like params and returns arrays."""
-    items = []
+_APIS_CACHE: Dict[str, Any] = {"path": None, "signature": None, "apis": {}}
+_APIS_LOCK = threading.Lock()
 
-    # Match individual items { name = "x", type = "y" }
-    item_pattern = re.compile(r"\{\s*([^}]+)\s*\}")
 
-    for item_match in item_pattern.finditer(table_str):
-        item_content = item_match.group(1)
-        item = {}
-
-        for field_match in re.finditer(
-            r'(\w+)\s*=\s*("[^"]*"|\'[^\']*\'|true|false|nil|[\d.]+)', item_content
-        ):
-            field_name = field_match.group(1)
-            field_value = field_match.group(2).strip()
-
-            if field_value.startswith('"') or field_value.startswith("'"):
-                item[field_name] = field_value[1:-1]
-            elif field_value == "true":
-                item[field_name] = True
-            elif field_value == "false":
-                item[field_name] = False
-            elif field_value == "nil":
-                item[field_name] = None
-            else:
-                try:
-                    item[field_name] = (
-                        float(field_value) if "." in field_value else int(field_value)
-                    )
-                except ValueError:
-                    item[field_name] = field_value
-
-        if item:
-            items.append(item)
-
-    return items
+def _apidefs_signature(path: Path) -> Tuple[Tuple[str, int, int], ...]:
+    entries = []
+    for lua_file in path.glob("*.lua"):
+        stat = lua_file.stat()
+        entries.append((lua_file.name, stat.st_mtime_ns, stat.st_size))
+    return tuple(sorted(entries))
 
 
 def load_all_apis() -> Dict[str, Dict[str, Any]]:
-    """Load all API definitions from the APIDefs folder."""
+    """
+    Load all API definitions from the APIDefs folder.
+
+    The parsed result is cached per folder and invalidated when any file's
+    modification time or size changes.  Treat the returned mapping as
+    read-only; copy an entry before modifying it.
+    """
     path = get_apidefs_path()
     if not path:
         return {}
 
-    all_apis = {}
+    signature = _apidefs_signature(path)
+    with _APIS_LOCK:
+        if _APIS_CACHE["path"] == str(path) and _APIS_CACHE["signature"] == signature:
+            return _APIS_CACHE["apis"]
 
-    for lua_file in path.glob("*.lua"):
-        if lua_file.name in ("table.lua",):  # Skip utility files
-            continue
+        all_apis: Dict[str, Dict[str, Any]] = {}
+        for lua_file in sorted(path.glob("*.lua")):
+            try:
+                content = lua_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            all_apis.update(parse_lua_table_simple(content))
 
-        try:
-            content = lua_file.read_text(encoding="utf-8")
-            apis = parse_lua_table_simple(content)
-            all_apis.update(apis)
-        except Exception:
-            continue
-
-    return all_apis
+        _APIS_CACHE.update(path=str(path), signature=signature, apis=all_apis)
+        return all_apis
 
 
 def format_signature(api: Dict[str, Any]) -> str:
@@ -365,12 +328,12 @@ def register_commands(server):
     async def api_search(
         input: APISearchInput, context: Any = None
     ) -> CommandResult[APISearchResult]:
-        all_apis = load_all_apis()
+        all_apis = await asyncio.to_thread(load_all_apis)
         if not all_apis:
             return error(
                 code="NO_APIDEFS",
                 message="Could not find APIDefs folder",
-                suggestion="Ensure !Mechanic addon is installed with APIDefs",
+                suggestion="Run from the Mechanic repository (Mechanic/UI/APIDefs must exist)",
             )
 
         # Convert wildcard to regex
@@ -421,7 +384,7 @@ def register_commands(server):
     async def api_info(
         input: APIInfoInput, context: Any = None
     ) -> CommandResult[APIInfoResult]:
-        all_apis = load_all_apis()
+        all_apis = await asyncio.to_thread(load_all_apis)
 
         # Try exact match first
         api = all_apis.get(input.api_name)
@@ -439,7 +402,7 @@ def register_commands(server):
                 reasoning=f"API '{input.api_name}' not found in definitions",
             )
 
-        # Enrich with signature
+        api = dict(api)  # the loader cache is shared; never mutate its entries
         api["signature"] = format_signature(api)
 
         src = create_source(
@@ -461,7 +424,7 @@ def register_commands(server):
     async def api_list(
         input: APIListInput, context: Any = None
     ) -> CommandResult[APIListResult]:
-        all_apis = load_all_apis()
+        all_apis = await asyncio.to_thread(load_all_apis)
 
         matches = []
         filter_desc = "all"
@@ -509,7 +472,7 @@ def register_commands(server):
         input: APIQueueInput, context: Any = None
     ) -> CommandResult[APIQueueResult]:
         # Validate APIs exist
-        all_apis = load_all_apis()
+        all_apis = await asyncio.to_thread(load_all_apis)
         valid_apis = []
         invalid_apis = []
         api_names_by_case = {name.lower(): name for name in all_apis}
@@ -581,7 +544,7 @@ def register_commands(server):
     async def api_stats(
         input: Dict[str, Any], context: Any = None
     ) -> CommandResult[APIStatsResult]:
-        all_apis = load_all_apis()
+        all_apis = await asyncio.to_thread(load_all_apis)
 
         by_category: Dict[str, int] = {}
         by_namespace: Dict[str, int] = {}

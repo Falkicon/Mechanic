@@ -328,7 +328,8 @@ end
 
         issues = find_unreachable_code(addon_path, [lua_file])
 
-        assert len(issues) >= 1
+        assert len(issues) == 1
+        assert issues[0].line == 4
         assert issues[0].category == DeadCodeCategory.UNREACHABLE_CODE.value
 
 
@@ -359,7 +360,8 @@ local x = 1
 
         issues = find_commented_code_blocks(addon_path, [lua_file])
 
-        assert len(issues) >= 1
+        assert len(issues) == 1
+        assert issues[0].line == 6
         assert issues[0].category == DeadCodeCategory.COMMENTED_CODE.value
         assert issues[0].confidence == Confidence.SUSPICIOUS.value
 
@@ -394,9 +396,8 @@ print(L["UsedKey"])
 
         issues = find_unused_locale_strings(addon_path, analyzer)
 
-        # Should find UnusedKey
-        unused_keys = [i.name for i in issues]
-        assert any("UnusedKey" in k for k in unused_keys)
+        # Should find UnusedKey only
+        assert [i.name for i in issues] == ['L["UnusedKey"]']
 
 
 class TestConfidenceLevels:
@@ -429,10 +430,9 @@ local result = _G[funcName]()
         analyzer = LuaAnalyzer("TestAddon")
         analyzer.analyze_file(Path("test.lua"), code)
 
+        # The name appears as a string next to a dynamic _G lookup: flag at most as SUSPICIOUS
         unused = analyzer.get_unused_functions()
-        if unused:
-            # If flagged, should be SUSPICIOUS due to dynamic patterns
-            assert unused[0][1] == Confidence.SUSPICIOUS
+        assert all(confidence == Confidence.SUSPICIOUS for _, confidence in unused)
 
 
 if __name__ == "__main__":

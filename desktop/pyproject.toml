@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools==83.0.0", "wheel==0.46.3"]
+requires = ["setuptools>=68", "wheel>=0.42"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechanic-desktop"
-version = "0.2.1"
+dynamic = ["version"]
 description = "Local companion tool for WoW addon development built on AFD"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,10 +24,12 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Games/Entertainment",
     "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
+    "afd>=0.8.0,<0.9",
     "click>=8.0",
     "fastapi>=0.100",
     "uvicorn[standard]>=0.20",
@@ -40,8 +42,7 @@ dependencies = [
 [project.optional-dependencies]
 # MCP server support (for mech mcp command)
 mcp = [
-    "mcp>=1.0.0",
-    "fastmcp>=0.1.0",
+    "mcp>=1.28",
 ]
 # Research commands (Gemini API)
 research = [
@@ -53,12 +54,13 @@ assets = [
 ]
 # All extras
 all = [
-    "mcp>=1.0.0",
-    "fastmcp>=0.1.0",
+    "mcp>=1.28",
     "google-genai>=0.8.0",
     "Pillow>=10.0.0",
 ]
 dev = [
+    "afd[testing]>=0.8.0,<0.9",
+    "mcp>=1.28",
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "httpx>=0.27",
@@ -74,15 +76,16 @@ Documentation = "https://github.com/Falkicon/Mechanic#readme"
 mechanic = "mechanic.cli:main"
 mech = "mechanic.cli:main"
 
+[tool.setuptools.dynamic]
+version = { attr = "mechanic.__version__" }
+
 [tool.setuptools]
 package-dir = {"" = "src", "mechanic.dashboard" = "dashboard"}
-packages = ["mechanic", "mechanic.commands", "mechanic.dashboard", "afd", "afd.core", "afd.server", "afd.testing", "afd.transports"]
+packages = ["mechanic", "mechanic.commands", "mechanic.dashboard", "mechanic.resources"]
 
 [tool.setuptools.package-data]
-"mechanic.dashboard" = ["*.html", "*.js"]
-
-[tool.ruff]
-extend-exclude = ["src/_afd_OLD"]
+"mechanic.dashboard" = ["*.html", "*.js", "*.css"]
+"mechanic.resources" = ["*.lua", "*.json"]
 
 # CI deliberately gates the stable correctness baseline while the broader
 # modernization/style cleanup is handled separately.  The 2026-09-05 review

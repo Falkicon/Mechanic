@@ -3,14 +3,47 @@ Localization commands for WoW addon development.
 Handles locale validation and string extraction.
 """
 
-from afd import CommandResult, success, error
-from afd.core.metadata import create_source, create_warning, WarningSeverity
-from pydantic import BaseModel, Field
-from typing import Any, List, Optional
+import asyncio
 import re
+from pathlib import Path
+from typing import Any, List, Optional, Set
 
-# Use centralized config
+from afd import CommandResult, error, success
+from afd.core.metadata import WarningSeverity, create_source, create_warning
+from pydantic import BaseModel, Field
+
 from ..config import find_addon_path
+from ._common import addon_not_found, is_under_libs
+
+_KEY_PATTERN = re.compile(r'\["([^"]+)"\]')
+_MISSING_KEY_SAMPLE = 10
+_EXTRACT_PATTERNS = [
+    # L["string"], L.string, or standalone strings in UI code
+    re.compile(r'L\["([^"]+)"\]'),
+    re.compile(r"L\.(\w+)"),
+    re.compile(r':SetText\("([^"]+)"\)'),
+    re.compile(r'title\s*=\s*"([^"]+)"'),
+    re.compile(r'name\s*=\s*"([^"]+)"'),
+]
+
+
+def locale_keys(text: str) -> Set[str]:
+    return set(_KEY_PATTERN.findall(text))
+
+
+def extract_strings(addon_path: Path) -> List[str]:
+    """Potentially localizable strings from non-library Lua files (blocking)."""
+    found: Set[str] = set()
+    for lua_file in addon_path.rglob("*.lua"):
+        if is_under_libs(lua_file, addon_path):
+            continue
+        try:
+            content = lua_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for pattern in _EXTRACT_PATTERNS:
+            found.update(pattern.findall(content))
+    return sorted(s for s in found if len(s) > 2 and not s.isdigit())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -31,7 +64,11 @@ def register_commands(server):
 
     class LocaleMissing(BaseModel):
         locale: str
-        missing_keys: List[str]
+        missing_count: int = Field(0, description="Total number of missing keys")
+        missing_keys: List[str] = Field(
+            default_factory=list,
+            description=f"First {_MISSING_KEY_SAMPLE} missing keys, sorted",
+        )
 
     class LocaleValidateResult(BaseModel):
         addon: str
@@ -39,6 +76,29 @@ def register_commands(server):
         baseline_keys: int = 0
         locales_found: List[str] = []
         missing: List[LocaleMissing] = []
+
+    def compare_locales(locales_path: Path):
+        enus_path = locales_path / "enUS.lua"
+        baseline_keys = locale_keys(
+            enus_path.read_text(encoding="utf-8", errors="replace")
+        )
+        locales_found: List[str] = []
+        missing_list: List[LocaleMissing] = []
+        for locale_file in sorted(locales_path.glob("*.lua")):
+            if locale_file.name == "enUS.lua":
+                continue
+            locales_found.append(locale_file.stem)
+            content = locale_file.read_text(encoding="utf-8", errors="replace")
+            missing = sorted(baseline_keys - locale_keys(content))
+            if missing:
+                missing_list.append(
+                    LocaleMissing(
+                        locale=locale_file.stem,
+                        missing_count=len(missing),
+                        missing_keys=missing[:_MISSING_KEY_SAMPLE],
+                    )
+                )
+        return baseline_keys, locales_found, missing_list
 
     @server.command(
         name="locale.validate",
@@ -51,11 +111,7 @@ def register_commands(server):
     ) -> CommandResult[LocaleValidateResult]:
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
         locales_path = addon_path / "Locales"
         if not locales_path.exists():
@@ -65,43 +121,16 @@ def register_commands(server):
                 confidence=0.8,
             )
 
-        # Find baseline (enUS)
-        enus_path = locales_path / "enUS.lua"
-        if not enus_path.exists():
+        if not (locales_path / "enUS.lua").exists():
             return error(
                 code="NO_BASELINE",
                 message="enUS.lua baseline not found in Locales folder",
                 suggestion="Create enUS.lua as the baseline locale file",
             )
 
-        # Extract keys from baseline
-        baseline_content = enus_path.read_text(encoding="utf-8", errors="replace")
-        baseline_keys = set(re.findall(r'\["([^"]+)"\]', baseline_content))
-
-        # Check other locales
-        locales_found = []
-        missing_list = []
-
-        for locale_file in locales_path.glob("*.lua"):
-            if locale_file.name == "enUS.lua":
-                continue
-
-            locale_name = locale_file.stem
-            locales_found.append(locale_name)
-
-            content = locale_file.read_text(encoding="utf-8", errors="replace")
-            locale_keys = set(re.findall(r'\["([^"]+)"\]', content))
-
-            missing_keys = baseline_keys - locale_keys
-            if missing_keys:
-                missing_list.append(
-                    LocaleMissing(
-                        locale=locale_name,
-                        missing_keys=list(missing_keys)[:10],  # Limit
-                    )
-                )
-
-        valid = len(missing_list) == 0
+        baseline_keys, locales_found, missing_list = await asyncio.to_thread(
+            compare_locales, locales_path
+        )
 
         src = create_source(
             type="folder",
@@ -110,27 +139,26 @@ def register_commands(server):
             location=str(locales_path),
         )
 
-        warnings = []
-        for m in missing_list:
-            warnings.append(
-                create_warning(
-                    code="MISSING_KEYS",
-                    message=f"{m.locale}: {len(m.missing_keys)} missing keys",
-                    severity=WarningSeverity.WARNING,
-                )
+        warnings = [
+            create_warning(
+                code="MISSING_KEYS",
+                message=f"{m.locale}: {m.missing_count} missing keys",
+                severity=WarningSeverity.WARNING,
             )
+            for m in missing_list
+        ]
 
         return success(
             data=LocaleValidateResult(
                 addon=input.addon,
-                valid=valid,
+                valid=not missing_list,
                 baseline_keys=len(baseline_keys),
                 locales_found=locales_found,
                 missing=missing_list,
             ),
             reasoning=f"Validated {len(locales_found)} locales against {len(baseline_keys)} baseline keys",
             sources=[src],
-            warnings=warnings if warnings else None,
+            warnings=warnings or None,
             confidence=0.95,
         )
 
@@ -158,39 +186,9 @@ def register_commands(server):
     ) -> CommandResult[LocaleExtractResult]:
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Patterns for localizable strings
-        # L["string"], L.string, or standalone strings in UI code
-        patterns = [
-            r'L\["([^"]+)"\]',
-            r"L\.(\w+)",
-            r':SetText\("([^"]+)"\)',
-            r'title\s*=\s*"([^"]+)"',
-            r'name\s*=\s*"([^"]+)"',
-        ]
-
-        found_strings = set()
-
-        for lua_file in addon_path.rglob("*.lua"):
-            # Skip Libs folder
-            if "Libs" in str(lua_file):
-                continue
-
-            try:
-                content = lua_file.read_text(encoding="utf-8", errors="replace")
-                for pattern in patterns:
-                    matches = re.findall(pattern, content)
-                    found_strings.update(matches)
-            except Exception:
-                continue
-
-        # Filter out obvious non-localizable strings
-        filtered = [s for s in found_strings if len(s) > 2 and not s.isdigit()]
+        filtered = await asyncio.to_thread(extract_strings, addon_path)
 
         src = create_source(
             type="scan",
@@ -203,7 +201,7 @@ def register_commands(server):
             data=LocaleExtractResult(
                 addon=input.addon,
                 strings_found=len(filtered),
-                strings=sorted(filtered)[:50],  # Limit to 50
+                strings=filtered[:50],  # Limit to 50
             ),
             reasoning=f"Extracted {len(filtered)} potential localizable strings",
             sources=[src],

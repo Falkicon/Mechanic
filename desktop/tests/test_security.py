@@ -127,7 +127,9 @@ class TestProtectedAPIList:
         """Test that common protected APIs are in the list."""
         assert "TargetUnit" in PROTECTED_APIS
         assert "CastSpellByID" in PROTECTED_APIS
-        assert "SetAttribute" in PROTECTED_APIS
+        # frame methods are not protected global functions
+        assert "SetAttribute" not in PROTECTED_APIS
+        assert "SetFrameStrata" not in PROTECTED_APIS
 
     def test_secret_value_apis_included(self):
         """Test that secret value APIs are in the list."""

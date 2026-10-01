@@ -65,12 +65,17 @@ def validate_db(db: Any) -> dict:
 
 
 def read_db(path: Path) -> dict:
-    from .parsers import parse_savedvariables
+    from .parsers import is_parse_error
+    from .sv_cache import parse_sv_file
 
     try:
-        variables = parse_savedvariables(path.read_text(encoding="utf-8"))
+        # Decodes leniently like the other readers and shares the parse cache;
+        # the mapping is read-only here.
+        variables = parse_sv_file(path)
         if "MechanicDB" not in variables:
             raise ValueError("MechanicDB is missing")
+        if is_parse_error(variables["MechanicDB"]):
+            raise ValueError(variables["MechanicDB"].strip("<>"))
         return validate_db(variables["MechanicDB"])
     except TargetError:
         raise

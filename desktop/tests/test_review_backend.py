@@ -1,11 +1,9 @@
 """Regression coverage for the local bridge, watcher and MCP adapter."""
 
 import asyncio
-import inspect
 import json
 import sqlite3
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -186,13 +184,13 @@ def test_storage_closes_connections(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_mcp_hyphenated_name_and_required_after_default(monkeypatch):
+    # Mechanic's own adapter (mcp_server.create_mcp_server) registers every MCP
+    # tool; the afd package's MCP layer is not used in production.
+    pytest.importorskip("mcp.server.fastmcp")
     from afd import success
     from afd.server import create_server
-    from afd.server.decorators import get_command_metadata
+    from mechanic.mcp_server import create_mcp_server
 
-    module = ModuleType("mcp.server.fastmcp")
-    module.Context = type("Context", (), {})
-    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", module)
     server = create_server("regression")
 
     class Input(BaseModel):
@@ -203,23 +201,14 @@ async def test_mcp_hyphenated_name_and_required_after_default(monkeypatch):
     async def search(input):
         return success(input.model_dump())
 
-    captured = {}
-
-    def tool(**kwargs):
-        def register(handler):
-            captured[kwargs["name"]] = handler
-            return handler
-
-        return register
-
-    server._mcp_server = SimpleNamespace(tool=tool)
-    server._register_mcp_tool(search, get_command_metadata(search))
-    handler = captured["fencore-search"]
-    assert (
-        inspect.signature(handler).parameters["required"].default
-        is inspect.Parameter.empty
-    )
-    result = json.loads(await handler(required="needle"))
+    mcp = create_mcp_server(server)
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    assert tools["fencore-search"].inputSchema["required"] == ["required"]
+    content = await mcp.call_tool("fencore-search", {"required": "needle"})
+    if isinstance(content, tuple):
+        content = content[0]
+    text = "\n".join(block.text for block in content if hasattr(block, "text"))
+    result = json.loads(text.split("--- Full Response ---", 1)[1])
     assert result["data"] == {"optional": "default", "required": "needle"}
 
 
@@ -238,15 +227,21 @@ async def test_mcp_factory_defaults_are_evaluated_per_request():
     class Input(BaseModel):
         nonce: int = Field(default_factory=lambda: next(sequence))
 
+    from mechanic.mcp_server import create_mcp_server
+
     server = create_server("factory-regression")
 
     @server.command(name="factory.test", description="Factory test", input_schema=Input)
     async def command(input):
         return success(input.model_dump())
 
-    mcp = server._create_mcp_server()
-    tool = mcp._tool_manager.get_tool("factory.test")
-    assert tool.fn_metadata.arg_model().nonce == 1
-    assert tool.fn_metadata.arg_model().nonce == 2
-    assert json.loads(await tool.fn())["data"]["nonce"] == 3
-    assert json.loads(await tool.fn())["data"]["nonce"] == 4
+    mcp = create_mcp_server(server)
+
+    async def nonce():
+        content = await mcp.call_tool("factory-test", {})
+        if isinstance(content, tuple):
+            content = content[0]
+        text = "\n".join(block.text for block in content if hasattr(block, "text"))
+        return json.loads(text.split("--- Full Response ---", 1)[1])["data"]["nonce"]
+
+    assert [await nonce(), await nonce(), await nonce()] == [1, 2, 3]

@@ -10,6 +10,7 @@ This module creates a showcase MCP server with:
 """
 
 import json
+import re
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel
 
@@ -46,6 +47,11 @@ TOOL_CATEGORIES = {
     "research": "Research - Web search for addon development info",
     "assets": "Assets - Manage addon assets (PNG to TGA)",
     "perf": "Performance - Profile and baseline performance",
+    # Diagnostics and framework
+    "diagnostic": "Diagnostics - Discover targets and measure Mechanic overhead",
+    "commands": "Commands - Command catalog, schemas and mutation metadata",
+    "fencore": "FenCore - Browse the FenCore function catalog",
+    "system": "System - Native desktop helpers (file picker)",
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -198,22 +204,22 @@ TOOL_EXAMPLES = {
     "libs.sync": '{"addon": "Weekly"}',
     "libs.init": '{"addon": "Weekly"}',
     # API Reference
-    "api.search": '{"pattern": "GetSpellInfo"}',
+    "api.search": '{"query": "GetSpellInfo"}',
     "api.info": '{"api_name": "C_Spell.GetSpellInfo"}',
     "api.list": '{"namespace": "C_Spell"}',
     "api.stats": "{}",
     "api.queue": '{"apis": ["C_Spell.GetSpellInfo", "GetTime"]}',
-    "api.populate": "{}",
+    "api.populate": '{"source_path": "C:/WoW/_retail_/BlizzardInterfaceCode/Interface/AddOns/Blizzard_APIDocumentationGenerated"}',
     "api.generate": "{}",
-    "api.refresh": "{}",
+    "api.refresh": '{"source_path": "C:/WoW/_retail_/BlizzardInterfaceCode/Interface/AddOns/Blizzard_APIDocumentationGenerated"}',
     # Atlas Icons
-    "atlas.scan": "{}",
-    "atlas.search": '{"pattern": "raid*"}',
+    "atlas.scan": '{"source_path": "C:/WoW/_retail_/BlizzardInterfaceArt"}',
+    "atlas.search": '{"query": "raid*"}',
     # Localization
     "locale.validate": '{"addon": "Weekly"}',
     "locale.extract": '{"addon": "Weekly"}',
     # Lua Execution
-    "lua.queue": '{"snippets": ["print(GetTime())", "print(UnitName(\\"player\\"))"]}',
+    "lua.queue": '{"code": ["return GetTime()", "return UnitName(\\"player\\")"], "labels": ["time", "name"]}',
     "lua.results": "{}",
     # Sandbox Testing
     "sandbox.generate": "{}",
@@ -235,17 +241,30 @@ TOOL_EXAMPLES = {
     "assets.sync": '{"addon": "Weekly"}',
     "assets.list": '{"addon": "Weekly"}',
     # Performance
-    "perf.baseline": '{"addon": "Weekly"}',
-    "perf.compare": '{"addon": "Weekly"}',
+    "perf.baseline": '{"addon": "Weekly", "version": "1.2.0", "memory_kb": 1024.0, "cpu_ms": 5.0}',
+    "perf.compare": '{"addon": "Weekly", "memory_kb": 1100.0, "cpu_ms": 5.5}',
     "perf.report": '{"addon": "Weekly"}',
     "perf.list": "{}",
+    # Diagnostics and framework
+    "diagnostic.targets": "{}",
+    "diagnostic.metrics": "{}",
+    "commands.list": "{}",
+    "fencore-catalog": "{}",
+    "fencore-search": '{"query": "clamp"}',
+    "fencore-info": '{"domain": "Math", "function": "Clamp"}',
+    "system.pick_file": '{"title": "Select SavedVariables file"}',
+    "api.download": "{}",
 }
+
+
+def category_prefix(tool_name: str) -> str:
+    """Category key of a command name (``api.search`` and ``fencore-catalog`` alike)."""
+    return re.split(r"[.-]", tool_name, maxsplit=1)[0]
 
 
 def get_category_for_tool(tool_name: str) -> str:
     """Get the category prefix and description for a tool."""
-    prefix = tool_name.split(".")[0] if "." in tool_name else tool_name
-    return TOOL_CATEGORIES.get(prefix, "Miscellaneous")
+    return TOOL_CATEGORIES.get(category_prefix(tool_name), "Miscellaneous")
 
 
 def get_example_for_tool(tool_name: str) -> Optional[str]:
@@ -591,7 +610,7 @@ def create_mcp_server(afd_server, verbose: bool = False):
         _register_enhanced_tool(mcp, afd_server, cmd)
 
         # Track for summary
-        prefix = cmd.name.split(".")[0] if "." in cmd.name else "misc"
+        prefix = category_prefix(cmd.name)
         if prefix not in by_category:
             by_category[prefix] = []
         by_category[prefix].append(cmd.name)

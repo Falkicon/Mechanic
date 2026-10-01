@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List
 from .. import __version__
-import os
+import sys
 import asyncio
 
 # Create the AFD server instance
@@ -56,7 +56,8 @@ class ShutdownOutput(BaseModel):
 async def parse_sv(
     input: ParseInput, context: Any = None
 ) -> CommandResult[SavedVariables]:
-    from ..parsers import parse_savedvariables
+    from ..parsers import PARSE_ERROR_PREFIX, is_parse_error
+    from ..sv_cache import parse_sv_file
 
     file_path_obj = Path(input.file_path)
     if not file_path_obj.exists():
@@ -67,8 +68,9 @@ async def parse_sv(
         )
 
     try:
-        content = file_path_obj.read_text(encoding="utf-8")
-        data = parse_savedvariables(content)
+        # Large files are parsed off the event loop; the cached mapping is
+        # read-only, so anything modified below is copied first.
+        data = await asyncio.to_thread(parse_sv_file, file_path_obj)
 
         # Logic from watcher moved to command for compliance
         var_name = file_path_obj.stem
@@ -90,6 +92,15 @@ async def parse_sv(
             )
 
         addon_data = data[matched_var]
+        if is_parse_error(addon_data):
+            # WoW rewrites these files in place, so a read can see a truncated file.
+            return error(
+                code="PARSE_ERROR",
+                message=f"Failed to parse {matched_var} in {file_path_obj.name}: "
+                f"{addon_data[len(PARSE_ERROR_PREFIX) :].strip(' >')}",
+                suggestion="The file may be mid-write or truncated; retry after the game finishes saving.",
+                retryable=True,
+            )
 
         selected = None
         if isinstance(addon_data, dict) and "profiles" in addon_data:
@@ -110,11 +121,14 @@ async def parse_sv(
             if "testResults" in addon_data and "tests" not in addon_data:
                 # Convert { "test_id": {passed, message, ...} } to [ {name, passed, ...} ]
                 tests = []
-                for test_id, result in addon_data["testResults"].items():
+                results = addon_data["testResults"]
+                for test_id, result in (
+                    results.items() if isinstance(results, dict) else ()
+                ):
                     if isinstance(result, dict):
                         test_entry = {"name": test_id, **result}
                         tests.append(test_entry)
-                addon_data["tests"] = tests
+                addon_data = {**addon_data, "tests": tests}
 
         src = create_source(
             type="file",
@@ -150,9 +164,9 @@ async def get_metrics(
     from ..storage import Storage
 
     # Reuse an already running HTTP host's configured history without importing
-    # that module, whose startup initializes the database.
+    # that module or initializing its lazily created database.
     http = sys.modules.get("mechanic.server")
-    storage = getattr(http, "storage", None)
+    storage = vars(http).get("storage") if http is not None else None
     path = (
         storage.db_path
         if storage is not None
@@ -235,17 +249,17 @@ async def discover_sv(
 async def shutdown_server(
     input: Dict[str, Any], context: Any = None
 ) -> CommandResult[ShutdownOutput]:
-    # We trigger the shutdown after a small delay to allow the response to return
-    loop = asyncio.get_event_loop()
-
-    async def delayed_shutdown():
-        await asyncio.sleep(0.5)
-        print("🛑 Shutdown command received. Closing server...")
-        # Since uvicorn is running in this loop, we can just stop the loop or exit
-        # In a real app, you might want to call server.should_exit = True if you have the server object
-        os._exit(0)  # Brutal but effective for a local dev tool
-
-    loop.create_task(delayed_shutdown())
+    # Only the process hosting the dashboard can be shut down; the supervisor
+    # drains uvicorn and the watcher instead of killing the interpreter, and
+    # nothing is printed (stdout carries the protocol under MCP stdio).
+    http = sys.modules.get("mechanic.server")
+    request = getattr(http, "request_shutdown", None)
+    if request is None or not request(delay=0.5):
+        return error(
+            code="NOT_RUNNING",
+            message="No Mechanic dashboard server is running in this process",
+            suggestion="Use `mech stop --port <port>` to stop a dashboard started in another process",
+        )
 
     return success(
         data=ShutdownOutput(
@@ -375,7 +389,9 @@ def get_server():
         diagnostics.register_commands(server)
         catalog.apply_mutation_audit(server)
         from ..telemetry import instrument_server
+        from ..validation import install_input_validation
 
+        install_input_validation(server)
         instrument_server(server)
         _commands_registered = True
 

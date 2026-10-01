@@ -6,15 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -24,17 +27,30 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # The dev extra includes the MCP adapter, so the MCP tests run on every
+      # platform and Python version of the matrix.
       - name: Install dependencies
         working-directory: desktop
         run: |
           python -m pip install --upgrade --constraint constraints-dev.txt pip==25.2
           python -m pip install --constraint constraints-dev.txt -e ".[dev]"
+          python -m pip check
 
       - name: Install Lua 5.1 (Linux contract tests)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.1
+
+      # Reuses `mech setup`'s checksum-verified download. Best effort: without
+      # a Lua binary the Lua contract tests skip instead of failing.
+      - name: Install Lua 5.1 (Windows contract tests)
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        run: |
+          python -c "from mechanic.setup import load_checksums, download_tool_windows; ok, msg = download_tool_windows('lua', load_checksums()['tools']['lua']); print(msg); raise SystemExit(0 if ok else 1)"
+          if ($LASTEXITCODE -eq 0) { "MECHANIC_LUA=$PWD\bin\lua.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+          exit 0
 
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
@@ -49,8 +65,16 @@ jobs:
         run: pytest -v
 
   wheel-smoke:
-    name: Installed wheel smoke test
-    runs-on: ubuntu-latest
+    name: Installed wheel smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
 
@@ -60,60 +84,52 @@ jobs:
           python-version: "3.12"
 
       - name: Build wheel with pinned tooling
-        working-directory: desktop
         run: |
           python -m pip install --upgrade --constraint constraints-dev.txt pip==25.2
           python -m pip install --constraint constraints-dev.txt build==1.5.0 setuptools==83.0.0 wheel==0.46.3
           python -m build --wheel --no-isolation --outdir wheel-dist
 
       - name: Install wheel into a clean environment
-        working-directory: desktop
         run: |
           python -m venv wheel-env
-          wheel-env/bin/python -m pip install --upgrade --constraint constraints-dev.txt pip==25.2
-          wheel-env/bin/python -m pip install --constraint constraints-dev.txt httpx==0.28.1
-          wheel-env/bin/python -m pip install --constraint constraints-dev.txt wheel-dist/*.whl
+          VENV_PY="$(python -c "import os; print(os.path.join('wheel-env', 'Scripts' if os.name == 'nt' else 'bin', 'python'))")"
+          "$VENV_PY" -m pip install --upgrade --constraint constraints-dev.txt pip==25.2
+          "$VENV_PY" -m pip install --constraint constraints-dev.txt httpx==0.28.1
+          "$VENV_PY" -m pip install --constraint constraints-dev.txt wheel-dist/*.whl
 
-      - name: Smoke-test installed wheel and dashboard
-        working-directory: desktop
-        run: wheel-env/bin/python scripts/wheel_smoke.py
-
-  mcp-integration:
-    name: MCP adapter integration
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install pinned test stack and MCP
-        working-directory: desktop
+      - name: Smoke-test installed wheel, resources, CLI and dashboard
         run: |
-          python -m pip install --upgrade --constraint constraints-dev.txt pip==25.2
-          python -m pip install --constraint constraints-dev.txt -e ".[dev]"
-          python -m pip install --constraint constraints-dev.txt mcp==1.28.1
-
-      - name: Run MCP adapter tests
-        working-directory: desktop
-        run: pytest -q tests -k mcp
+          VENV_PY="$(python -c "import os; print(os.path.join('wheel-env', 'Scripts' if os.name == 'nt' else 'bin', 'python'))")"
+          "$VENV_PY" scripts/wheel_smoke.py
 
   test-dashboard:
-    name: Dashboard regressions
-    runs-on: ubuntu-latest
+    name: Dashboard regressions (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # Every tests/*_regressions.cjs suite runs; tests/dashboard_harness.cjs
+      # is a shared helper, not a suite.
       - name: Run dashboard regressions
-        run: node tests/dashboard_regressions.cjs
-      - name: Run dashboard schema regressions
-        run: node tests/dashboard_schema_regressions.cjs
-      - name: Check schema form JavaScript
-        run: node --check desktop/dashboard/schema-form.js
+        run: |
+          for suite in tests/*_regressions.cjs; do
+            echo "== $suite"
+            node "$suite"
+          done
+      - name: Syntax-check dashboard scripts and test harnesses
+        run: |
+          for script in desktop/dashboard/*.js tests/*.cjs; do
+            node --check "$script"
+          done
 
   lint-python:
     name: Lint (Python)
@@ -135,11 +151,11 @@ jobs:
 
       - name: Check formatting
         working-directory: desktop
-        run: ruff format --check src/ tests/
+        run: ruff format --check src/ tests/ scripts/
 
       - name: Check linting
         working-directory: desktop
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ scripts/
 
   lint-lua:
     name: Lint (Lua)
@@ -157,8 +173,11 @@ jobs:
       - name: Run Luacheck
         run: luacheck "!Mechanic/" "Mechanic/" --config .luacheckrc
 
-      - name: Run addon lifecycle regressions
-        run: lua5.1 tests/addon_regressions.lua
-
-      - name: Run addon overhead regressions
-        run: lua5.1 tests/overhead_regressions.lua
+      # Every offline harness tests/*_regressions.lua runs (addon lifecycle,
+      # overhead, API performance, inspect, ...), so new ones need no CI edit.
+      - name: Run offline Lua regressions
+        run: |
+          for suite in tests/*_regressions.lua; do
+            echo "== $suite"
+            lua5.1 "$suite"
+          done

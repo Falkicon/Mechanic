@@ -171,6 +171,14 @@ def parse_lua_table(text, pos=0):
     return result, pos
 
 
+PARSE_ERROR_PREFIX = "<parse error:"
+
+
+def is_parse_error(value) -> bool:
+    """True when a variable value is the placeholder left by a failed parse."""
+    return isinstance(value, str) and value.startswith(PARSE_ERROR_PREFIX)
+
+
 def _parse_savedvariables(content):
     """Parse a SavedVariables file content. Returns variable_name -> value."""
     variables = {}
@@ -183,7 +191,7 @@ def _parse_savedvariables(content):
             value, _ = parse_lua_value(content, start_pos)
             variables[var_name] = value
         except Exception as e:
-            variables[var_name] = f"<parse error: {e}>"
+            variables[var_name] = f"{PARSE_ERROR_PREFIX} {e}>"
     return variables
 
 
@@ -195,10 +203,7 @@ def parse_savedvariables(content):
     failed = True
     try:
         result = _parse_savedvariables(content)
-        failed = any(
-            isinstance(value, str) and value.startswith("<parse error:")
-            for value in result.values()
-        )
+        failed = any(is_parse_error(value) for value in result.values())
         return result
     finally:
         metrics.finish(token, failed=failed)

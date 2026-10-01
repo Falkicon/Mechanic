@@ -157,9 +157,8 @@ class TestMarkdownAnalyzer:
 
         metrics = analyzer.analyze_file(api_path)
 
-        # Note: The analyzer counts both opening and closing fences
-        # that match the code_block_start pattern (```lua and ```)
-        assert metrics.code_block_count >= 2
+        # api.md has two fenced blocks; closing fences are not counted as blocks
+        assert metrics.code_block_count == 2
 
     def test_find_dead_links(self, temp_addon_with_docs):
         """Test dead link detection."""
@@ -217,13 +216,14 @@ class TestCodeBlockAnalyzer:
     def test_analyze_lua_blocks(self, temp_addon_with_docs):
         """Test Lua code block analysis."""
         existing_functions = {"Initialize", "DoSomething"}
-        analyzer = CodeBlockAnalyzer(existing_functions, set())
+        analyzer = CodeBlockAnalyzer(existing_functions)
 
         api_path = temp_addon_with_docs / "docs" / "api.md"
         issues = analyzer.analyze_code_blocks(api_path, temp_addon_with_docs)
 
-        # Should find issues with OldFunction which doesn't exist
-        assert isinstance(issues, list)
+        # OldFunction no longer exists; Initialize does
+        assert [i.name for i in issues] == ["Addon:OldFunction"]
+        assert issues[0].line == 16
 
     def test_skip_builtins(self, temp_addon):
         """Test that Lua builtins are not flagged."""
@@ -239,7 +239,7 @@ local n = tonumber("5")
         doc_path = temp_addon / "test.md"
         doc_path.write_text(doc_content)
 
-        analyzer = CodeBlockAnalyzer(set(), set())
+        analyzer = CodeBlockAnalyzer(set())
         issues = analyzer.analyze_code_blocks(doc_path, temp_addon)
 
         # Builtins should not be flagged

@@ -12,6 +12,8 @@ Workflow:
 4. Agent reads results via `addon.output` or `lua.results`
 """
 
+import asyncio
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -58,7 +60,6 @@ class LuaQueueResult(BaseModel):
 
 class LuaResultsInput(BaseModel):
     target: Optional[DiagnosticTarget] = None
-    pass  # No input needed
 
 
 class LuaResultsResult(BaseModel):
@@ -81,13 +82,23 @@ def find_addon_path() -> Optional[Path]:
 
 
 def escape_lua_string(s: str) -> str:
-    """Escape a string for Lua long string format."""
-    # Use Lua long string format [[ ]] which doesn't need escaping
-    # But we need to handle nested brackets
+    """Encode ``s`` as a Lua long string whose value is ``s`` (plus a newline after a trailing ``]``).
+
+    The bracket level is raised until neither a closing nor an opening bracket of
+    that level occurs inside. Lua drops a newline that directly follows the
+    opening bracket, so a leading newline is doubled; a trailing ``]`` or
+    ``]=`` would fuse with the closing bracket, so a newline is appended.
+    """
+    body = s
+    if body.startswith(("\n", "\r")):
+        body = "\n" + body
+    if re.search(r"\]=*$", body):
+        body += "\n"
     level = 0
-    while f"]{('=' * level)}]" in s or f"[{('=' * level)}[" in s:
+    while f"]{'=' * level}]" in body or f"[{'=' * level}[" in body:
         level += 1
-    return f"[{'=' * level}[{s}]{'=' * level}]"
+    eq = "=" * level
+    return f"[{eq}[{body}]{eq}]"
 
 
 def write_lua_queue_file(
@@ -134,7 +145,8 @@ MECHANIC_LUA_QUEUE = {queue_lua}
 
 
 def get_lua_results(target=None) -> Dict[str, Any]:
-    return read_profile(target or select_target()).get("luaEvalResults", {})
+    results = read_profile(target or select_target()).get("luaEvalResults", {})
+    return results if isinstance(results, dict) else {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -169,10 +181,12 @@ def register_commands(server):
                 suggestion="Provide one label per code snippet, or omit labels",
             )
 
-        # Write to queue file
+        def queue() -> tuple:
+            chosen = select_target(input.target)
+            return chosen, write_lua_queue_file(input.code, input.labels, chosen)
+
         try:
-            selected = select_target(input.target)
-            queue_path = write_lua_queue_file(input.code, input.labels, selected)
+            selected, queue_path = await asyncio.to_thread(queue)
         except TargetError as exc:
             return exc.result()
 
@@ -210,9 +224,12 @@ def register_commands(server):
     async def lua_results(
         input: LuaResultsInput, context: Any = None
     ) -> CommandResult[LuaResultsResult]:
+        def read() -> tuple:
+            chosen = select_target(input.target)
+            return chosen, get_lua_results(chosen)
+
         try:
-            selected = select_target(input.target)
-            results_data = get_lua_results(selected)
+            selected, results_data = await asyncio.to_thread(read)
         except TargetError as exc:
             return exc.result()
 
@@ -225,6 +242,11 @@ def register_commands(server):
             )
 
         results = results_data.get("results", [])
+        if isinstance(results, dict):
+            results = list(results.values())
+        if not isinstance(results, list):
+            results = []
+        results = [r for r in results if isinstance(r, dict)]
         last_run = results_data.get("lastRun")
 
         src = create_source(
@@ -234,10 +256,8 @@ def register_commands(server):
         return success(
             data=LuaResultsResult(
                 target=selected,
-                results=results
-                if isinstance(results, list)
-                else list(results.values()),
-                total=len(results) if isinstance(results, (list, dict)) else 0,
+                results=results,
+                total=len(results),
                 last_run=last_run,
             ),
             reasoning=f"Found {len(results)} Lua eval results from {last_run or 'unknown time'}",

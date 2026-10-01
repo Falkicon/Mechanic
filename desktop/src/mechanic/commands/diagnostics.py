@@ -77,8 +77,9 @@ def register_commands(server):
                     suggestion="Call diagnostic.targets and select a client/account/character/profile",
                 )
             try:
-                selected = select_target(input.target)
-                snapshot = read_profile(selected).get("diagnosticOverhead")
+                selected = await asyncio.to_thread(select_target, input.target)
+                profile = await asyncio.to_thread(read_profile, selected)
+                snapshot = profile.get("diagnosticOverhead")
                 if snapshot is not None:
                     addon = AddonOverhead.model_validate(snapshot)
                     addon_status = "Last saved snapshot; not a live in-game measurement"

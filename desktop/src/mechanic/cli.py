@@ -18,8 +18,38 @@ import os
 import sys
 from typing import Any
 
+from . import server as http_server
 from .server import app
 from .watcher import SVWatcher
+
+# SSE exposes every command, including mutating ones, without authentication.
+DEFAULT_MCP_SSE_PORT = 3101
+
+
+def describe_send_keys(keys: str) -> str:
+    """Render a SendKeys string (``^`` Ctrl, ``+`` Shift, ``%`` Alt) readably."""
+    names = {"^": "Ctrl", "+": "Shift", "%": "Alt"}
+    parts = []
+    while keys and keys[0] in names:
+        parts.append(names[keys[0]])
+        keys = keys[1:]
+    parts.append(keys.upper() if parts else keys)
+    return "+".join(parts)
+
+
+def ensure_utf8_output() -> None:
+    """Keep output from raising on consoles/pipes with a legacy code page.
+
+    Windows redirects stdout/stderr through the locale code page (cp1252), which
+    cannot encode some characters in command results or file names.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -30,7 +60,7 @@ from .watcher import SVWatcher
 def print_result(result: Any, json_output: bool = False, quiet: bool = False) -> None:
     """Print a CommandResult in formatted style."""
     if json_output:
-        click.echo(json.dumps(result.model_dump(), indent=2))
+        click.echo(json.dumps(result.model_dump(mode="json"), indent=2))
         return
 
     if result.success:
@@ -150,6 +180,9 @@ async def start_services(
 
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
     server = uvicorn.Server(config)
+    # /health reports the port; server.shutdown stops this supervisor gracefully.
+    http_server.set_http_port(port)
+    http_server.set_shutdown_handler(stop_event.set)
 
     async def serve():
         try:
@@ -179,6 +212,8 @@ async def start_services(
                 break
     finally:
         click.echo("\nShutting down services...")
+        http_server.set_shutdown_handler(None)
+        http_server.set_http_port(None)
         stop_event.set()
         watcher.stop()
         server.should_exit = True
@@ -267,6 +302,7 @@ def main(ctx, json_output, quiet, agent):
       mechanic --agent call ...      Agent-optimized output
       mechanic shell                 Interactive command shell
     """
+    ensure_utf8_output()
     ctx.ensure_object(dict)
     ctx.obj["json_output"] = json_output
     ctx.obj["quiet"] = quiet
@@ -336,7 +372,7 @@ def list_commands(ctx, pattern, cmd_name):
                 )
             )
         else:
-            click.secho(f"\n📌 {cmd.name}", fg="cyan", bold=True)
+            click.secho(f"\n{cmd.name}", fg="cyan", bold=True)
             click.echo(f"   {cmd.description}")
             if hasattr(cmd, "parameters") and cmd.parameters:
                 click.secho("\n   Parameters:", bold=True)
@@ -407,7 +443,7 @@ def shell(ctx):
     server = get_server()
     json_output = ctx.obj.get("json_output", False)
 
-    click.secho("\n🔧 Mechanic Shell", bold=True)
+    click.secho("\nMechanic Shell", bold=True)
     click.echo("Type 'help' for commands, 'exit' to quit\n")
 
     async def run_shell():
@@ -441,19 +477,17 @@ Commands:
                 print_commands(commands, json_output=json_output)
                 continue
 
-            if line.startswith("call "):
-                parts = line[5:].strip().split(maxsplit=1)
-                cmd_name = parts[0]
-                cmd_args = json.loads(parts[1]) if len(parts) > 1 else {}
-
-                result = await server.execute(cmd_name, cmd_args)
-                print_result(result, json_output=json_output)
+            # "call <cmd> [json]" or a bare "<cmd> [json]"
+            parts = (line[5:] if line.startswith("call ") else line).split(maxsplit=1)
+            if not parts:
+                click.secho("[X] Usage: call <cmd> [json]", fg="red")
                 continue
-
-            # Try as direct command call
-            parts = line.split(maxsplit=1)
             cmd_name = parts[0]
-            cmd_args = json.loads(parts[1]) if len(parts) > 1 else {}
+            try:
+                cmd_args = json.loads(parts[1]) if len(parts) > 1 else {}
+            except json.JSONDecodeError as e:
+                click.secho(f"[X] Invalid JSON: {e}", fg="red")
+                continue
 
             result = await server.execute(cmd_name, cmd_args)
             print_result(result, json_output=json_output)
@@ -463,7 +497,7 @@ Commands:
     except KeyboardInterrupt:
         pass
 
-    click.echo("\nGoodbye! 👋")
+    click.echo("\nGoodbye!")
 
 
 @main.command()
@@ -486,7 +520,7 @@ def status(ctx):
         click.echo(json.dumps(status_data, indent=2))
         return
 
-    click.secho("\n⚙️  Mechanic Status\n", bold=True)
+    click.secho("\nMechanic Status\n", bold=True)
     click.echo(f"  WoW Root:  {status_data['wow_root'] or '(not found)'}")
     click.echo(f"  Dev Path:  {status_data['dev_path'] or '(not found)'}")
     click.echo(f"  Flavors:   {', '.join(status_data['flavors'])}")
@@ -529,7 +563,7 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
 
     if not watch_paths:
         if not quiet:
-            click.echo("🔍 Auto-discovering SavedVariables...")
+            click.echo("Auto-discovering SavedVariables...")
         result = asyncio.run(server.execute("sv.discover", {}))
 
         if result.success:
@@ -554,12 +588,10 @@ def dashboard(ctx, port, watch, src, no_browser, auto_reload, reload_key):
     if not quiet:
         click.echo(f"Starting dashboard on port {port}...")
         if auto_reload:
-            key_display = (
-                reload_key.replace("^", "Ctrl+").replace("+", "Shift+").upper()
-                if reload_key.startswith("^")
-                else reload_key
+            click.secho(
+                f"Hot Reload ACTIVE (key: {describe_send_keys(reload_key)})",
+                fg="yellow",
             )
-            click.secho(f"🔥 Hot Reload ACTIVE (key: {key_display})", fg="yellow")
 
     start_server(
         port,
@@ -623,11 +655,13 @@ def addon_output(ctx):
 
     json_output = ctx.obj.get("json_output", False)
     quiet = ctx.obj.get("quiet", False)
-    agent_mode = ctx.obj.get("agent_mode", False)
+    agent_mode = ctx.obj.get("agent", False)
     server = get_server()
 
     result = asyncio.run(server.execute("addon.output", {"agent_mode": agent_mode}))
     print_result(result, json_output=json_output, quiet=quiet)
+    if not result.success:
+        sys.exit(1)
 
 
 @main.command()
@@ -670,7 +704,7 @@ def docs(ctx, output, fmt):
     result = asyncio.run(run())
 
     if json_output:
-        click.echo(json.dumps(result, indent=2, default=str))
+        click.echo(json.dumps(result.model_dump(mode="json"), indent=2))
     else:
         print_result(result, quiet=quiet)
         if result.success:
@@ -681,88 +715,87 @@ def docs(ctx, output, fmt):
             categories = getattr(data, "categories", []) if data else []
             click.secho(f"[OK] Generated {path}", fg="green")
             click.echo(f"     {cmd_count} commands across {len(categories)} categories")
+    if not result.success:
+        sys.exit(1)
 
 
 @main.command()
 @click.argument("addon")
 @click.argument("version")
 @click.argument("message")
-@click.option("--skip-tag", is_flag=True, help="Skip creating git tag")
+@click.option(
+    "--dry-run", is_flag=True, help="Run preflight checks only; change nothing"
+)
+@click.option("--category", default="Changed", help="Changelog category")
+@click.option("--skip-tag", is_flag=True, hidden=True)
 @click.pass_context
-def release(ctx, addon, version, message, skip_tag):
-    """Release an addon: bump version, changelog, commit, tag.
+def release(ctx, addon, version, message, dry_run, category, skip_tag):
+    """Release an addon: preflight, bump version, changelog, commit, tag.
+
+    Runs the same `release.all` command as MCP and the dashboard, including its
+    tag-conflict and staged-changes preflight. Use --dry-run to preview.
 
     \b
     Example:
-      mechanic release Weekly 1.2.0 "Added new feature"
+      mechanic release Weekly 1.2.0 "Added new feature" --dry-run
     """
     from .commands.core import get_server
 
     json_output = ctx.obj.get("json_output", False)
     quiet = ctx.obj.get("quiet", False)
+
+    if skip_tag:
+        click.secho(
+            "[X] --skip-tag was removed: release.all always tags after its preflight.",
+            fg="red",
+        )
+        click.echo(
+            "    Run version.bump, changelog.add and git.commit with `mech call` to release without a tag."
+        )
+        sys.exit(2)
+
     server = get_server()
-
-    async def run_release():
-        results = []
-
-        steps = [
-            ("version.bump", {"addon": addon, "version": version}),
-            (
-                "changelog.add",
-                {
-                    "addon": addon,
-                    "version": version,
-                    "message": message,
-                    "category": "Changed",
-                },
-            ),
-            (
-                "git.commit",
-                {"addon": addon, "message": f"Release v{version}: {message}"},
-            ),
-        ]
-        if not skip_tag:
-            steps.append(
-                (
-                    "git.tag",
-                    {
-                        "addon": addon,
-                        "version": version,
-                        "message": f"Release {version}: {message}",
-                    },
-                )
-            )
-
-        for cmd, args in steps:
-            if not quiet and not json_output:
-                click.echo(f"  -> {cmd}...")
-            result = await server.execute(cmd, args)
-            results.append({"command": cmd, "result": result.model_dump()})
-            if not result.success:
-                break
-
-        return results
-
-    results = asyncio.run(run_release())
+    result = asyncio.run(
+        server.execute(
+            "release.all",
+            {
+                "addon": addon,
+                "version": version,
+                "message": message,
+                "category": category,
+                "dry_run": dry_run,
+            },
+        )
+    )
 
     if json_output:
-        click.echo(json.dumps(results, indent=2))
+        click.echo(json.dumps(result.model_dump(mode="json"), indent=2))
+        if not result.success:
+            sys.exit(1)
         return
 
-    all_success = all(r["result"]["success"] for r in results)
-    for r in results:
-        if r["result"]["success"]:
-            click.secho(f"  [OK] {r['command']}", fg="green")
+    data = result.data
+    if result.success:
+        if dry_run:
+            click.secho("[OK] Preflight passed; nothing was changed", fg="green")
+            for step in getattr(data, "steps_planned", []):
+                click.echo(f"  - {step.command}: {step.description}")
         else:
+            for step in getattr(data, "steps_completed", []):
+                click.secho(f"  [OK] {step}", fg="green")
             click.secho(
-                f"  [X] {r['command']}: {r['result']['error']['message']}", fg="red"
+                f"\n[SUCCESS] Released {addon} v{version}!", fg="green", bold=True
             )
+        return
 
-    if all_success:
-        click.secho(f"\n[SUCCESS] Released {addon} v{version}!", fg="green", bold=True)
-    else:
-        click.secho("\n[!] Release incomplete", fg="yellow")
-        sys.exit(1)
+    for step in getattr(data, "steps_completed", []) or []:
+        click.secho(f"  [OK] {step}", fg="green")
+    if result.error:
+        click.secho(f"  [X] {result.error.code}: {result.error.message}", fg="red")
+        if result.error.suggestion and not quiet:
+            click.secho(f"      Hint: {result.error.suggestion}", fg="yellow")
+    click.secho("\n[!] Release incomplete", fg="yellow")
+    sys.exit(1)
 
 
 @main.command()
@@ -850,7 +883,14 @@ def setup(ctx, verify, force, skip_config):
             else:
                 # Paths were auto-detected
                 if click.confirm("  Save this configuration?", default=True):
-                    config.save_user_config(config.to_dict())
+                    # Persist only what was detected; derived values (data_dir,
+                    # search paths) and undetected (None) entries stay dynamic.
+                    config.save_user_config(
+                        {
+                            "wow_root": str(wow_root) if wow_root else None,
+                            "dev_path": str(dev_path) if dev_path else None,
+                        }
+                    )
                     click.secho(
                         "  [OK] Configuration saved to ~/.mechanic/config.json",
                         fg="green",
@@ -869,6 +909,10 @@ def setup(ctx, verify, force, skip_config):
         click.echo(json.dumps(summary, indent=2))
         return
 
+    if not summary["source_checkout"] and not quiet:
+        click.echo(
+            f"  Installed wheel (not a source checkout): tools go to {summary['bin_dir']}"
+        )
     for tool in summary["tools"]:
         if tool.get("installed"):
             click.secho(
@@ -926,10 +970,20 @@ def setup_busted_cmd():
     help="Transport type (stdio or sse)",
 )
 @click.option(
-    "--port", "-p", default=3100, help="Port for SSE transport (default: 3100)"
+    "--port",
+    "-p",
+    default=DEFAULT_MCP_SSE_PORT,
+    show_default=True,
+    help="Port for SSE transport (the dashboard uses 3100)",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Bind address for SSE transport",
 )
 @click.pass_context
-def mcp(ctx, transport, port):
+def mcp(ctx, transport, port, host):
     """Run Mechanic as an MCP server for AI agents.
 
     This exposes all commands as MCP tools with rich descriptions,
@@ -950,8 +1004,13 @@ def mcp(ctx, transport, port):
     \b
     Examples:
       mech mcp                    # Run MCP over stdio
-      mech mcp --transport sse    # Run MCP over SSE on port 3100
+      mech mcp --transport sse    # Run MCP over SSE on 127.0.0.1:3101
       mech mcp -t sse -p 8080     # Run SSE on custom port
+
+    \b
+    Security:
+      SSE has no authentication and exposes mutating commands (git, release,
+      code execution). It binds to 127.0.0.1 by default; do not expose it.
 
     \b
     Claude Code Config (.mcp.json in project root):
@@ -984,15 +1043,24 @@ def mcp(ctx, transport, port):
     verbose = not quiet and transport == "stdio"
     mcp_server = create_mcp_server(server, verbose=verbose)
 
-    if not quiet and transport == "sse":
-        cmd_count = len(server.list_commands())
-        click.echo(f"Mechanic MCP Server starting on port {port}...")
-        click.echo(f"  Tools: {cmd_count}")
-        click.echo("  Transport: SSE")
-        click.echo("  Features: Rich descriptions, parameter hints, examples")
+    if transport == "sse":
+        # Warn on stderr regardless of --quiet: this is a security boundary.
+        click.secho(
+            f"[!] SSE transport on {host}:{port} is unauthenticated and exposes "
+            "mutating commands to any client that can connect.",
+            fg="yellow",
+            err=True,
+        )
+        if not quiet:
+            cmd_count = len(server.list_commands())
+            click.echo(f"Mechanic MCP Server starting on {host}:{port}...")
+            click.echo(f"  Tools: {cmd_count}")
+            click.echo("  Transport: SSE")
+            click.echo("  Features: Rich descriptions, parameter hints, examples")
 
     # Run the MCP server
     if transport == "sse":
+        mcp_server.settings.host = host
         mcp_server.settings.port = port
 
     mcp_server.run(transport=transport)

@@ -3,16 +3,21 @@ Development tools for WoW addon development.
 Migrated from ADDON_DEV/Tools to first-class AFD commands.
 """
 
-from afd import CommandResult, success, error
-from afd.core.metadata import create_source, create_warning, WarningSeverity
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
 import asyncio
+import json
 import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-# Use centralized config
+from afd import CommandResult, error, success
+from afd.core.metadata import WarningSeverity, create_source, create_warning
+from pydantic import BaseModel, Field
+
 from ..config import find_addon_path
+from ..resources import resource_path
+from ._common import addon_not_found, is_under_libs
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -23,11 +28,6 @@ from ..config import find_addon_path
 class AddonInput(BaseModel):
     addon: str = Field(..., description="Name of the addon to operate on")
     path: Optional[str] = Field(None, description="Override path to addon folder")
-
-
-class ValidationIssue(BaseModel):
-    level: str = Field(..., description="ERROR, WARNING, or INFO")
-    message: str
 
 
 class ValidationResult(BaseModel):
@@ -45,12 +45,24 @@ class ValidationResult(BaseModel):
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Current valid interface versions for WoW 12.0 (Midnight)
-VALID_INTERFACE_VERSIONS = ["120001", "120000", "110105", "110100"]
+# Retail interface numbers are six digits (WWXXYY) from 11.0 on. Classic and
+# "forever" clients use five-digit numbers; those Mechanic does not recognise
+# are accepted with a warning instead of being rejected.
+MIN_RETAIL_INTERFACE = 110000
+KNOWN_CLASSIC_INTERFACES = frozenset(
+    {"11507", "11508", "20505", "30403", "40402", "50503", "50504"}
+)
 
 # Required and recommended metadata fields
 REQUIRED_FIELDS = ["Title", "Version"]
 RECOMMENDED_FIELDS = ["Notes", "Author"]
+
+EXCERPT_LIMIT = 600
+
+
+def _excerpt(*texts: str, limit: int = EXCERPT_LIMIT) -> str:
+    joined = "\n".join(t.strip() for t in texts if t and t.strip())
+    return joined if len(joined) <= limit else joined[:limit] + "..."
 
 
 def parse_toc_file(toc_path: Path) -> Dict[str, Any]:
@@ -77,7 +89,7 @@ def parse_toc_file(toc_path: Path) -> Dict[str, Any]:
         # Interface version
         match = re.match(r"^##\s*Interface:\s*(.+)", trimmed)
         if match:
-            versions = [v.strip() for v in match.group(1).split(",")]
+            versions = [v.strip() for v in match.group(1).split(",") if v.strip()]
             interface_versions.extend(versions)
             continue
 
@@ -87,15 +99,46 @@ def parse_toc_file(toc_path: Path) -> Dict[str, Any]:
             metadata[match.group(1)] = match.group(2).strip()
             continue
 
-        # File reference (non-comment, non-empty)
+        # File reference (non-comment, non-empty); drop [AllowLoad ...] suffixes
         if not trimmed.startswith("#") and trimmed:
-            files.append({"path": trimmed, "in_debug": in_debug_block})
+            path = re.sub(r"\s+\[[^\]]*\]\s*$", "", trimmed)
+            files.append({"path": path, "in_debug": in_debug_block})
 
     return {
         "metadata": metadata,
         "files": files,
         "interface_versions": interface_versions,
     }
+
+
+def check_interface_versions(versions: List[str]) -> Tuple[List[str], List[str]]:
+    """Return (errors, warnings) for the values of a TOC ``## Interface`` line."""
+    if not versions:
+        return ["Missing ## Interface directive"], []
+
+    errors: List[str] = []
+    warnings: List[str] = []
+    accepted = 0
+    for version in versions:
+        if not re.fullmatch(r"\d{5,6}", version):
+            errors.append(
+                f"Invalid Interface value '{version}': use the numeric build, e.g. 120001"
+            )
+        elif len(version) == 6:
+            if int(version) >= MIN_RETAIL_INTERFACE:
+                accepted += 1
+        else:
+            accepted += 1
+            if version not in KNOWN_CLASSIC_INTERFACES:
+                warnings.append(
+                    f"Interface {version} is a classic-style value Mechanic does not recognise"
+                )
+    if not errors and not accepted:
+        errors.append(
+            f"Interface version outdated: {', '.join(versions)}. "
+            f"Should include a retail version >= {MIN_RETAIL_INTERFACE}"
+        )
+    return errors, warnings
 
 
 def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
@@ -110,15 +153,8 @@ def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
         return result
 
     # Prefer .toc matching addon name
-    main_toc = None
-    for toc in toc_files:
-        if toc.stem == addon_name:
-            main_toc = toc
-            break
-    if not main_toc:
-        main_toc = toc_files[0]
+    main_toc = next((toc for toc in toc_files if toc.stem == addon_name), toc_files[0])
 
-    # Parse TOC
     parsed = parse_toc_file(main_toc)
     metadata = parsed["metadata"]
     files = parsed["files"]
@@ -127,19 +163,14 @@ def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
     result.file_count = len(files)
 
     # Check 1: Interface version
-    if not interface_versions:
-        result.errors.append("Missing ## Interface directive")
+    interface_errors, interface_warnings = check_interface_versions(interface_versions)
+    if interface_errors:
+        result.errors.extend(interface_errors)
         result.valid = False
     else:
-        has_valid = any(v in VALID_INTERFACE_VERSIONS for v in interface_versions)
-        if not has_valid:
-            result.errors.append(
-                f"Interface version outdated: {', '.join(interface_versions)}. Should include 120001 or 120000"
-            )
-            result.valid = False
-        else:
-            result.interface_version = ", ".join(interface_versions)
-            result.info.append(f"Interface: {result.interface_version}")
+        result.interface_version = ", ".join(interface_versions)
+        result.info.append(f"Interface: {result.interface_version}")
+    result.warnings.extend(interface_warnings)
 
     # Check 2: Required metadata
     for field in REQUIRED_FIELDS:
@@ -164,12 +195,12 @@ def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
                 f"SavedVariables '{sv_name}' doesn't match addon name '{addon_name}'"
             )
 
-    # Check 4: File existence
-    missing_files = []
-    for file_info in files:
-        file_path = addon_path / file_info["path"]
-        if not file_path.exists():
-            missing_files.append(file_info["path"])
+    # Check 4: File existence (TOC paths use backslashes)
+    missing_files = [
+        file_info["path"]
+        for file_info in files
+        if not (addon_path / file_info["path"].replace("\\", "/")).exists()
+    ]
 
     if missing_files:
         result.errors.append(f"Missing files: {', '.join(missing_files)}")
@@ -198,6 +229,200 @@ def validate_toc(addon_path: Path, addon_name: str) -> ValidationResult:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# TOOL OUTPUT PARSERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_LUACHECK_LINE = re.compile(r"^(.+?):(\d+):(\d+):\s*\(([EW]\d+)\)\s*(.+)$")
+
+
+def parse_luacheck_output(stdout: str) -> List[Dict[str, Any]]:
+    issues = []
+    for line in stdout.splitlines():
+        match = _LUACHECK_LINE.match(line)
+        if match:
+            issues.append(
+                {
+                    "file": match.group(1),
+                    "line": int(match.group(2)),
+                    "column": int(match.group(3)),
+                    "code": match.group(4),
+                    "message": match.group(5),
+                }
+            )
+    return issues
+
+
+def parse_stylua_diffs(output: str) -> List[str]:
+    """File paths from StyLua ``Diff in <path>:`` headers (paths may contain spaces)."""
+    files = []
+    for line in output.splitlines():
+        match = re.match(r"^Diff in (.+?):\d*:?\s*$", line)
+        if match and match.group(1) not in files:
+            files.append(match.group(1))
+    return files
+
+
+def _stylua_errors(output: str) -> List[str]:
+    return [line for line in output.splitlines() if line.startswith("error")]
+
+
+def parse_busted_json(stdout: str) -> Optional[dict]:
+    """Decode busted's JSON report even when other text precedes it."""
+    start = stdout.find("{")
+    if start < 0:
+        return None
+    try:
+        data, _ = json.JSONDecoder().raw_decode(stdout[start:])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _busted_name(entry: Any) -> str:
+    if not isinstance(entry, dict):
+        return "Unknown"
+    element = entry.get("element")
+    element_name = element.get("name") if isinstance(element, dict) else None
+    return str(entry.get("name") or element_name or "Unknown")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEPRECATION DATABASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DEPRECATED_DB_NAME = "deprecated_apis.json"
+_SEVERITY_LEVELS = {"info": 0, "warning": 1, "error": 2}
+
+
+def load_deprecated_apis() -> Tuple[Dict[str, Dict[str, str]], str, Optional[str]]:
+    """Load the bundled deprecation database.
+
+    Returns ``(apis, version, note)``. ``version`` is ``"fallback"`` and ``note``
+    explains why when the bundled file is missing or unreadable and a minimal
+    built-in set is used instead.
+    """
+    db_path = resource_path(DEPRECATED_DB_NAME)
+    try:
+        data = json.loads(db_path.read_text(encoding="utf-8"))
+        apis = {}
+        for entry in data.get("apis", []):
+            apis[entry["old"]] = {
+                "new": entry["new"],
+                "severity": entry.get("severity", "warning"),
+                "category": entry.get("category", "general"),
+                "since": entry.get("since", ""),
+                "notes": entry.get("notes", ""),
+            }
+        if apis:
+            note = None
+            if data.get("complete") is False:
+                note = (
+                    "The bundled deprecation list is a partial seed; regenerate it with "
+                    "`python -m mechanic.deprecations_builder <wow-ui-source>`"
+                )
+            return apis, str(data.get("version", "unknown")), note
+        reason = "it lists no APIs"
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        reason = f"it could not be read ({exc})"
+
+    fallback = {
+        old: {
+            "new": new,
+            "severity": "warning",
+            "category": "addons",
+            "since": "11.0.0",
+            "notes": "",
+        }
+        for old, new in (
+            ("GetAddOnInfo", "C_AddOns.GetAddOnInfo"),
+            ("IsAddOnLoaded", "C_AddOns.IsAddOnLoaded"),
+            ("LoadAddOn", "C_AddOns.LoadAddOn"),
+        )
+    }
+    return (
+        fallback,
+        "fallback",
+        f"Using a minimal built-in list of {len(fallback)} APIs because {DEPRECATED_DB_NAME} {reason}",
+    )
+
+
+def compile_deprecation_pattern(names: List[str]) -> Optional["re.Pattern[str]"]:
+    """One regex matching a call to any deprecated name (not ``C_X.Name(`` forms)."""
+    if not names:
+        return None
+    alternation = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+    return re.compile(rf"(?<![A-Za-z0-9_.:])({alternation})\s*\(")
+
+
+def scan_lua_text(text: str, pattern: "re.Pattern[str]") -> List[Tuple[int, str]]:
+    """Return ``(line_number, deprecated_name)`` for each deprecated call."""
+    hits = []
+    for line_num, line in enumerate(text.splitlines(), 1):
+        if line.strip().startswith("--"):
+            continue
+        if "@scan-ignore:" in line or "@scan-ignore " in line:
+            continue
+        for match in pattern.finditer(line):
+            hits.append((line_num, match.group(1)))
+    return hits
+
+
+def scan_addon_deprecations(
+    addon_path: Path,
+    apis: Dict[str, Dict[str, str]],
+    category: Optional[str],
+    min_severity: str,
+) -> Tuple[List[dict], int]:
+    """Scan non-library Lua files (blocking). Returns ``(issues, files_scanned)``."""
+    min_level = _SEVERITY_LEVELS.get(min_severity, 1)
+    active = {
+        name: info
+        for name, info in apis.items()
+        if (not category or info.get("category") == category)
+        and _SEVERITY_LEVELS.get(info.get("severity", "warning"), 1) >= min_level
+    }
+    pattern = compile_deprecation_pattern(list(active))
+    lua_files = [
+        f for f in sorted(addon_path.rglob("*.lua")) if not is_under_libs(f, addon_path)
+    ]
+    issues: List[dict] = []
+    if pattern is None:
+        return issues, len(lua_files)
+
+    for lua_file in lua_files:
+        try:
+            text = lua_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line_num, old_api in scan_lua_text(text, pattern):
+            info = active[old_api]
+            issues.append(
+                {
+                    "file": str(lua_file.relative_to(addon_path)),
+                    "line": line_num,
+                    "old_api": old_api,
+                    "new_api": info["new"],
+                    "severity": info.get("severity", "warning"),
+                    "category": info.get("category", "general"),
+                    "since": info.get("since", ""),
+                    "notes": info.get("notes", ""),
+                }
+            )
+    return issues, len(lua_files)
+
+
+def _snapshot(files: List[Path]) -> Dict[Path, Tuple[int, int]]:
+    snap = {}
+    for f in files:
+        try:
+            stat = f.stat()
+        except OSError:
+            continue
+        snap[f] = (stat.st_mtime_ns, stat.st_size)
+    return snap
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMMAND REGISTRATION (called from core.py)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -217,15 +442,13 @@ def register_commands(server):
         addon_path = find_addon_path(input.addon, input.path)
 
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found in development directories",
-                suggestion="Check the addon name or provide an explicit path with the 'path' parameter",
+            return addon_not_found(
+                input.addon,
+                "Check the addon name or provide an explicit path with the 'path' parameter",
             )
 
-        result = validate_toc(addon_path, input.addon)
+        result = await asyncio.to_thread(validate_toc, addon_path, input.addon)
 
-        # Build sources
         src = create_source(
             type="file",
             id=f"toc-{input.addon}",
@@ -233,31 +456,26 @@ def register_commands(server):
             location=str(addon_path),
         )
 
-        # Build warnings from validation
-        warnings = []
-        for warn_msg in result.warnings:
-            warnings.append(
-                create_warning(
-                    code="TOC_WARNING", message=warn_msg, severity=WarningSeverity.INFO
-                )
+        warnings = [
+            create_warning(
+                code="TOC_WARNING", message=warn_msg, severity=WarningSeverity.INFO
             )
+            for warn_msg in result.warnings
+        ]
 
         if result.valid:
-            return success(
-                data=result,
-                reasoning=f"Validated {input.addon}: {result.file_count} files, interface {result.interface_version or 'unknown'}",
-                sources=[src],
-                warnings=warnings if warnings else None,
-                confidence=1.0,
-            )
+            reasoning = f"Validated {input.addon}: {result.file_count} files, interface {result.interface_version or 'unknown'}"
         else:
-            return success(
-                data=result,
-                reasoning=f"Validation failed for {input.addon}: {len(result.errors)} error(s)",
-                sources=[src],
-                warnings=warnings if warnings else None,
-                confidence=1.0,
+            reasoning = (
+                f"Validation failed for {input.addon}: {len(result.errors)} error(s)"
             )
+        return success(
+            data=result,
+            reasoning=reasoning,
+            sources=[src],
+            warnings=warnings or None,
+            confidence=1.0,
+        )
 
     # ═══════════════════════════════════════════════════════════════════════════
     # addon.lint - Run Luacheck on addon
@@ -266,7 +484,6 @@ def register_commands(server):
     class LintInput(BaseModel):
         addon: str = Field(..., description="Name of the addon to lint")
         path: Optional[str] = Field(None, description="Override path to addon folder")
-        fix: bool = Field(False, description="Not applicable for Luacheck (read-only)")
 
     class LintIssue(BaseModel):
         file: str
@@ -291,17 +508,10 @@ def register_commands(server):
     async def lint_addon(
         input: LintInput, context: Any = None
     ) -> CommandResult[LintResult]:
-        import subprocess
-
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Find luacheck tool (check bin/ first, then PATH)
         from ..setup import find_tool
 
         luacheck_path = find_tool("luacheck")
@@ -312,13 +522,13 @@ def register_commands(server):
                 suggestion="Run 'mech setup' to install required tools",
             )
 
-        # Run luacheck
+        # cwd is the addon so Luacheck discovers the addon's own .luacheckrc
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
                 [
                     str(luacheck_path),
-                    str(addon_path),
+                    ".",
                     "--formatter",
                     "plain",
                     "--codes",
@@ -326,7 +536,10 @@ def register_commands(server):
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=60,
+                cwd=str(addon_path),
             )
         except subprocess.TimeoutExpired:
             return error(
@@ -334,30 +547,27 @@ def register_commands(server):
                 message="Luacheck timed out after 60 seconds",
                 suggestion="Try linting fewer files or check for infinite loops",
             )
+        except OSError as exc:
+            return error(
+                code="TOOL_FAILED",
+                message=f"Luacheck could not be started: {exc}",
+                suggestion="Run 'mech setup' to reinstall required tools",
+            )
 
-        # Parse output
-        issues = []
-        error_count = 0
-        warning_count = 0
+        parsed = parse_luacheck_output(result.stdout)
+        # Luacheck exits 1 for warnings and 2 for code errors; 3+ (or 2 without
+        # a parsable report) means it could not check the addon at all.
+        if result.returncode >= 3 or (result.returncode == 2 and not parsed):
+            return error(
+                code="LINT_FAILED",
+                message=f"Luacheck failed (exit {result.returncode}): "
+                + _excerpt(result.stdout, result.stderr),
+                suggestion="Fix the .luacheckrc or file error reported above and retry",
+            )
 
-        for line in result.stdout.splitlines():
-            # Format: file.lua:10:5: (W113) ...
-            match = re.match(r"^(.+?):(\d+):(\d+):\s*\(([EW]\d+)\)\s*(.+)$", line)
-            if match:
-                issue = LintIssue(
-                    file=match.group(1),
-                    line=int(match.group(2)),
-                    column=int(match.group(3)),
-                    code=match.group(4),
-                    message=match.group(5),
-                )
-                issues.append(issue)
-                if issue.code.startswith("E"):
-                    error_count += 1
-                else:
-                    warning_count += 1
-
-        passed = error_count == 0
+        issues = [LintIssue(**item) for item in parsed]
+        error_count = sum(1 for i in issues if i.code.startswith("E"))
+        warning_count = len(issues) - error_count
 
         src = create_source(
             type="tool",
@@ -369,10 +579,10 @@ def register_commands(server):
         return success(
             data=LintResult(
                 addon=input.addon,
-                passed=passed,
+                passed=error_count == 0,
                 error_count=error_count,
                 warning_count=warning_count,
-                issues=issues[:50],  # Limit to 50 issues
+                issues=issues[:50],
             ),
             reasoning=f"Linted {input.addon}: {error_count} errors, {warning_count} warnings",
             sources=[src],
@@ -406,17 +616,10 @@ def register_commands(server):
     async def format_addon(
         input: FormatInput, context: Any = None
     ) -> CommandResult[FormatResult]:
-        import subprocess
-
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Find stylua tool (check bin/ first, then PATH)
         from ..setup import find_tool
 
         stylua_path = find_tool("stylua")
@@ -427,15 +630,23 @@ def register_commands(server):
                 suggestion="Run 'mech setup' to install required tools",
             )
 
-        # Build command
         cmd = [str(stylua_path)]
         if input.check:
             cmd.append("--check")
-        cmd.append(str(addon_path))
+        cmd.append(".")
 
+        lua_files = await asyncio.to_thread(lambda: sorted(addon_path.rglob("*.lua")))
+        before = await asyncio.to_thread(_snapshot, lua_files)
         try:
             result = await asyncio.to_thread(
-                subprocess.run, cmd, capture_output=True, text=True, timeout=60
+                subprocess.run,
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+                cwd=str(addon_path),
             )
         except subprocess.TimeoutExpired:
             return error(
@@ -443,22 +654,30 @@ def register_commands(server):
                 message="StyLua timed out after 60 seconds",
                 suggestion="Try formatting fewer files",
             )
+        except OSError as exc:
+            return error(
+                code="TOOL_FAILED",
+                message=f"StyLua could not be started: {exc}",
+                suggestion="Run 'mech setup' to reinstall required tools",
+            )
 
-        # Count Lua files
-        lua_files = list(addon_path.rglob("*.lua"))
-        files_checked = len(lua_files)
+        combined = result.stdout + "\n" + result.stderr
+        problems = _stylua_errors(combined)
+        if result.returncode not in (0, 1) or problems:
+            return error(
+                code="FORMAT_FAILED",
+                message=f"StyLua failed (exit {result.returncode}): "
+                + _excerpt("\n".join(problems) or combined),
+                suggestion="Fix the syntax error or stylua.toml problem reported above and retry",
+            )
 
-        # Parse check output for unformatted files
-        unformatted = []
         if input.check:
-            for line in result.stdout.splitlines() + result.stderr.splitlines():
-                if "Diff" in line or "would be" in line:
-                    # Extract filename
-                    match = re.search(r"(\S+\.lua)", line)
-                    if match:
-                        unformatted.append(match.group(1))
-
-        formatted = result.returncode == 0
+            unformatted = parse_stylua_diffs(combined)
+            files_changed = len(unformatted)
+        else:
+            after = await asyncio.to_thread(_snapshot, lua_files)
+            unformatted = []
+            files_changed = sum(1 for f, sig in after.items() if before.get(f) != sig)
 
         src = create_source(
             type="tool", id="stylua", title="StyLua Formatter", location=str(addon_path)
@@ -467,12 +686,12 @@ def register_commands(server):
         return success(
             data=FormatResult(
                 addon=input.addon,
-                formatted=formatted,
-                files_checked=files_checked,
-                files_changed=len(unformatted) if input.check else 0,
+                formatted=result.returncode == 0,
+                files_checked=len(lua_files),
+                files_changed=files_changed,
                 unformatted_files=unformatted,
             ),
-            reasoning=f"{'Checked' if input.check else 'Formatted'} {files_checked} Lua files in {input.addon}",
+            reasoning=f"{'Checked' if input.check else 'Formatted'} {len(lua_files)} Lua files in {input.addon}",
             sources=[src],
             confidence=1.0,
         )
@@ -499,6 +718,9 @@ def register_commands(server):
         passed_count: int = 0
         failed_count: int = 0
         tests: List[TestCase] = []
+        error: Optional[str] = Field(
+            None, description="Runner output when busted failed without a usable report"
+        )
 
     @server.command(
         name="addon.test",
@@ -509,18 +731,17 @@ def register_commands(server):
     async def test_addon(
         input: TestInput, context: Any = None
     ) -> CommandResult[TestResult]:
-        import subprocess
-
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Check for spec files
-        spec_files = list(addon_path.rglob("*_spec.lua"))
+        spec_files = await asyncio.to_thread(
+            lambda: [
+                f
+                for f in addon_path.rglob("*_spec.lua")
+                if not is_under_libs(f, addon_path)
+            ]
+        )
         if not spec_files:
             return success(
                 data=TestResult(addon=input.addon, passed=True, total=0),
@@ -528,39 +749,23 @@ def register_commands(server):
                 confidence=1.0,
             )
 
-        # Find busted tool (prefer system busted for reliability)
-        import shutil
-
-        busted_path = shutil.which("busted")  # Always use system busted if available
+        # Prefer the system busted for reliability
+        busted_path = shutil.which("busted")
         if not busted_path:
             from ..setup import find_tool
 
             busted_path = find_tool("busted")
 
-        # Build command
         cmd = [str(busted_path) if busted_path else "busted", "--output", "json"]
         if input.coverage:
-            cmd.extend(["--coverage"])
+            cmd.append("--coverage")
 
-        # Check for .busted config file - if present, don't pass path (respects config ROOT)
-        busted_config = addon_path / ".busted"
-        if busted_config.exists():
-            # .busted config found - run without path argument to respect ROOT directive
-            test_path = None
-        else:
-            # No .busted config - look for common test directories
-            test_candidates = [
-                addon_path / "Tests",
-                addon_path / "tests",
-                addon_path / "spec",
-                addon_path / "test",
+        # With a .busted config, pass no path so its ROOT directive is respected
+        if not (addon_path / ".busted").exists():
+            candidates = [
+                addon_path / name for name in ("Tests", "tests", "spec", "test")
             ]
-            test_path = next(
-                (p for p in test_candidates if p.exists() and p.is_dir()), addon_path
-            )
-
-        # Only append path if we determined one (not using .busted config)
-        if test_path:
+            test_path = next((p for p in candidates if p.is_dir()), addon_path)
             cmd.append(str(test_path))
 
         try:
@@ -569,6 +774,8 @@ def register_commands(server):
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=120,
                 cwd=str(addon_path),
             )
@@ -584,46 +791,59 @@ def register_commands(server):
                 message="Tests timed out after 120 seconds",
                 suggestion="Check for infinite loops or reduce test scope",
             )
-
-        # Parse JSON output
-        import json as json_module
-
-        tests = []
-        passed_count = 0
-        failed_count = 0
-
-        try:
-            # Busted JSON output
-            output = (
-                json_module.loads(result.stdout)
-                if result.stdout.strip().startswith("{")
-                else {}
+        except OSError as exc:
+            return error(
+                code="TOOL_FAILED",
+                message=f"Busted could not be started: {exc}",
+                suggestion="Reinstall Busted or check its path",
             )
-            for test in output.get("successes", []):
-                tests.append(
-                    TestCase(
-                        name=test.get("name", "Unknown"),
-                        passed=True,
-                        duration=test.get("duration", 0),
-                    )
+
+        report = parse_busted_json(result.stdout)
+        tests: List[TestCase] = []
+        passed_count = failed_count = 0
+        runner_error: Optional[str] = None
+
+        if report is None:
+            if result.returncode != 0:
+                runner_error = _excerpt(result.stderr, result.stdout) or (
+                    f"busted exited with code {result.returncode}"
                 )
-                passed_count += 1
-            for test in output.get("failures", []):
+            else:
+                passed_count = len(spec_files)
+        else:
+            for entry in report.get("failures", []) + report.get("errors", []):
+                message = entry.get("message") if isinstance(entry, dict) else None
                 tests.append(
                     TestCase(
-                        name=test.get("name", "Unknown"),
+                        name=_busted_name(entry),
                         passed=False,
-                        error=test.get("message", ""),
+                        error=str(message) if message else "",
                     )
                 )
                 failed_count += 1
-        except Exception:
-            # Fallback: count based on exit code
-            passed_count = 0 if result.returncode != 0 else len(spec_files)
+            for entry in report.get("successes", []):
+                duration = entry.get("duration", 0) if isinstance(entry, dict) else 0
+                tests.append(
+                    TestCase(
+                        name=_busted_name(entry),
+                        passed=True,
+                        duration=duration if isinstance(duration, (int, float)) else 0,
+                    )
+                )
+                passed_count += 1
+            if result.returncode != 0 and failed_count == 0:
+                runner_error = _excerpt(result.stderr, result.stdout) or (
+                    f"busted exited with code {result.returncode}"
+                )
+
+        if runner_error is not None:
+            tests.insert(
+                0,
+                TestCase(name="busted (run failed)", passed=False, error=runner_error),
+            )
+            failed_count += 1
 
         total = passed_count + failed_count
-        overall_passed = failed_count == 0
-
         src = create_source(
             type="tool",
             id="busted",
@@ -631,14 +851,17 @@ def register_commands(server):
             location=str(addon_path),
         )
 
+        # Failures come first so the 20-entry cap never hides them
+        ordered = [t for t in tests if not t.passed] + [t for t in tests if t.passed]
         return success(
             data=TestResult(
                 addon=input.addon,
-                passed=overall_passed,
+                passed=failed_count == 0,
                 total=total,
                 passed_count=passed_count,
                 failed_count=failed_count,
-                tests=tests[:20],  # Limit to 20 tests
+                tests=ordered[:20],
+                error=runner_error,
             ),
             reasoning=f"Ran {total} tests for {input.addon}: {passed_count} passed, {failed_count} failed",
             sources=[src],
@@ -652,7 +875,6 @@ def register_commands(server):
     class DeprecationInput(BaseModel):
         addon: str = Field(..., description="Name of the addon to scan")
         path: Optional[str] = Field(None, description="Override path to addon folder")
-        fix: bool = Field(False, description="Attempt to auto-fix deprecated calls")
         category: Optional[str] = Field(
             None, description="Filter by category (e.g., spells, items, containers)"
         )
@@ -679,59 +901,9 @@ def register_commands(server):
         by_severity: Dict[str, int] = {}
         database_version: str = ""
 
-    def load_deprecated_apis() -> tuple[Dict, str]:
-        """Load deprecated APIs from JSON database."""
-        import json
-
-        # Try to load from data directory
-        data_dir = Path(__file__).parent.parent.parent.parent / "data"
-        db_path = data_dir / "deprecated_apis.json"
-
-        if db_path.exists():
-            try:
-                with open(db_path, encoding="utf-8") as f:
-                    data = json.load(f)
-                    apis = {}
-                    for entry in data.get("apis", []):
-                        apis[entry["old"]] = {
-                            "new": entry["new"],
-                            "severity": entry.get("severity", "warning"),
-                            "category": entry.get("category", "general"),
-                            "since": entry.get("since", ""),
-                            "notes": entry.get("notes", ""),
-                        }
-                    return apis, data.get("version", "unknown")
-            except Exception:
-                pass
-
-        # Fallback to hardcoded minimal set
-        return {
-            "GetAddOnInfo": {
-                "new": "C_AddOns.GetAddOnInfo",
-                "severity": "warning",
-                "category": "addons",
-                "since": "11.0.0",
-                "notes": "",
-            },
-            "IsAddOnLoaded": {
-                "new": "C_AddOns.IsAddOnLoaded",
-                "severity": "warning",
-                "category": "addons",
-                "since": "11.0.0",
-                "notes": "",
-            },
-            "LoadAddOn": {
-                "new": "C_AddOns.LoadAddOn",
-                "severity": "warning",
-                "category": "addons",
-                "since": "11.0.0",
-                "notes": "",
-            },
-        }, "fallback"
-
     @server.command(
         name="addon.deprecations",
-        description="Scan a WoW addon for deprecated API calls (100+ APIs, 11.0-12.0)",
+        description="Scan a WoW addon's Lua files for deprecated API calls",
         input_schema=DeprecationInput,
         output_schema=DeprecationResult,
     )
@@ -740,82 +912,24 @@ def register_commands(server):
     ) -> CommandResult[DeprecationResult]:
         addon_path = find_addon_path(input.addon, input.path)
         if not addon_path:
-            return error(
-                code="ADDON_NOT_FOUND",
-                message=f"Addon '{input.addon}' not found",
-                suggestion="Check the addon name or provide an explicit path",
-            )
+            return addon_not_found(input.addon)
 
-        # Load API database
-        DEPRECATED_APIS, db_version = load_deprecated_apis()
+        apis, db_version, db_note = load_deprecated_apis()
+        found, files_scanned = await asyncio.to_thread(
+            scan_addon_deprecations,
+            addon_path,
+            apis,
+            input.category,
+            input.min_severity,
+        )
 
-        # Filter by severity
-        severity_levels = {"info": 0, "warning": 1, "error": 2}
-        min_level = severity_levels.get(input.min_severity, 1)
-
-        issues = []
         by_category: Dict[str, int] = {}
         by_severity: Dict[str, int] = {}
-
-        lua_files = list(addon_path.rglob("*.lua"))
-
-        # Skip Libs folder
-        lua_files = [
-            f for f in lua_files if "Libs" not in f.parts and "libs" not in f.parts
-        ]
-
-        for lua_file in lua_files:
-            try:
-                content = lua_file.read_text(encoding="utf-8", errors="replace")
-                lines = content.splitlines()
-
-                for line_num, line in enumerate(lines, 1):
-                    # Skip full-line comments
-                    if line.strip().startswith("--"):
-                        continue
-
-                    # Skip lines with @scan-ignore annotation
-                    if "@scan-ignore:" in line or "@scan-ignore " in line:
-                        continue
-
-                    for old_api, info in DEPRECATED_APIS.items():
-                        # Filter by category if specified
-                        if input.category and info.get("category") != input.category:
-                            continue
-
-                        # Filter by severity
-                        api_severity = info.get("severity", "warning")
-                        if severity_levels.get(api_severity, 1) < min_level:
-                            continue
-
-                        # Check for API call (word boundary + parenthesis)
-                        # Use negative lookbehind to avoid matching C_Namespace.OldApi patterns
-                        if old_api in line:
-                            pattern = rf"(?<![A-Za-z0-9_.]){re.escape(old_api)}\s*\("
-                            if re.search(pattern, line):
-                                cat = info.get("category", "general")
-                                sev = info.get("severity", "warning")
-
-                                issues.append(
-                                    DeprecationIssue(
-                                        file=str(lua_file.relative_to(addon_path)),
-                                        line=line_num,
-                                        old_api=old_api,
-                                        new_api=info["new"],
-                                        severity=sev,
-                                        category=cat,
-                                        since=info.get("since", ""),
-                                        notes=info.get("notes", ""),
-                                    )
-                                )
-
-                                by_category[cat] = by_category.get(cat, 0) + 1
-                                by_severity[sev] = by_severity.get(sev, 0) + 1
-
-            except Exception:
-                continue  # Skip unreadable files
-
-        clean = len(issues) == 0
+        for item in found:
+            by_category[item["category"]] = by_category.get(item["category"], 0) + 1
+            by_severity[item["severity"]] = by_severity.get(item["severity"], 0) + 1
+        issues = [DeprecationIssue(**item) for item in found]
+        clean = not issues
 
         src = create_source(
             type="scan",
@@ -824,9 +938,8 @@ def register_commands(server):
             location=str(addon_path),
         )
 
-        # Build reasoning with category breakdown
         if clean:
-            reasoning = f"No deprecated APIs found in {input.addon} ({len(lua_files)} files, {len(DEPRECATED_APIS)} APIs checked)"
+            reasoning = f"No deprecated APIs found in {input.addon} ({files_scanned} files, {len(apis)} APIs checked)"
         else:
             parts = [
                 f"{count} {cat}"
@@ -836,17 +949,27 @@ def register_commands(server):
             if by_severity.get("error", 0) > 0:
                 reasoning += f" ({by_severity['error']} critical)"
 
+        warnings = None
+        if db_note:
+            warnings = [
+                create_warning(
+                    code="DEPRECATION_DB_LIMITED",
+                    message=db_note,
+                    severity=WarningSeverity.WARNING,
+                )
+            ]
         return success(
             data=DeprecationResult(
                 addon=input.addon,
                 clean=clean,
                 issue_count=len(issues),
-                issues=issues[:100],  # Limit to 100 issues
+                issues=issues[:100],
                 by_category=by_category,
                 by_severity=by_severity,
                 database_version=db_version,
             ),
             reasoning=reasoning,
             sources=[src],
-            confidence=0.95,
+            warnings=warnings,
+            confidence=0.6 if db_version == "fallback" else 0.95,
         )
