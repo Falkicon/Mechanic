@@ -12,47 +12,99 @@
 -- @release $Id$
 local CallbackHandler = LibStub("CallbackHandler-1.0")
 
-local MAJOR, MINOR = "AceEvent-3.0", 4
+local MAJOR, MINOR = "AceEvent-3.0", 9
 local AceEvent = LibStub:NewLibrary(MAJOR, MINOR)
 
-if not AceEvent then
-	return
-end
+if not AceEvent then return end
 
 -- Lua APIs
 local pairs = pairs
 
-AceEvent.frame = AceEvent.frame or CreateFrame("Frame", "AceEvent30Frame") -- our event frame
+-- Defer new registrations to a timer callback. Preserve the existing frame
+-- during upgrades until its subscriptions can be transferred to the new frame.
+AceEvent.frame = AceEvent.frame or CreateFrame("Frame")
+AceEvent.frameClean = nil
 AceEvent.embeds = AceEvent.embeds or {} -- what objects embed this lib
 
 -- APIs and registry for blizzard events, using CallbackHandler lib
 if not AceEvent.events then
-	AceEvent.events = CallbackHandler:New(AceEvent, "RegisterEvent", "UnregisterEvent", "UnregisterAllEvents")
+	AceEvent.events = CallbackHandler:New(AceEvent,
+		"RegisterEvent", "UnregisterEvent", "UnregisterAllEvents")
+end
+
+local pendingEvents = {}
+local registrationScheduled = false
+-- CallbackHandler retains subscriptions across library upgrades. OnUsed will
+-- not run again for these events, so explicitly enqueue the active ones.
+for eventname, handlers in pairs(AceEvent.events.events) do
+	if next(handlers) then pendingEvents[eventname] = true end
+end
+
+local function ProcessPendingEvents()
+	registrationScheduled = false
+
+	-- On first run, replace the load-time frame with a clean one.
+	if not AceEvent.frameClean then
+		local oldFrame = AceEvent.frame
+		local newFrame = CreateFrame("Frame")
+		local events = AceEvent.events
+		newFrame:SetScript("OnEvent", function(this, event, ...)
+			events:Fire(event, ...)
+		end)
+		AceEvent.frame = newFrame
+		AceEvent.frameClean = true
+
+		-- Tear down the old (potentially tainted) frame
+		if oldFrame then
+			pcall(function()
+				oldFrame:UnregisterAllEvents()
+				oldFrame:SetScript("OnEvent", nil)
+			end)
+		end
+	end
+
+	-- Register all pending events on the clean frame
+	for ev in pairs(pendingEvents) do
+		pcall(AceEvent.frame.RegisterEvent, AceEvent.frame, ev)
+	end
+	wipe(pendingEvents)
+end
+
+local function ScheduleRegistration()
+	if not registrationScheduled then
+		registrationScheduled = true
+		C_Timer.After(0, ProcessPendingEvents)
+	end
 end
 
 function AceEvent.events:OnUsed(target, eventname)
-	AceEvent.frame:RegisterEvent(eventname)
+	pendingEvents[eventname] = true
+	ScheduleRegistration()
 end
 
+if next(pendingEvents) then ScheduleRegistration() end
+
 function AceEvent.events:OnUnused(target, eventname)
-	AceEvent.frame:UnregisterEvent(eventname)
+	-- Cancel queued work and unregister any subscription on the current frame.
+	pendingEvents[eventname] = nil
+	pcall(AceEvent.frame.UnregisterEvent, AceEvent.frame, eventname)
 end
+
 
 -- APIs and registry for IPC messages, using CallbackHandler lib
 if not AceEvent.messages then
-	AceEvent.messages = CallbackHandler:New(AceEvent, "RegisterMessage", "UnregisterMessage", "UnregisterAllMessages")
+	AceEvent.messages = CallbackHandler:New(AceEvent,
+		"RegisterMessage", "UnregisterMessage", "UnregisterAllMessages"
+	)
 	AceEvent.SendMessage = AceEvent.messages.Fire
 end
 
 --- embedding and embed handling
 local mixins = {
-	"RegisterEvent",
-	"UnregisterEvent",
-	"RegisterMessage",
-	"UnregisterMessage",
+	"RegisterEvent", "UnregisterEvent",
+	"RegisterMessage", "UnregisterMessage",
 	"SendMessage",
-	"UnregisterAllEvents",
-	"UnregisterAllMessages",
+	"UnregisterAllEvents", "UnregisterAllMessages",
 }
 
 --- Register for a Blizzard Event.
@@ -93,6 +145,7 @@ local mixins = {
 -- @paramsig message, ...
 -- @param message The message to send
 -- @param ... Any arguments to the message
+
 
 -- Embeds AceEvent into the target object making the functions from the mixins list available on target:..
 -- @param target target object to embed AceEvent in
