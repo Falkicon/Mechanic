@@ -85,7 +85,7 @@ When users copy from Mechanic, they get clean, markdown-friendly text:
 
 ```
 === Mechanic Console Export ===
-WoW: 12.0.0 (58234) | Client: Beta | Interface: 120001
+WoW: 12.0.1 (64889) | Client: Retail | Interface: 120001
 Character: Fenris-Stormrage (Druid, Balance)
 ---
 [MyAddon] [Trigger] Aura "Player Health" activated

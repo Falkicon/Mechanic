@@ -44,3 +44,18 @@ Remote access/debugging would require a separate security design: the existing d
 ## Contributing
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md), [AGENTS.md](../AGENTS.md), and the [plan directory](./). Plans in [Archive](Archive/) are historical context and may describe superseded behavior.
+
+## Issue tracking (2026-11-01 closeout)
+
+The next engineering priorities above are tracked in GitHub:
+
+- [#11: SavedVariables grammar](https://github.com/Falkicon/Mechanic/issues/11)
+- [#12: Atomic diagnostic queues and writer coordination](https://github.com/Falkicon/Mechanic/issues/12) (baseline replacement is already atomic)
+- [#13: Shared queue execution](https://github.com/Falkicon/Mechanic/issues/13)
+- [#14: Incremental Python modernization](https://github.com/Falkicon/Mechanic/issues/14)
+- [#15: macOS setup and native validation](https://github.com/Falkicon/Mechanic/issues/15)
+- [#16: Deprecated-API database coverage](https://github.com/Falkicon/Mechanic/issues/16)
+- [#17: Retail 12.1 API definitions](https://github.com/Falkicon/Mechanic/issues/17)
+- [#18: Product proposal triage and compatibility workbench](https://github.com/Falkicon/Mechanic/issues/18)
+
+[#2: Windows setup](https://github.com/Falkicon/Mechanic/issues/2) remains open for native installer validation, library-architecture checks, current Visual Studio discovery, and reliable LuaRocks failure handling. Local runtime binaries and generated launchers are excluded from the source fix; a reproducible, architecture-consistent toolchain still needs validation.
